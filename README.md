@@ -10,6 +10,7 @@ Poko is an early-stage open-source project. It gives local coding-agent tools a 
 - [x] Character and chat desktop app (Phase 01)
 - [x] Read-only Codex project analysis (Phase 02)
 - [x] Local task, conversation, activity, workspace, and memory persistence (Phase 03)
+- [ ] Approval workflow and permission gate (Phase 04)
 - [ ] Approval workflow (Phase 04)
 
 ## What Poko is aiming for
