@@ -21,7 +21,7 @@
 - 완료: Phase 01 캐릭터 중심 데스크톱 채팅, 좁은 IPC bridge, workspace picker/settings, 접근성·motion 스타일 및 테스트 구현.
 - 완료: typecheck, lint, test (2개), build, format check 통과.
 - 미검증: Electron 프로세스는 기동됐지만 Orca가 on-screen window를 찾지 못해 실제 화면 상호작용/폴더 선택을 확인하지 못했다.
-- 진행 중: Phase 01 변경을 재검토하고 PR #2를 생성해 리뷰·머지한다. 공개 저장소 description/topics는 앱 범위와 일치하도록 설정한다.
+- 진행 중: [PR #2](https://github.com/yohan-work/poko/pull/2)가 OPEN/MERGEABLE이며 로컬 리뷰를 마쳤다. GitHub checks/reviewDecision은 설정되어 있지 않다. 공개 저장소 description/topics는 앱 범위와 일치하도록 설정한다.
 
 ## 마지막 체크포인트
 
@@ -30,6 +30,7 @@
 
 ## 재개 지점
 
-1. continuity validator와 전체 diff review를 완료한다.
-2. PR #2의 checks와 diff를 검토하고 merge한다.
-3. 실제 화면 검증이 미완료라는 제약을 handoff에 남기고, 다음 작업에서 Codex worker 구현 전 앱 구동 이슈를 재확인한다.
+1. 최신 continuity validator와 전체 diff를 검토한다.
+2. PR #2 상태를 다시 확인하고 squash merge한다.
+3. 공개 저장소 description/topics를 업데이트한다.
+4. 실제 화면 검증이 미완료라는 제약을 handoff에 남기고, 다음 작업에서 Codex worker 구현 전 앱 구동 이슈를 재확인한다.
