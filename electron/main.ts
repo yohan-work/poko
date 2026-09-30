@@ -64,7 +64,7 @@ async function createWindow(): Promise<void> {
     minWidth: 620,
     minHeight: 620,
     title: "Poko",
-    show: false,
+    show: true,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -72,9 +72,6 @@ async function createWindow(): Promise<void> {
       sandbox: true,
     },
   });
-
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
-
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event, url) => {
     const devServerUrl = process.env.ELECTRON_RENDERER_URL;
