@@ -1,0 +1,47 @@
+# Phase 04 — Approval and permission gate
+
+## Goal
+
+Add a visible, auditable approval flow for Codex actions while preserving read-only behavior as the default. Do not enable write tasks until the worker can pause before a concrete action and the app can reject it safely.
+
+## Why the provider boundary needs to change
+
+Phase 02 uses `codex exec --json`, a non-interactive command intended for one-off jobs and CI. It does not provide the bidirectional approval request/reply flow needed by an Electron UI. OpenAI documents the Codex App Server as a client integration for streamed events and approvals; its stdio transport is JSONL JSON-RPC, and the server pauses while the client answers approval requests. See the [App Server protocol](https://learn.chatgpt.com/docs/app-server) and OpenAI's [App Server architecture overview](https://openai.com/index/unlocking-the-codex-harness/).
+
+The planned change replaces only the Codex provider transport with a per-task `codex app-server --listen stdio://` process. Agent Core, normalized Poko events, task storage, and the renderer's character-led UI remain. Treat App Server protocol revisions as a compatibility risk: negotiate protocol version, validate each server request, pin supported CLI behavior in tests, and fail closed to the existing read-only provider if approvals are unsupported.
+
+## Permission behavior
+
+- Read-only stays the default task mode.
+- App Server approval requests become typed `waiting_approval` task state and a persisted approval activity.
+- Render the concrete command, working directory, and reason. For file changes, show the proposed diff when the protocol provides it. Never label an ambiguous request as harmless.
+- Approve only the current request, never persist `acceptForSession` or broaden a profile for future tasks in v0.1. Decline/cancel leaves the provider sandbox unchanged.
+- Network access, deployment, publishing, payments, email, git push/reset, and other external or destructive actions remain denied. Do not let an approval dialog turn an unavailable capability into an available one.
+- Never accept an approval response for an expired task, another renderer, or a mismatched request ID. Timeout, malformed request, renderer close, worker exit, or DB error denies the request and stops or safely resumes without the action.
+- Persist request identity, display summary, decision, and timestamps in an `approvals` table linked to the task. Do not persist secrets or arbitrary raw protocol payloads.
+- The main process owns pending approval requests and child-process stdin. Renderer receives display DTOs and sends only `{taskId, requestId, decision}` through a narrow IPC method.
+
+## Scope
+
+1. Add an approval domain model/state machine: `pending → approved | denied | expired | cancelled`, with one-shot request IDs.
+2. Add App Server stdio JSON-RPC framing and a minimal capability handshake for the exact approval types used. Keep protocol parsing independent of Electron and cover it with fixtures.
+3. Add provider callbacks/commands for receiving and answering approval requests. Validate request ownership and preserve cancellation/timeout behavior.
+4. Add typed IPC and a small approval card/dialog that shows the concrete action and offers Approve once / Cancel. No session-wide trust button.
+5. Persist approval records and restore only history; never restore a pending approval after app restart.
+6. Add deterministic tests for request routing, stale IDs, deny-by-default behavior, malformed protocol, timeout, persistence, and shutdown.
+
+## Explicitly deferred
+
+- Do not enable file writes in this phase until the Codex App Server sandbox and file-change/command approval behavior has been verified on supported platforms.
+- Do not implement destructive or external actions, general shell access, automatic approval, session trust, browser control, or deployment.
+- If Codex cannot guarantee a pause before writes in the configured read-only baseline, keep write requests unsupported and ship only the approval request infrastructure.
+
+## Acceptance criteria
+
+- Existing read-only analysis still passes through the provider with Codex sandbox/network restrictions intact.
+- An approval request is persisted and shown with an accurate action preview; cancel/deny does not run it.
+- A current one-shot approval responds only to the owning pending request and is audit logged.
+- Restart converts pending approvals to expired/cancelled and never resumes the child process.
+- Unknown request types, malformed JSON-RPC, missing command details, unsupported CLI/protocol, and persistence failures fail closed.
+- `pnpm check`, `pnpm format:check`, database migration tests, and provider protocol tests pass.
+- GUI testing on supported macOS, Windows, and Linux validates actual approval behavior before enabling write mode.

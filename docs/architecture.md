@@ -115,6 +115,8 @@ The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and t
 
 Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:minimal` platform paths and the selected `:workspace_roots` as read-only, and disable command network access. The task ignores user-level Codex config so an existing broad sandbox setting cannot replace Poko's policy; Codex authentication remains in the user's Codex home. Unsupported profile configuration fails closed, with no broad read-only fallback. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. Phase 03 persists task, conversation, Activity, workspace, and explicit memory records.
 
+`codex exec --json` is intentionally non-interactive and is not the planned approval transport. Phase 04 proposes moving the Codex provider to the Codex App Server's stdio JSON-RPC interface so the main process can receive and answer one-shot command/file approval requests. This is a provider-level transport change; it does not replace Agent Core or the Poko event model. Keep all writes disabled until the actual pause-before-action semantics and sandbox enforcement have been verified on supported operating systems. See [the Phase 04 plan](phases/phase-04.md).
+
 ## Workspace and permission boundary
 
 The native folder picker selects the workspace. The selected path is persisted as an app setting. A selected workspace is the working root for an agent task; it is not by itself a complete operating-system sandbox. Before running a provider, the main process must canonicalize and validate the working directory, and provider permissions must be configured explicitly.
