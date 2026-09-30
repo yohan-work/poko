@@ -1,8 +1,8 @@
 # 현재 목표
 
 - 상태: 진행 중
-- 마지막 갱신: 2026-09-30 15:08 Asia/Seoul
-- 현재 작업 단위: Startup window visibility follow-up
+- 마지막 갱신: 2026-09-30 15:12 Asia/Seoul
+- 현재 작업 단위: Phase 01 complete; Phase 02 planning
 
 ## 목표와 성공 기준
 
@@ -22,16 +22,16 @@
 - 완료: typecheck, lint, test (2개), build, format check 통과.
 - 확인됨: Electron main process는 BrowserWindow의 `visible=true`와 renderer load completion을 기록했다.
 - 미검증: Orca가 Electron 창을 열거하지 못해 실제 화면 상호작용/폴더 선택을 확인하지 못했다.
-- 진행 중: 명시적으로 보이는 창을 생성하는 소규모 후속 수정 PR #3을 `fix/window-visible`에서 준비한다.
+- 완료: 창 표시 옵션을 명시한 PR #3이 `29f8b97`로 squash merge됐다.
+- 진행 중: Phase 01 결과를 정리하고 다음 Phase 02 Codex worker 작업을 계획한다.
 
 ## 마지막 체크포인트
 
-- Handoff: [2026-09-30-1508-window-visible-fix](../handoff/2026-09-30-1508-window-visible-fix.md)
-- Socratic: [2026-09-30-1508-window-visible-fix](../socratic/2026-09-30-1508-window-visible-fix.md)
+- Handoff: [2026-09-30-1512-phase-01-complete](../handoff/2026-09-30-1512-phase-01-complete.md)
+- Socratic: [2026-09-30-1512-phase-01-complete](../socratic/2026-09-30-1512-phase-01-complete.md)
 
 ## 재개 지점
 
-1. PR #3 continuity와 전체 diff를 검토하고 자동 검증을 실행한다.
-2. PR #3을 리뷰 후 squash merge한다.
-3. Orca Electron window enumeration 또는 native UI interaction을 확인 가능한 환경에서 재검증한다.
-4. Phase 02 Codex worker 구현으로 진행한다.
+1. Phase 01 completion checkpoint PR을 리뷰·머지한다.
+2. GUI 접근 가능한 환경에서 workspace picker와 mock chat을 확인한다.
+3. Phase 02 Codex worker 설계 및 구현을 진행한다.
