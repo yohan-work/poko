@@ -1,0 +1,15 @@
+{
+  "scannedAt": "2026-09-30",
+  "framework": "not yet configured",
+  "fontStack": null,
+  "palette": null,
+  "motion": "motion-cut",
+  "spacing": null,
+  "preserved": [],
+  "introduced": [
+    "Electron with React and Vite",
+    "warm Coral-inspired app palette",
+    "local Bricolage Grotesque and IBM Plex Sans fonts",
+    "reduced-motion-aware character states"
+  ]
+}

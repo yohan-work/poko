@@ -10,14 +10,16 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 .
 ├── electron/
 │   ├── main.ts              # lifecycle, window, native dialogs, settings, Agent Core entry
-│   └── preload.ts           # narrow, typed renderer bridge
-├── src/
-│   ├── components/          # character, chat, activity, approval UI
-│   ├── pages/               # main conversation and secondary views
-│   ├── state/               # renderer state (Zustand)
-│   ├── agent/               # task orchestration and event normalization (Phase 02+)
-│   ├── providers/           # Codex and future provider implementations
-│   └── shared/              # IPC and domain types shared with Electron
+│   ├── preload.ts           # narrow, typed renderer bridge
+│   ├── settings.ts          # persisted workspace preference
+│   └── shared.ts            # IPC channels and domain types
+├── src/renderer/
+│   ├── index.html
+│   └── src/
+│       ├── components/      # character and chat UI
+│       ├── state/            # renderer state (Zustand)
+│       ├── agent/            # task orchestration (Phase 02+)
+│       └── providers/        # Codex and future providers
 ├── skills/coding/SKILL.md
 ├── docs/
 └── package.json
@@ -141,6 +143,8 @@ Add foreign keys and indexes with the first migration. Memory begins with text s
 
 These are documented seams, not empty packages to scaffold in advance.
 
-## Phase 01 boundary
+## Phase 01 implementation
 
-Implement the Electron shell, character states, conversation UI, workspace selection and persistence, and a mock reply. Keep conversation state in memory for this phase. Do not implement Codex execution, SQLite, automatic memory extraction, browser automation, scheduling, or approval flows yet.
+The app uses Electron Vite's main, preload, and renderer processes. Electron main persists only the selected workspace as a small JSON settings file under `app.getPath("userData")`; conversation messages remain in memory. The preload exposes `workspace.get`, `workspace.select`, and `conversation.send` as narrow typed methods. The `conversation.send` handler is a temporary mock and does not inspect workspace files or start a subprocess.
+
+Do not implement Codex execution, SQLite, automatic memory extraction, browser automation, scheduling, or approval enforcement in this phase.
