@@ -16,7 +16,7 @@
 - `docs/architecture.md`: 단일 앱 구조, Electron 책임, IPC, Agent/Provider 계약, 권한 및 향후 SQLite 스키마를 정의한다.
 - `docs/phases/phase-00.md`, `docs/phases/phase-01.md`: 완료 게이트와 Phase 01 범위를 기록한다.
 - `README.md`, `LICENSE`: 초기 공개 설명과 사용자가 선택한 MIT 라이선스를 추가한다.
-- `docs/goal/current.md`, `docs/socratic/2026-09-30-0000-phase-00-foundation.md`, `docs/handoff/2026-09-30-0000-phase-00-foundation.md`: 진행 상황과 근거를 남긴다.
+- `docs/goal/current.md`, `docs/socratic/2026-09-30-1313-phase-00-foundation.md`, `docs/handoff/2026-09-30-1313-phase-00-foundation.md`: 진행 상황과 근거를 남긴다.
 
 ## 검증 증거
 
