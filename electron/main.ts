@@ -1,15 +1,20 @@
 import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { basename, join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { IPC_CHANNELS, type TaskEventPayload, type WorkspaceInfo } from "./shared";
+import {
+  IPC_CHANNELS,
+  type MemoryInput,
+  type TaskEventPayload,
+  type WorkspaceInfo,
+} from "./shared";
 import { AgentCore } from "./agent/AgentCore";
 import { resolveWorkspaceDirectory } from "./agent/workspace";
 import { CodexProvider, resolveCodexExecutable } from "./providers/codex/CodexProvider";
-import { readWorkspacePath, writeWorkspacePath } from "./settings";
+import { PokoDatabase } from "./database/Database";
 
 let mainWindow: BrowserWindow | null = null;
-let settingsFile = "";
 let agentCore: AgentCore | null = null;
+let database: PokoDatabase | null = null;
 
 function workspaceInfo(workspacePath: string | null): WorkspaceInfo | null {
   if (!workspacePath) return null;
@@ -31,7 +36,7 @@ function registerIpcHandlers(): void {
       throw new Error("Unknown renderer requested the workspace.");
     }
 
-    return workspaceInfo(await readWorkspacePath(settingsFile));
+    return workspaceInfo(database?.getWorkspace() ?? null);
   });
 
   ipcMain.handle(IPC_CHANNELS.workspaceSelect, async (event) => {
@@ -40,7 +45,7 @@ function registerIpcHandlers(): void {
     }
 
     const parentWindow = mainWindow;
-    const currentPath = await readWorkspacePath(settingsFile);
+    const currentPath = database?.getWorkspace() ?? null;
     const selection = await dialog.showOpenDialog(parentWindow, {
       title: "작업할 폴더 선택",
       defaultPath: currentPath ?? undefined,
@@ -50,7 +55,7 @@ function registerIpcHandlers(): void {
     if (selection.canceled || selection.filePaths.length === 0) return null;
 
     const [selectedPath] = selection.filePaths;
-    await writeWorkspacePath(settingsFile, selectedPath);
+    database?.setWorkspace(selectedPath);
     return workspaceInfo(selectedPath);
   });
 
@@ -65,9 +70,21 @@ function registerIpcHandlers(): void {
       throw new TypeError("The request is too long.");
     }
 
-    const workspacePath = await readWorkspacePath(settingsFile);
+    const workspacePath = database?.getWorkspace() ?? null;
     const cwd = await resolveWorkspaceDirectory(workspacePath);
-    const taskId = agentCore.startTask({ prompt: rawMessage.trim(), cwd });
+    const taskId = database?.createTask(rawMessage.trim(), cwd);
+    if (!taskId) throw new Error("Local storage is unavailable.");
+    try {
+      agentCore.startTask({ prompt: rawMessage.trim(), cwd, taskId });
+    } catch (error) {
+      database?.recordTaskEvent(
+        taskId,
+        "error",
+        "작업을 시작하지 못했어.",
+        "작업을 시작하지 못했어.",
+      );
+      throw error;
+    }
     return { taskId };
   });
 
@@ -79,6 +96,53 @@ function registerIpcHandlers(): void {
       throw new TypeError("A valid task id is required.");
     }
     return agentCore.cancelTask(rawTaskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.appBootstrap, (event) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer requested app data.");
+    const { workspacePath, ...data } = database.getBootstrapData();
+    return { ...data, workspace: workspaceInfo(workspacePath) };
+  });
+  ipcMain.handle(IPC_CHANNELS.memoryList, (event) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer requested memories.");
+    return database.listMemories();
+  });
+  ipcMain.handle(IPC_CHANNELS.memorySearch, (event, rawQuery: unknown) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer requested memories.");
+    if (typeof rawQuery !== "string" || rawQuery.length > 500)
+      throw new TypeError("Invalid search query.");
+    return rawQuery.trim() ? database.searchMemories(rawQuery.trim()) : database.listMemories();
+  });
+  ipcMain.handle(IPC_CHANNELS.memorySave, (event, rawInput: unknown) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer requested memory save.");
+    if (typeof rawInput !== "object" || rawInput === null) throw new TypeError("Invalid memory.");
+    const input = rawInput as Partial<MemoryInput>;
+    const types = ["preference", "project", "person", "decision", "fact", "routine"];
+    if (
+      !types.includes(input.type ?? "") ||
+      typeof input.content !== "string" ||
+      !input.content.trim() ||
+      input.content.length > 4000 ||
+      !Number.isInteger(input.importance) ||
+      (input.importance ?? 0) < 1 ||
+      (input.importance ?? 0) > 5
+    )
+      throw new TypeError("Invalid memory.");
+    return database.saveMemory({
+      type: input.type as MemoryInput["type"],
+      content: input.content,
+      importance: input.importance as number,
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.memoryDelete, (event, rawId: unknown) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer requested memory delete.");
+    if (typeof rawId !== "string" || rawId.length > 100) throw new TypeError("Invalid memory id.");
+    return database.deleteMemory(rawId);
   });
 }
 
@@ -114,28 +178,70 @@ async function createWindow(): Promise<void> {
   }
 }
 
-app.whenReady().then(async () => {
-  settingsFile = join(app.getPath("userData"), "settings.json");
-  const codingSkill = await readFile(
-    join(app.getAppPath(), "skills/coding/SKILL.md"),
-    "utf8",
-  ).catch(() => "");
-  const executable = await resolveCodexExecutable();
-  agentCore = new AgentCore(
-    new CodexProvider({ executable }),
-    (payload: TaskEventPayload) => {
-      if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
-      mainWindow.webContents.send(IPC_CHANNELS.taskEvent, payload);
-    },
-    codingSkill,
-  );
-  registerIpcHandlers();
-  await createWindow();
+app
+  .whenReady()
+  .then(async () => {
+    const userDataDirectory = app.getPath("userData");
+    database = await PokoDatabase.open(
+      join(userDataDirectory, "poko.sqlite"),
+      join(app.getAppPath(), "drizzle"),
+      join(userDataDirectory, "settings.json"),
+    );
+    const codingSkill = await readFile(
+      join(app.getAppPath(), "skills/coding/SKILL.md"),
+      "utf8",
+    ).catch(() => "");
+    const executable = await resolveCodexExecutable();
+    agentCore = new AgentCore(
+      new CodexProvider({ executable }),
+      (payload: TaskEventPayload) => {
+        const event = payload.event;
+        const activityMessage =
+          event.type === "output"
+            ? null
+            : event.type === "thinking"
+              ? (event.message ?? "요청을 살펴보고 있어.")
+              : event.type === "tool"
+                ? (event.detail ?? "프로젝트를 살펴보고 있어.")
+                : event.type === "started"
+                  ? "포코가 요청을 확인했어."
+                  : event.type === "completed"
+                    ? "프로젝트 확인을 마쳤어."
+                    : event.type === "cancelled"
+                      ? "요청을 멈췄어."
+                      : "작업을 마치지 못했어.";
+        const result =
+          event.type === "completed"
+            ? event.result
+            : event.type === "error"
+              ? event.error
+              : event.type === "cancelled"
+                ? "요청을 멈췄어."
+                : undefined;
+        try {
+          database?.recordTaskEvent(payload.taskId, event.type, activityMessage, result);
+        } catch (error) {
+          console.error("Could not persist task event.", error);
+        }
+        if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+        mainWindow.webContents.send(IPC_CHANNELS.taskEvent, payload);
+      },
+      codingSkill,
+    );
+    registerIpcHandlers();
+    await createWindow();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+    });
+  })
+  .catch(() => {
+    dialog.showErrorBox(
+      "Poko를 시작하지 못했어",
+      "로컬 데이터베이스를 열지 못했어. 저장 공간을 확인한 뒤 다시 실행해 줘.",
+    );
+    app.quit();
   });
-});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -143,10 +249,16 @@ app.on("window-all-closed", () => {
 
 let quitAfterTasks = false;
 app.on("before-quit", (event) => {
-  if (!agentCore?.hasActiveTasks) return;
-  event.preventDefault();
-  if (quitAfterTasks) return;
-  quitAfterTasks = true;
-  agentCore.cancelAll();
-  void agentCore.whenIdle().then(() => app.quit());
+  if (agentCore?.hasActiveTasks) {
+    event.preventDefault();
+    if (quitAfterTasks) return;
+    quitAfterTasks = true;
+    agentCore.cancelAll();
+    void agentCore.whenIdle().then(() => app.quit());
+    return;
+  }
+  if (database) {
+    database.close();
+    database = null;
+  }
 });

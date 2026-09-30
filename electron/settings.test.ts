@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readWorkspacePath, writeWorkspacePath } from "./settings";
+import { readWorkspacePath } from "./settings";
 
 let temporaryDirectory = "";
 
@@ -17,13 +17,15 @@ afterEach(async () => {
 });
 
 describe("workspace settings", () => {
-  it("persists a selected workspace for the next app launch", async () => {
+  it("reads a valid legacy workspace setting", async () => {
     const settingsFile = await createSettingsPath();
-
-    await writeWorkspacePath(settingsFile, "/Users/example/Projects/poko");
+    await mkdir(dirname(settingsFile), { recursive: true });
+    await writeFile(
+      settingsFile,
+      JSON.stringify({ workspacePath: "/Users/example/Projects/poko" }),
+    );
 
     await expect(readWorkspacePath(settingsFile)).resolves.toBe("/Users/example/Projects/poko");
-    await expect(readFile(settingsFile, "utf8")).resolves.toContain('"workspacePath"');
   });
 
   it("ignores missing, malformed, and non-absolute workspace settings", async () => {

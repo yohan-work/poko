@@ -14,11 +14,11 @@ export function TasksPanel() {
     <section className="session-panel" aria-labelledby="tasks-title">
       <p className="future-view__eyebrow">우리의 프로젝트</p>
       <h1 id="tasks-title">함께한 작업</h1>
-      <p className="session-panel__description">이번 실행에서 포코에게 부탁한 일이야.</p>
+      <p className="session-panel__description">포코와 함께한 작업이 이 컴퓨터에 저장돼.</p>
       {tasks.length === 0 ? (
         <p className="session-panel__empty">아직 작업이 없어. 프로젝트를 골라 말을 걸어 줘.</p>
       ) : (
-        <ol className="task-list" aria-label="이번 실행의 작업 목록">
+        <ol className="task-list" aria-label="저장된 작업 목록">
           {tasks.map((task) => (
             <li className="task-list__item" key={task.id}>
               <span className={`task-list__status task-list__status--${task.status}`}>
@@ -35,7 +35,7 @@ export function TasksPanel() {
           ))}
         </ol>
       )}
-      <p className="session-panel__footnote">작업 기록은 앱을 닫으면 사라져.</p>
+      <p className="session-panel__footnote">요청 내용과 결과는 이 컴퓨터에 저장돼.</p>
     </section>
   );
 }

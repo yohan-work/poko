@@ -5,6 +5,7 @@ import type { AgentProvider } from "./AgentProvider";
 interface AgentTaskInput {
   prompt: string;
   cwd: string;
+  taskId?: string;
 }
 
 const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "error"]);
@@ -24,7 +25,7 @@ export class AgentCore {
       throw new Error("포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘.");
     }
 
-    const taskId = randomUUID();
+    const taskId = input.taskId ?? randomUUID();
     const controller = new AbortController();
     const task: AgentTask = {
       id: taskId,
