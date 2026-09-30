@@ -1,7 +1,7 @@
 # 현재 목표
 
 - 상태: 진행 중
-- 마지막 갱신: 2026-09-30 16:44 Asia/Seoul
+- 마지막 갱신: 2026-09-30 16:46 Asia/Seoul
 - 현재 작업 단위: Phase 04 approval gate 계획 및 provider transport 결정
 
 ## 목표와 성공 기준
@@ -30,15 +30,16 @@
 - 완료: Phase 03 PR #7은 squash merge commit `ddd0cf3`로 원격 `main`에 반영됐다. 로컬 `main`은 사전 존재하던 divergence로 이전 커밋에 남아 있다.
 - 검증: Phase 03 `pnpm check` (typecheck, lint, 16 tests, build), `pnpm format:check`, `git diff --check`, continuity validator 통과.
 - 미검증: GUI restart와 packaged-app migration asset 검증은 packaging/GUI 환경이 없어 진행하지 않았다.
-- 진행 중: Phase 04 approval plan 작성. `codex exec --json`은 비대화형이므로, exact action approvals가 필요한 경우 Codex App Server stdio JSON-RPC로 Codex provider transport를 바꾸는 설계를 검토한다.
+- 완료: Phase 04 plan PR #8은 squash merge commit `140979e`로 원격 `main`에 반영됐다.
+- 진행 중: `codex exec --json`은 비대화형이므로, exact action approvals가 필요한 경우 Codex App Server stdio JSON-RPC로 Codex provider transport를 바꾸는 Phase 04 설계를 사용자 승인 대기 중이다.
 
 ## 마지막 체크포인트
 
-- Handoff: [2026-09-30-1644-phase-04-plan](../handoff/2026-09-30-1644-phase-04-plan.md)
-- Socratic: [2026-09-30-1644-phase-04-plan](../socratic/2026-09-30-1644-phase-04-plan.md)
+- Handoff: [2026-09-30-1646-phase-04-decision](../handoff/2026-09-30-1646-phase-04-decision.md)
+- Socratic: [2026-09-30-1646-phase-04-decision](../socratic/2026-09-30-1646-phase-04-decision.md)
 
 ## 재개 지점
 
-1. Phase 04 계획 PR을 열고 계획 diff를 리뷰해 squash merge한다.
-2. App Server integration을 승인받은 뒤 `docs/phases/phase-04.md`의 protocol/state-machine 순서로 구현한다.
+1. `docs/phases/phase-04.md` 계획과 [PR #8](https://github.com/yohan-work/poko/pull/8)을 확인한다.
+2. 사용자가 App Server provider transport 전환을 승인하면 Phase 04 protocol/state-machine을 구현한다.
 3. Write mode는 supported OS의 Codex permission profile and pause-before-action을 검증한 뒤에만 enable한다.
