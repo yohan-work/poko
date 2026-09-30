@@ -11,8 +11,9 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 ├── electron/
 │   ├── main.ts              # lifecycle, window, native dialogs, settings, Agent Core entry
 │   ├── preload.ts           # narrow, typed renderer bridge
-│   ├── settings.ts          # persisted workspace preference
+│   ├── settings.ts          # legacy workspace settings import helpers
 │   ├── shared.ts            # IPC channels and domain types
+│   ├── database/            # SQLite connection, schema, and persistence
 │   ├── agent/               # Agent Core and provider contract
 │   └── providers/codex/     # Codex CLI process and JSONL adapter
 ├── src/renderer/
@@ -21,7 +22,7 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │       ├── components/
 │       │   ├── character/   # character states
 │       │   ├── chat/        # conversation UI
-│       │   └── activity/    # in-memory activity view
+│       │   └── activity/    # task, Activity, and Memory views
 │       └── state/           # renderer state (Zustand)
 ├── skills/coding/SKILL.md
 ├── docs/
@@ -60,7 +61,8 @@ Requests use a typed request/response API; long-running task updates use a typed
 | `task.start` | renderer → main | 02 | Accepts a message string; main resolves the saved workspace and returns `{ taskId: string }` |
 | `task.cancel` | renderer → main | 02 | Accepts a task id owned by the current renderer and requests process cancellation |
 | `task.event` | main → renderer | 02 | Streams a validated `{ taskId, event: AgentEvent }` |
-| `activity.list` | renderer → main | 03 | Returns persisted activity records |
+| `app.bootstrap` | renderer → main | 03 | Returns workspace, default conversation messages, tasks, and Activity |
+| `memory.list/search/save/delete` | renderer → main | 03 | Explicit local memory CRUD and literal text search |
 
 Cancellation and approval responses will be added as explicit operations when those flows are implemented. Do not create a generic IPC escape hatch.
 
@@ -111,7 +113,7 @@ type AgentEvent =
 
 The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and the selected workspace as `cwd`, parses JSONL incrementally, and turns process failures or malformed events into error events. It does not forward raw stdout to the renderer. A Claude provider can implement the same interface later.
 
-Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:minimal` platform paths and the selected `:workspace_roots` as read-only, and disable command network access. The task ignores user-level Codex config so an existing broad sandbox setting cannot replace Poko's policy; Codex authentication remains in the user's Codex home. Unsupported profile configuration fails closed, with no broad read-only fallback. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. The user-facing Activity view is in-memory and is cleared when the app restarts.
+Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:minimal` platform paths and the selected `:workspace_roots` as read-only, and disable command network access. The task ignores user-level Codex config so an existing broad sandbox setting cannot replace Poko's policy; Codex authentication remains in the user's Codex home. Unsupported profile configuration fails closed, with no broad read-only fallback. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. Phase 03 persists task, conversation, Activity, workspace, and explicit memory records.
 
 ## Workspace and permission boundary
 
@@ -127,7 +129,7 @@ Phase 01 has no shell or provider execution. Phase 02 uses Codex's restricted re
 
 ## Persistence model
 
-Phase 03 uses Drizzle ORM with Node's built-in `node:sqlite` driver and stores the database under Electron `userData`. Electron 44.4.5 bundles Node 24.21.0; the built-in driver avoids a native npm addon and the Electron ABI rebuild it would require. Because `DatabaseSync` is synchronous, keep database queries short and confined to the main process. Use versioned Drizzle SQL migrations at startup.
+Phase 03 uses Drizzle ORM with Node's built-in `node:sqlite` driver and stores the database under Electron `userData`. Electron 44.4.5 bundles Node 24.21.0; the built-in driver avoids a native npm addon and the Electron ABI rebuild it would require. Drizzle ORM and Drizzle Kit are pinned to `1.0.0-rc.4` because stable `0.45.3` does not include the Node SQLite adapter; this prerelease dependency risk should be revisited when a stable adapter is available. Because `DatabaseSync` is synchronous, keep database queries short and confined to the main process. Use versioned Drizzle SQL migrations at startup.
 
 The initial schema is:
 
@@ -136,7 +138,7 @@ The initial schema is:
 | `settings` | app preferences and workspace | `key`, `value`, `updated_at` |
 | `conversations` | conversation identity | `id`, `title`, `created_at`, `updated_at` |
 | `messages` | user and assistant messages | `id`, `conversation_id`, `role`, `content`, `created_at` |
-| `tasks` | provider work lifecycle | fields from the `Task` contract plus serialized result metadata |
+| `tasks` | provider work lifecycle | `id`, `title`, `prompt`, `provider`, `status`, `workspace`, `created_at`, `completed_at` |
 | `activities` | user-readable and technical timeline | `id`, `task_id`, `type`, `message`, `created_at` |
 | `memories` | explicit searchable personal/project facts | `id`, `type`, `content`, `importance`, `source`, `created_at`, `updated_at` |
 
@@ -153,4 +155,4 @@ These are documented seams, not empty packages to scaffold in advance.
 
 ## Phase 01 implementation
 
-The app uses Electron Vite's main, preload, and renderer processes. Electron main persists only the selected workspace as a small JSON settings file under `app.getPath("userData")`; conversation messages remain in memory. The preload exposes workspace selection and task start/cancel/event subscriptions as narrow typed methods. Phase 02 delegates read-only project analysis to Codex. File edits, SQLite persistence, automatic memory extraction, browser automation, scheduling, and approval-gated writes remain out of scope until their planned phases.
+The app uses Electron Vite's main, preload, and renderer processes. Phase 03 imports a previous workspace path from the legacy JSON settings file if the SQLite setting is empty; new preference writes go directly to SQLite. The preload exposes persistence through narrow typed methods. Automatic memory extraction, browser automation, scheduling, and approval-gated writes remain out of scope until their planned phases.

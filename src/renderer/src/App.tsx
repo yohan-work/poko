@@ -4,6 +4,7 @@ import { useAppStore } from "./state/appStore";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { ActivityPanel } from "./components/activity/ActivityPanel";
 import { TasksPanel } from "./components/activity/TasksPanel";
+import { MemoryPanel } from "./components/activity/MemoryPanel";
 
 const navigation: { id: AppView; label: string; shortLabel: string }[] = [
   { id: "conversation", label: "대화", shortLabel: "대화" },
@@ -11,21 +12,6 @@ const navigation: { id: AppView; label: string; shortLabel: string }[] = [
   { id: "tasks", label: "작업", shortLabel: "작업" },
   { id: "activity", label: "활동", shortLabel: "활동" },
 ];
-
-const futureViewCopy: Record<Exclude<AppView, "conversation">, { title: string; copy: string }> = {
-  memory: {
-    title: "우리의 기억은 차근차근 쌓일 거야.",
-    copy: "프로젝트와 취향을 기억하는 기능은 다음 단계에서 준비할게.",
-  },
-  tasks: {
-    title: "함께한 작업을 여기서 볼 수 있어.",
-    copy: "이번에 포코에게 부탁한 일이 여기에 모여.",
-  },
-  activity: {
-    title: "포코의 작업 기록이 여기에 남아.",
-    copy: "포코가 프로젝트를 살펴본 과정이 여기에 남아.",
-  },
-};
 
 function WorkspaceButton() {
   const workspace = useAppStore((state) => state.workspace);
@@ -75,20 +61,6 @@ function WorkspaceButton() {
   );
 }
 
-function EmptyView({ view }: { view: Exclude<AppView, "conversation"> }) {
-  const message = futureViewCopy[view];
-  return (
-    <section className="future-view" aria-labelledby="future-view-title">
-      <span className="future-view__mark" aria-hidden="true">
-        p
-      </span>
-      <p className="future-view__eyebrow">곧 만나요</p>
-      <h1 id="future-view-title">{message.title}</h1>
-      <p>{message.copy}</p>
-    </section>
-  );
-}
-
 export function App() {
   const activeView = useAppStore((state) => state.activeView);
   const characterState = useAppStore((state) => state.characterState);
@@ -122,10 +94,12 @@ export function App() {
           <ChatPanel />
         ) : activeView === "activity" ? (
           <ActivityPanel />
+        ) : activeView === "memory" ? (
+          <MemoryPanel />
         ) : activeView === "tasks" ? (
           <TasksPanel />
         ) : (
-          <EmptyView view={activeView} />
+          <ActivityPanel />
         )}
       </main>
 

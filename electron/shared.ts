@@ -4,6 +4,11 @@ export const IPC_CHANNELS = {
   taskStart: "task:start",
   taskCancel: "task:cancel",
   taskEvent: "task:event",
+  appBootstrap: "app:bootstrap",
+  memoryList: "memory:list",
+  memorySearch: "memory:search",
+  memorySave: "memory:save",
+  memoryDelete: "memory:delete",
 } as const;
 
 export type CharacterState =
@@ -45,4 +50,46 @@ export interface TaskEventPayload {
 
 export interface TaskStartResponse {
   taskId: string;
+}
+
+export interface PersistedMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+export interface PersistedTask {
+  id: string;
+  title: string;
+  status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
+  createdAt: string;
+  completedAt: string | null;
+}
+export interface PersistedActivity {
+  id: string;
+  taskId: string;
+  type: string;
+  message: string;
+  createdAt: string;
+}
+export interface PersistedMemory {
+  id: string;
+  type: "preference" | "project" | "person" | "decision" | "fact" | "routine";
+  content: string;
+  importance: number;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface AppBootstrap {
+  workspace: WorkspaceInfo | null;
+  conversationId: string;
+  messages: PersistedMessage[];
+  tasks: PersistedTask[];
+  activities: PersistedActivity[];
+}
+export interface MemoryInput {
+  type: PersistedMemory["type"];
+  content: string;
+  importance: number;
 }

@@ -5,6 +5,8 @@ import type {
   CharacterState,
   TaskEventPayload,
   WorkspaceInfo,
+  PersistedMemory,
+  MemoryInput,
 } from "../../../../electron/shared";
 
 export interface ConversationMessage {
@@ -42,7 +44,12 @@ interface AppState {
   workspace: WorkspaceInfo | null;
   errorMessage: string | null;
   workspaceError: string | null;
+  memories: PersistedMemory[];
+  memoryError: string | null;
   initializeWorkspace: () => Promise<void>;
+  loadMemories: (query?: string) => Promise<void>;
+  saveMemory: (input: MemoryInput) => Promise<void>;
+  deleteMemory: (id: string) => Promise<void>;
   selectWorkspace: () => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   cancelTask: () => Promise<void>;
@@ -122,13 +129,56 @@ export const useAppStore = create<AppState>((set, get) => ({
   workspace: null,
   errorMessage: null,
   workspaceError: null,
+  memories: [],
+  memoryError: null,
 
   initializeWorkspace: async () => {
     try {
-      const workspace = await window.poko.workspace.get();
-      set({ workspace });
+      const data = await window.poko.app.bootstrap();
+      set({
+        workspace: data.workspace,
+        messages: data.messages,
+        tasks: data.tasks.map((task) => ({
+          id: task.id,
+          title: task.title,
+          status:
+            task.status === "queued" || task.status === "waiting_approval"
+              ? "running"
+              : task.status,
+          createdAt: task.createdAt,
+          completedAt: task.completedAt ?? undefined,
+        })),
+        activities: data.activities,
+      });
     } catch {
-      set({ workspaceError: "선택한 폴더를 불러오지 못했어. 다시 선택해 줘." });
+      set({ workspaceError: "저장된 대화와 폴더를 불러오지 못했어. 앱을 다시 시작해 줘." });
+    }
+  },
+
+  loadMemories: async (query = "") => {
+    try {
+      const memories = await window.poko.memory.search(query);
+      set({ memories, memoryError: null });
+    } catch {
+      set({ memoryError: "기억을 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
+    }
+  },
+
+  saveMemory: async (input) => {
+    try {
+      await window.poko.memory.save(input);
+      await get().loadMemories();
+    } catch {
+      set({ memoryError: "기억을 저장하지 못했어. 내용을 확인해 줘." });
+    }
+  },
+
+  deleteMemory: async (id) => {
+    try {
+      await window.poko.memory.delete(id);
+      await get().loadMemories();
+    } catch {
+      set({ memoryError: "기억을 지우지 못했어. 다시 시도해 줘." });
     }
   },
 

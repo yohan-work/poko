@@ -5,6 +5,9 @@ import {
   type TaskEventPayload,
   type TaskStartResponse,
   type WorkspaceInfo,
+  type AppBootstrap,
+  type MemoryInput,
+  type PersistedMemory,
 } from "./shared";
 
 function isTaskEventPayload(value: unknown): value is TaskEventPayload {
@@ -48,6 +51,7 @@ function isAgentEvent(value: unknown): value is AgentEvent {
 }
 
 const pokoApi = {
+  app: { bootstrap: (): Promise<AppBootstrap> => ipcRenderer.invoke(IPC_CHANNELS.appBootstrap) },
   workspace: {
     get: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceGet),
     select: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceSelect),
@@ -64,6 +68,14 @@ const pokoApi = {
       ipcRenderer.on(IPC_CHANNELS.taskEvent, listener);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.taskEvent, listener);
     },
+  },
+  memory: {
+    list: (): Promise<PersistedMemory[]> => ipcRenderer.invoke(IPC_CHANNELS.memoryList),
+    search: (query: string): Promise<PersistedMemory[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.memorySearch, query),
+    save: (input: MemoryInput): Promise<PersistedMemory> =>
+      ipcRenderer.invoke(IPC_CHANNELS.memorySave, input),
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, id),
   },
 };
 

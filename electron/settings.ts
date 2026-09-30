@@ -1,10 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute } from "node:path";
-
-interface PersistedSettings {
-  workspacePath: string | null;
-}
+import { readFile } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 
 export async function readWorkspacePath(settingsFile: string): Promise<string | null> {
   try {
@@ -24,25 +19,5 @@ export async function readWorkspacePath(settingsFile: string): Promise<string | 
     return null;
   } catch {
     return null;
-  }
-}
-
-export async function writeWorkspacePath(
-  settingsFile: string,
-  workspacePath: string | null,
-): Promise<void> {
-  const settings: PersistedSettings = { workspacePath };
-  const temporaryFile = `${settingsFile}.${randomUUID()}.tmp`;
-
-  await mkdir(dirname(settingsFile), { recursive: true });
-
-  try {
-    await writeFile(temporaryFile, JSON.stringify(settings, null, 2), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    await rename(temporaryFile, settingsFile);
-  } finally {
-    await rm(temporaryFile, { force: true });
   }
 }

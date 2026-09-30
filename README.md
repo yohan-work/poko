@@ -2,23 +2,23 @@
 
 **A friendly local AI desktop agent for getting real work done in your projects.**
 
-Poko is an early-stage open-source project. The first milestone is a character-led desktop app; local coding-agent execution is planned for a later phase. Features described as planned are not available yet.
+Poko is an early-stage open-source project. It gives local coding-agent tools a friendly character-led desktop interface and keeps conversation history, tasks, and explicit memories on your computer.
 
 ## Project status
 
 - [x] Foundation and architecture documented
 - [x] Character and chat desktop app (Phase 01)
 - [x] Read-only Codex project analysis (Phase 02)
-- [ ] Local task and memory persistence (Phase 03)
+- [x] Local task, conversation, activity, workspace, and memory persistence (Phase 03)
 - [ ] Approval workflow (Phase 04)
 
 ## What Poko is aiming for
 
-Talk to a small desktop character in plain language. When a request needs real work, Poko will route it to a local agent, show understandable progress, and report the result. The long-term design keeps the user experience in Poko while providers and tools work behind a clear permission boundary.
+Talk to a small desktop character in plain language. Poko sends read-only project-analysis requests to the locally installed Codex CLI, shows understandable progress, and reports the result. Conversation, tasks, Activity, workspace selection, and user-managed memories persist locally in SQLite.
 
 ## Development
 
-Requirements: Node.js 24+ and pnpm 10+.
+Requirements: Node.js 24+ and pnpm 10+. Codex CLI must be installed and authenticated for project analysis.
 
 ```sh
 pnpm install
@@ -34,11 +34,11 @@ pnpm test
 pnpm build
 ```
 
-Poko can analyze a selected workspace through the locally installed Codex CLI with a restricted read-only permission profile. File edits, persistent task history, and approval-gated write access are still planned work. Read [the architecture](docs/architecture.md) and [the Phase 02 plan](docs/phases/phase-02.md) for the current design and limits.
+Poko analyzes a selected workspace through the locally installed Codex CLI with a restricted read-only permission profile. It stores app data in its Electron user-data directory and does not upload memories or history to a Poko service. Agent requests are sent to the provider you configure through Codex CLI. Read [the architecture](docs/architecture.md), [the Phase 02 implementation](docs/phases/phase-02.md), and [the Phase 03 design](docs/phases/phase-03.md) for the current boundaries and tradeoffs.
 
 ## Security direction
 
-Poko keeps tool execution out of the UI renderer. The current Codex worker is limited to read-only analysis; it does not support file edits or unattended external actions. Approval-gated write access is planned for Phase 04.
+Poko keeps tool execution and SQLite out of the UI renderer. The current Codex worker is limited to read-only analysis; it does not support file edits or unattended external actions. Approval-gated write access is planned for Phase 04. SQLite content is local and unencrypted in v0.1; credentials are not stored in the database.
 
 ## Contributing
 
