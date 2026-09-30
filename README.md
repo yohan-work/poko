@@ -8,7 +8,7 @@ Poko is an early-stage open-source project. The first milestone is a character-l
 
 - [x] Foundation and architecture documented
 - [x] Character and chat desktop app (Phase 01)
-- [ ] Codex CLI worker (Phase 02)
+- [x] Read-only Codex project analysis (Phase 02)
 - [ ] Local task and memory persistence (Phase 03)
 - [ ] Approval workflow (Phase 04)
 
@@ -34,11 +34,11 @@ pnpm test
 pnpm build
 ```
 
-The current conversation uses a mock reply. Codex CLI execution is planned for Phase 02. Read [the architecture](docs/architecture.md) and [the phase plan](docs/phases/phase-01.md) for the current design and scope.
+Poko can analyze a selected workspace through the locally installed Codex CLI using a read-only sandbox. File edits, persistent task history, and approval-gated write access are still planned work. Read [the architecture](docs/architecture.md) and [the Phase 02 plan](docs/phases/phase-02.md) for the current design and limits.
 
 ## Security direction
 
-Poko is designed to keep tool execution out of the UI renderer and to require explicit approval for dangerous actions. Codex execution and approval enforcement are not implemented yet. Do not use this early-stage project to run unattended actions.
+Poko keeps tool execution out of the UI renderer. The current Codex worker is limited to read-only analysis; it does not support file edits or unattended external actions. Approval-gated write access is planned for Phase 04.
 
 ## Contributing
 

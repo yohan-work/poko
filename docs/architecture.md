@@ -1,6 +1,6 @@
 # Poko architecture
 
-Poko is a local-first desktop character that accepts a user's request, decides whether work should run, delegates that work to an agent provider, and presents a concise result. The first release is an Electron application with a character-led conversation UI and a Codex CLI worker added in a later phase.
+Poko is a local-first desktop character that accepts a user's request, decides whether work should run, delegates that work to an agent provider, and presents a concise result. The first release is an Electron application with a character-led conversation UI and a read-only Codex CLI worker.
 
 ## Scope and implementation shape
 
@@ -12,14 +12,17 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── main.ts              # lifecycle, window, native dialogs, settings, Agent Core entry
 │   ├── preload.ts           # narrow, typed renderer bridge
 │   ├── settings.ts          # persisted workspace preference
-│   └── shared.ts            # IPC channels and domain types
+│   ├── shared.ts            # IPC channels and domain types
+│   ├── agent/               # Agent Core and provider contract
+│   └── providers/codex/     # Codex CLI process and JSONL adapter
 ├── src/renderer/
 │   ├── index.html
 │   └── src/
-│       ├── components/      # character and chat UI
-│       ├── state/            # renderer state (Zustand)
-│       ├── agent/            # task orchestration (Phase 02+)
-│       └── providers/        # Codex and future providers
+│       ├── components/
+│       │   ├── character/   # character states
+│       │   ├── chat/        # conversation UI
+│       │   └── activity/    # in-memory activity view
+│       └── state/           # renderer state (Zustand)
 ├── skills/coding/SKILL.md
 ├── docs/
 └── package.json
@@ -52,10 +55,10 @@ Requests use a typed request/response API; long-running task updates use a typed
 
 | Operation | Direction | Phase | Contract |
 | --- | --- | --- | --- |
-| `workspace.get` | renderer → main | 01 | Returns `{ path: string \| null }` |
-| `workspace.select` | renderer → main | 01 | Opens a native directory picker; returns `{ path: string \| null }` |
-| `conversation.send` | renderer → main | 01 | Accepts `{ message: string }`; returns a mock assistant reply in Phase 01 |
-| `task.start` | renderer → main | 02 | Accepts a user message and selected workspace; returns `{ taskId: string }` |
+| `workspace.get` | renderer → main | 01 | Returns `{ path, name }` or `null` |
+| `workspace.select` | renderer → main | 01 | Opens a native directory picker; returns `{ path, name }` or `null` |
+| `task.start` | renderer → main | 02 | Accepts a message string; main resolves the saved workspace and returns `{ taskId: string }` |
+| `task.cancel` | renderer → main | 02 | Accepts a task id owned by the current renderer and requests process cancellation |
 | `task.event` | main → renderer | 02 | Streams a validated `{ taskId, event: AgentEvent }` |
 | `activity.list` | renderer → main | 03 | Returns persisted activity records |
 
@@ -63,18 +66,18 @@ Cancellation and approval responses will be added as explicit operations when th
 
 ## Agent Core and provider contracts
 
-The Agent Core is the only layer that converts a user request into a task and selects a provider. Phase 01 uses a mock response and does not start an agent process.
+The Agent Core is the only layer that converts a user request into a task and selects a provider. Phase 01 used a mock response; Phase 02 sends analysis tasks to Codex through a read-only sandbox.
 
 ```typescript
 interface AgentTask {
   id: string;
   prompt: string;
-  cwd?: string;
+  cwd: string;
   mode?: "read" | "write";
 }
 
 interface AgentProvider {
-  runTask(input: AgentTask): AsyncIterable<AgentEvent>;
+  runTask(input: AgentTask, options?: { signal?: AbortSignal }): AsyncIterable<AgentEvent>;
 }
 ```
 
@@ -102,10 +105,13 @@ type AgentEvent =
   | { type: "tool"; tool: string; detail?: string }
   | { type: "output"; content: string }
   | { type: "completed"; result: string }
+  | { type: "cancelled" }
   | { type: "error"; error: string };
 ```
 
-The Phase 02 `CodexProvider` will spawn `codex exec --json` with an argv array and the selected workspace as `cwd`, parse JSONL incrementally, and turn process failures or malformed events into error events. It will not forward raw stdout to the renderer. A Claude provider can implement the same interface later.
+The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and the selected workspace as `cwd`, parses JSONL incrementally, and turns process failures or malformed events into error events. It does not forward raw stdout to the renderer. A Claude provider can implement the same interface later.
+
+Phase 02 runs Codex with `--sandbox read-only --ask-for-approval on-request`; it does not grant workspace writes, network access, extra writable paths, or approval bypass. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. The user-facing Activity view is in-memory and is cleared when the app restarts.
 
 ## Workspace and permission boundary
 
@@ -117,7 +123,7 @@ Classify operations as:
 - **Write:** create or modify files, or install dependencies; apply the selected task mode and approval policy.
 - **Dangerous:** delete data, push, reset, deploy, or affect an external service; require explicit user approval for the concrete action.
 
-Phase 01 has no shell or provider execution. Phase 04 adds approval UI and policy enforcement. Never claim that a confirmation dialog alone confines a process to the workspace.
+Phase 01 has no shell or provider execution. Phase 02 uses Codex's read-only sandbox. Phase 04 adds the user approval UI and a write policy. Never claim that a confirmation dialog alone confines a process to the workspace.
 
 ## Persistence model
 
@@ -145,6 +151,4 @@ These are documented seams, not empty packages to scaffold in advance.
 
 ## Phase 01 implementation
 
-The app uses Electron Vite's main, preload, and renderer processes. Electron main persists only the selected workspace as a small JSON settings file under `app.getPath("userData")`; conversation messages remain in memory. The preload exposes `workspace.get`, `workspace.select`, and `conversation.send` as narrow typed methods. The `conversation.send` handler is a temporary mock and does not inspect workspace files or start a subprocess.
-
-Do not implement Codex execution, SQLite, automatic memory extraction, browser automation, scheduling, or approval enforcement in this phase.
+The app uses Electron Vite's main, preload, and renderer processes. Electron main persists only the selected workspace as a small JSON settings file under `app.getPath("userData")`; conversation messages remain in memory. The preload exposes workspace selection and task start/cancel/event subscriptions as narrow typed methods. Phase 02 delegates read-only project analysis to Codex. File edits, SQLite persistence, automatic memory extraction, browser automation, scheduling, and approval-gated writes remain out of scope until their planned phases.
