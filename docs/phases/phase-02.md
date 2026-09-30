@@ -9,7 +9,7 @@ Let Poko inspect a selected project through the locally installed Codex CLI and 
 - A provider contract and a small Agent Core that owns task ids, process cancellation, and normalized events.
 - A Codex provider that starts `codex exec --json` with the selected workspace as its working directory.
 - Incremental JSONL parsing with tolerant handling of unknown event types and clear errors for malformed output.
-- Read-only Codex sandboxing. This phase supports project inspection and analysis; it does not permit the worker to edit project files.
+- Codex restricted permission profile: only the selected workspace and minimum platform paths needed by tools are readable; other filesystem paths and network access are denied. The worker cannot edit project files.
 - Narrow Electron IPC for task start, cancellation, and task event subscription. The renderer cannot choose a cwd or invoke arbitrary commands.
 - Canonicalize and verify the saved workspace directory in the main process before execution.
 - In-memory progress/activity display, timeout, cancellation, and friendly missing-CLI/auth/process errors.
@@ -24,14 +24,15 @@ Let Poko inspect a selected project through the locally installed Codex CLI and 
 
 ## Permission policy
 
-- Use `--sandbox read-only` and `--ask-for-approval on-request`; do not enable network access or additional writable directories.
-- Treat a selected workspace as a read boundary, not as permission to modify it.
+- Use Codex's named permission profile via strict config overrides: deny `:root`, allow `:minimal` read access and the active `:workspace_roots` read-only, and disable network.
+- Ignore user-level Codex configuration for the task so a local `sandbox_mode` setting cannot replace the app's restricted profile. Authentication still uses the user's normal Codex home.
+- Fail closed if the installed Codex version does not recognize the required profile configuration. Do not fall back to broad `read-only` mode.
 - If Codex requests a permission this app cannot grant, fail closed and explain that the action is not available yet.
 - Never use approval-bypass or sandbox-bypass CLI options.
 
 ## Verification
 
-- Unit-test event mapping for representative Codex JSONL records, unknown event types, malformed lines, process errors, timeout, and cancellation.
+- Unit-test exact restricted-profile CLI arguments as well as JSONL mapping, unknown event types, malformed lines, process errors, timeout, and cancellation.
 - Test Agent Core event forwarding and one-active-task behavior with a fake provider.
 - Test workspace validation against missing paths and non-directories.
 - Run typecheck, lint, tests, format check, and production build.

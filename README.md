@@ -34,7 +34,7 @@ pnpm test
 pnpm build
 ```
 
-Poko can analyze a selected workspace through the locally installed Codex CLI using a read-only sandbox. File edits, persistent task history, and approval-gated write access are still planned work. Read [the architecture](docs/architecture.md) and [the Phase 02 plan](docs/phases/phase-02.md) for the current design and limits.
+Poko can analyze a selected workspace through the locally installed Codex CLI with a restricted read-only permission profile. File edits, persistent task history, and approval-gated write access are still planned work. Read [the architecture](docs/architecture.md) and [the Phase 02 plan](docs/phases/phase-02.md) for the current design and limits.
 
 ## Security direction
 

@@ -76,8 +76,11 @@ function friendlyFailure(error: unknown, stderr: string): string {
   if (/not logged in|please log in|authentication|unauthorized|invalid_grant/.test(detail)) {
     return "Codex 로그인이 필요해. 터미널에서 Codex 로그인을 완료해 줘.";
   }
+  if (/permission profile|default_permissions|sandbox_mode|unknown config/.test(detail)) {
+    return "현재 Codex CLI가 포코의 제한형 읽기 권한을 지원하지 않아. Codex CLI를 업데이트해 줘.";
+  }
   if (/approval|required permission|needs approval/.test(detail)) {
-    return "이 요청은 추가 권한이 필요해서 멈췄어. 현재는 읽기 전용 작업만 할 수 있어.";
+    return "이 요청은 허용된 폴더 밖의 접근이 필요해서 멈췄어.";
   }
   if (/올바르지 않은 jsonl|이벤트 형식을 읽을 수 없어/.test(detail)) {
     return "Codex 응답을 읽지 못했어. 다시 시도해 줘.";
@@ -133,12 +136,16 @@ export class CodexProvider implements AgentProvider {
     yield { type: "started" };
 
     const args = [
+      "--strict-config",
       "--ask-for-approval",
-      "on-request",
+      "never",
+      "--config",
+      'default_permissions="poko-readonly"',
+      "--config",
+      'permissions={"poko-readonly"={extends=":read-only",filesystem={":root"="deny",":minimal"="read",":workspace_roots"={"."="read"}},network={enabled=false}}}',
       "exec",
+      "--ignore-user-config",
       "--json",
-      "--sandbox",
-      "read-only",
       "--cd",
       input.cwd,
       "-",

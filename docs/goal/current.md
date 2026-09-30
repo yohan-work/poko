@@ -1,8 +1,8 @@
 # 현재 목표
 
 - 상태: 진행 중
-- 마지막 갱신: 2026-09-30 15:32 Asia/Seoul
-- 현재 작업 단위: Phase 02 read-only Codex worker 구현 및 PR 준비
+- 마지막 갱신: 2026-09-30 15:40 Asia/Seoul
+- 현재 작업 단위: Phase 02 제한형 permission profile 검토 반영 및 PR review
 
 ## 목표와 성공 기준
 
@@ -25,7 +25,7 @@
 - 완료: 창 표시 옵션을 명시한 PR #3이 `29f8b97`로 squash merge됐다.
 - 완료: Phase 02 CodexProvider, JSONL normalization, Agent Core, workspace validation, task IPC와 in-memory UI 구현.
 - 검증: `pnpm check` 통과 (typecheck, lint, 13 tests, production build); 포맷은 자동 정리 후 재검증 대기.
-- 진행 중: Phase 02 문서와 README 정합성을 맞추고 continuity 검증 및 PR 준비를 진행한다.
+- 진행 중: PR #5 review에서 확인한 Codex 기본 read-only의 넓은 읽기 범위를 해결하기 위해 제한형 named permission profile을 추가했다. PR을 갱신하고 리뷰/머지를 진행한다.
 
 ## 마지막 체크포인트
 
@@ -34,6 +34,6 @@
 
 ## 재개 지점
 
-1. 포맷 검사와 continuity validator를 통과시킨다.
-2. Phase 02 변경을 로컬 리뷰 후 PR → 리뷰 → 머지한다.
-3. Codex CLI 인증 계정으로 선택 workspace read-only 분석을 수동 검증한다. 실제 모델 호출은 사용자 프로젝트 정보를 전송하고 비용을 낼 수 있어 자동 테스트에서는 실행하지 않는다.
+1. 전체 검사, 포맷 검사와 continuity validator를 통과시킨다.
+2. PR #5에 제한형 profile 변경을 반영하고 PR → 리뷰 → 머지한다.
+3. GUI와 Codex CLI 인증 계정으로 선택 workspace 분석을 수동 검증한다. 실제 모델 호출은 사용자 프로젝트 정보를 전송하고 비용을 낼 수 있어 자동 테스트에서는 실행하지 않는다.

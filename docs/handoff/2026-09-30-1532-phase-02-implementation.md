@@ -19,7 +19,7 @@
 
 ## 범위 및 안전 정책
 
-- Codex 실행은 `--sandbox read-only`와 `--ask-for-approval on-request`를 사용하며 승인/sandbox 우회 옵션을 사용하지 않는다.
+- Codex 실행은 named permission profile로 `:root` 읽기를 거부하고 `:minimal` 경로와 선택 workspace만 읽도록 제한하며 network를 끈다. user-level Codex 설정은 무시해 넓은 로컬 permission이 우선하지 않게 한다.
 - main process가 저장된 경로를 canonicalize하고 directory인지 확인한다. Renderer는 cwd나 실행파일을 지정하지 못한다.
 - 파일 쓰기, 의존성 설치, git 변경, 외부 서비스 작업은 미지원이며 Phase 04까지 보류된다.
 - 실제 Codex task는 실행하지 않았다. 테스트는 fake child process로 격리했다.
@@ -27,13 +27,13 @@
 ## 검증 증거
 
 - `pnpm check`: 통과 (typecheck, lint, 13 tests, production build).
-- `pnpm format:check`: 첫 실행에서 7개 파일 formatting 지적; Biome으로 수정했고 재검증 대기.
-- Codex CLI 인자 순서는 설치된 `codex exec --help`로 확인했다. root option인 `--ask-for-approval`은 `exec` 앞에 위치한다.
+- `pnpm format:check`: 통과.
+- Codex CLI 0.159.1 `--help`와 profile config parser로 inline permission profile syntax를 확인했다. OS-level sandbox 실행 자체는 현재 개발 컨테이너에서 `sandbox_apply: Operation not permitted`로 막혀 기능 테스트는 미검증이다.
 - GUI workspace picker와 실제 인증 Codex 요청은 미검증이다.
 
 ## 다음 세션 재개 순서
 
-1. `pnpm format:check`와 continuity validator 실행.
-2. README/architecture와 diff를 다시 검토하고 branch commit/push.
-3. Phase 02 PR을 열고 사용자 지정 PR → review → merge 흐름을 따른다.
+1. `pnpm format:check`, 전체 checks, continuity validator를 다시 실행.
+2. 제한형 profile 변경을 추가 commit/push하고 PR #5의 review를 갱신한다.
+3. Phase 02 PR을 review 후 머지한다.
 4. 후속 Phase 03에서 task, message, activity, settings, memory의 SQLite persistence를 구현한다.

@@ -66,7 +66,7 @@ Cancellation and approval responses will be added as explicit operations when th
 
 ## Agent Core and provider contracts
 
-The Agent Core is the only layer that converts a user request into a task and selects a provider. Phase 01 used a mock response; Phase 02 sends analysis tasks to Codex through a read-only sandbox.
+The Agent Core is the only layer that converts a user request into a task and selects a provider. Phase 01 used a mock response; Phase 02 sends analysis tasks to Codex through a restricted read-only permission profile.
 
 ```typescript
 interface AgentTask {
@@ -111,7 +111,7 @@ type AgentEvent =
 
 The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and the selected workspace as `cwd`, parses JSONL incrementally, and turns process failures or malformed events into error events. It does not forward raw stdout to the renderer. A Claude provider can implement the same interface later.
 
-Phase 02 runs Codex with `--sandbox read-only --ask-for-approval on-request`; it does not grant workspace writes, network access, extra writable paths, or approval bypass. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. The user-facing Activity view is in-memory and is cleared when the app restarts.
+Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:minimal` platform paths and the selected `:workspace_roots` as read-only, and disable command network access. The task ignores user-level Codex config so an existing broad sandbox setting cannot replace Poko's policy; Codex authentication remains in the user's Codex home. Unsupported profile configuration fails closed, with no broad read-only fallback. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. The user-facing Activity view is in-memory and is cleared when the app restarts.
 
 ## Workspace and permission boundary
 
@@ -123,7 +123,7 @@ Classify operations as:
 - **Write:** create or modify files, or install dependencies; apply the selected task mode and approval policy.
 - **Dangerous:** delete data, push, reset, deploy, or affect an external service; require explicit user approval for the concrete action.
 
-Phase 01 has no shell or provider execution. Phase 02 uses Codex's read-only sandbox. Phase 04 adds the user approval UI and a write policy. Never claim that a confirmation dialog alone confines a process to the workspace.
+Phase 01 has no shell or provider execution. Phase 02 uses Codex's restricted read-only permission profile. Phase 04 adds the user approval UI and a write policy. Never claim that a confirmation dialog alone confines a process to the workspace.
 
 ## Persistence model
 
