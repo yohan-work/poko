@@ -7,7 +7,7 @@ Poko is an early-stage open-source project. The first milestone is a character-l
 ## Project status
 
 - [x] Foundation and architecture documented
-- [ ] Character and chat desktop app (Phase 01)
+- [x] Character and chat desktop app (Phase 01)
 - [ ] Codex CLI worker (Phase 02)
 - [ ] Local task and memory persistence (Phase 03)
 - [ ] Approval workflow (Phase 04)
@@ -18,7 +18,23 @@ Talk to a small desktop character in plain language. When a request needs real w
 
 ## Development
 
-The runnable application is being built in Phase 01. Development setup instructions will be added with that implementation. Read [the architecture](docs/architecture.md) and [the phase plan](docs/phases/phase-01.md) for the current design and scope.
+Requirements: Node.js 24+ and pnpm 10+.
+
+```sh
+pnpm install
+pnpm dev
+```
+
+Useful checks:
+
+```sh
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+```
+
+The current conversation uses a mock reply. Codex CLI execution is planned for Phase 02. Read [the architecture](docs/architecture.md) and [the phase plan](docs/phases/phase-01.md) for the current design and scope.
 
 ## Security direction
 

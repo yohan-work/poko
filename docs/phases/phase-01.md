@@ -6,12 +6,13 @@ Ship a runnable desktop app where a user can choose a workspace, talk to Poko, a
 
 ## Included
 
-- Electron main, preload, and React renderer using TypeScript, Vite, pnpm, and Zustand.
+- Electron main, preload, and React renderer using Electron Vite, TypeScript, pnpm, and Zustand.
 - Secure window defaults: context isolation enabled and renderer Node integration disabled.
 - Character states: `idle`, `listening`, `thinking`, `working`, `success`, `error`, and `approval`.
 - Conversation composer, user and assistant message display, and an in-memory conversation store.
 - Native directory picker and persisted selected workspace.
 - Typed IPC methods for workspace selection, workspace lookup, and mock conversation response.
+- Persist the workspace preference in an atomic JSON settings file under Electron's `userData` directory.
 - Friendly, minimal main screen; keep detailed technical Activity content for its later phase.
 
 ## Excluded
@@ -21,7 +22,7 @@ Ship a runnable desktop app where a user can choose a workspace, talk to Poko, a
 
 ## Implementation sequence
 
-1. Add the app manifest, TypeScript/Vite/Electron configuration, and scripts.
+1. Add the app manifest, Electron Vite/TypeScript configuration, and scripts.
 2. Implement the main process and narrow preload bridge.
 3. Build the character-led conversation view and Zustand state.
 4. Wire workspace selection and mock conversation IPC.

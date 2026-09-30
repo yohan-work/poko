@@ -1,34 +1,36 @@
 # 현재 목표
 
 - 상태: 진행 중
-- 마지막 갱신: 2026-09-30 14:28 Asia/Seoul
-- 현재 작업 단위: Phase 00 PR review
+- 마지막 갱신: 2026-09-30 14:50 Asia/Seoul
+- 현재 작업 단위: Phase 01 character and chat
 
 ## 목표와 성공 기준
 
-- 목표: Poko v0.1 기반 문서를 만들고 리뷰 후 Phase 01 데스크톱 앱을 구현한다.
-- 성공 기준: 문서가 main/preload/renderer, IPC, Agent/Provider 계약, 데이터 모델과 단계 경계를 구체적으로 정의하고, Phase 01의 캐릭터·대화·workspace 흐름이 typecheck/lint/test/build 및 실행 확인을 통과한다.
+- 목표: Poko v0.1 기반 문서를 만들고, 각 단계마다 PR → 리뷰 → 머지한 뒤 Phase 01 데스크톱 앱을 제공한다.
+- 성공 기준: Phase 00 아키텍처 문서가 머지되고, Phase 01의 캐릭터·대화·workspace 흐름이 typecheck/lint/test/build를 통과하며 실제 화면의 핵심 조작을 검증한다.
 
 ## 범위와 확정된 결정
 
-- 포함: Phase 00 문서와 MIT 라이선스, 공개 저장소 README; 이후 Phase 01 구현 및 PR 리뷰 흐름.
+- 포함: Phase 00 문서와 MIT 라이선스, 공개 저장소 README; Phase 01 구현, GitHub 저장소 설명·topics, PR 리뷰 흐름.
 - 제외: 이번 작업 단위에서 Codex worker, SQLite, 자동 메모리 추출, browser, scheduler, approval enforcement 구현.
-- 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. GitHub PR 생성 전 gh 인증을 복구해야 한다.
+- 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. Electron main/preload/renderer는 Electron Vite를 사용하며 renderer에는 좁은 IPC bridge만 노출한다. README는 현재 동작과 계획 기능을 구분한다.
 
 ## 현재 상태
 
-- 완료: 사용자 요구와 계획 검토, 저장소 및 개발 도구 조사.
-- 완료: 빈 bootstrap commit `9dc9e04`를 `main`에 push하고 Phase 00 문서 PR #1을 생성했다.
-- 진행 중: PR #1 문서 리뷰. README, 아키텍처, Phase 계획 및 MIT LICENSE 변경이 PR에 포함되어 있다.
-- 차단 요인 또는 미검증: PR 상태는 OPEN/MERGEABLE이며 GitHub에서 보고된 checks와 reviewDecision은 없다. CLI의 `gh auth status`는 토큰이 유효하지 않다고 보고하지만 push와 PR 생성은 성공했다.
+- 완료: Phase 00 문서 PR #1 리뷰·squash merge. MIT LICENSE와 README, 아키텍처 및 단계 계획이 `main`에 반영됐다.
+- 완료: Phase 01 캐릭터 중심 데스크톱 채팅, 좁은 IPC bridge, workspace picker/settings, 접근성·motion 스타일 및 테스트 구현.
+- 완료: typecheck, lint, test (2개), build, format check 통과.
+- 미검증: Electron 프로세스는 기동됐지만 Orca가 on-screen window를 찾지 못해 실제 화면 상호작용/폴더 선택을 확인하지 못했다.
+- 진행 중: [PR #2](https://github.com/yohan-work/poko/pull/2)가 OPEN/MERGEABLE이며 로컬 리뷰를 마쳤다. GitHub checks/reviewDecision은 설정되어 있지 않다. 공개 저장소 description/topics는 앱 범위와 일치하도록 설정한다.
 
 ## 마지막 체크포인트
 
-- Handoff: [2026-09-30-1428-phase-00-pr-review](../handoff/2026-09-30-1428-phase-00-pr-review.md)
-- Socratic: [2026-09-30-1428-phase-00-pr-review](../socratic/2026-09-30-1428-phase-00-pr-review.md)
+- Handoff: [2026-09-30-1450-phase-01-implementation](../handoff/2026-09-30-1450-phase-01-implementation.md)
+- Socratic: [2026-09-30-1450-phase-01-implementation](../socratic/2026-09-30-1450-phase-01-implementation.md)
 
 ## 재개 지점
 
-1. PR #1의 문서 diff와 누락된 CI 상태를 확인하고, 발견된 기록 오류를 PR에 반영한다.
-2. PR #1을 리뷰하고 머지한다.
-3. Phase 00이 머지된 뒤 Phase 01을 구현한다.
+1. 최신 continuity validator와 전체 diff를 검토한다.
+2. PR #2 상태를 다시 확인하고 squash merge한다.
+3. 공개 저장소 description/topics를 업데이트한다.
+4. 실제 화면 검증이 미완료라는 제약을 handoff에 남기고, 다음 작업에서 Codex worker 구현 전 앱 구동 이슈를 재확인한다.
