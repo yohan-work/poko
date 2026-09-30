@@ -1,7 +1,7 @@
 # Socratic: Phase 02 implementation
 
 - ID: 2026-09-30-1532-phase-02-implementation
-- 상태: 구현 완료, PR 전 검증 중
+- 상태: PR #5 리뷰 및 squash merge 완료
 - 관련 Handoff: [2026-09-30-1532-phase-02-implementation](../handoff/2026-09-30-1532-phase-02-implementation.md)
 
 ## 질문과 확인된 사실
@@ -23,9 +23,9 @@
 
 ## 다음 계획
 
-1. formatting 및 continuity check 완료.
-2. 변경 diff와 전체 `pnpm check`를 로컬 리뷰.
-3. PR → 리뷰 → 머지 순서로 사용자 확인과 GitHub PR workflow를 따른다.
+1. Phase 03의 SQLite driver, migration 경로, persistence lifecycle을 문서에 구체화한다.
+2. File-backed database 재시작/복구 tests로 Phase 03을 검증한다.
+3. PR → 리뷰 → 머지 workflow를 유지한다.
 
 ## 중단 또는 방향 전환 조건
 

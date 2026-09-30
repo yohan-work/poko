@@ -1,7 +1,7 @@
 # Handoff: Phase 02 implementation
 
 - ID: 2026-09-30-1532-phase-02-implementation
-- 상태: 구현 완료, PR 준비 중
+- 상태: PR #5 리뷰 후 squash merge 완료
 - 기록 시각: 2026-09-30 15:32 Asia/Seoul
 - 관련 Socratic: [2026-09-30-1532-phase-02-implementation](../socratic/2026-09-30-1532-phase-02-implementation.md)
 
@@ -13,7 +13,7 @@
 ## 변경 사항
 
 - Electron main에 trusted renderer IPC validation, task start/cancel, shutdown cancellation/wait 추가.
-- CodexProvider는 resolved local CLI를 spawn하고 read-only flags, JSONL parsing, timeout, cancellation, sanitized error events 제공.
+- CodexProvider는 resolved local CLI를 spawn하고 제한형 read-only permission profile, JSONL parsing, timeout, cancellation, sanitized error events 제공.
 - Agent Core는 단일 active task, coding skill injection, normalized events 처리.
 - Conversation UI는 task progress, stop control, in-memory Tasks/Activity views 제공.
 
@@ -33,7 +33,6 @@
 
 ## 다음 세션 재개 순서
 
-1. `pnpm format:check`, 전체 checks, continuity validator를 다시 실행.
-2. 제한형 profile 변경을 추가 commit/push하고 PR #5의 review를 갱신한다.
-3. Phase 02 PR을 review 후 머지한다.
-4. 후속 Phase 03에서 task, message, activity, settings, memory의 SQLite persistence를 구현한다.
+1. Phase 02 merge commit `b8591aa`를 기준으로 branch main이 동기화됐는지 확인한다.
+2. Phase 03에서 task, message, activity, settings, memory의 SQLite persistence를 구현한다.
+3. OS-level permission enforcement와 GUI Codex run은 제한된 개발 환경 밖에서 수동 확인할 수 있도록 미검증으로 남긴다.

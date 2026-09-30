@@ -89,7 +89,7 @@ interface Task {
   title: string;
   prompt: string;
   provider: "codex" | "claude";
-  status: "queued" | "running" | "waiting_approval" | "completed" | "failed";
+  status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   workspace?: string;
   createdAt: Date;
   completedAt?: Date;
@@ -127,7 +127,9 @@ Phase 01 has no shell or provider execution. Phase 02 uses Codex's restricted re
 
 ## Persistence model
 
-Use SQLite with Drizzle when persistence is introduced in Phase 03. The initial schema is:
+Phase 03 uses Drizzle ORM with Node's built-in `node:sqlite` driver and stores the database under Electron `userData`. Electron 44.4.5 bundles Node 24.21.0; the built-in driver avoids a native npm addon and the Electron ABI rebuild it would require. Because `DatabaseSync` is synchronous, keep database queries short and confined to the main process. Use versioned Drizzle SQL migrations at startup.
+
+The initial schema is:
 
 | Table | Responsibility | Initial fields |
 | --- | --- | --- |
@@ -138,7 +140,7 @@ Use SQLite with Drizzle when persistence is introduced in Phase 03. The initial 
 | `activities` | user-readable and technical timeline | `id`, `task_id`, `type`, `message`, `created_at` |
 | `memories` | explicit searchable personal/project facts | `id`, `type`, `content`, `importance`, `source`, `created_at`, `updated_at` |
 
-Add foreign keys and indexes with the first migration. Memory begins with text search; do not add a vector database. Keep credentials out of SQLite and use the operating-system credential store if credentials are needed in a later phase.
+Add foreign keys and indexes with the first migration. Import the existing workspace path from `settings.json` into the settings row only when no database value exists; retain the old file during migration. Mark tasks left in `running` at an unclean shutdown as failed on next startup. Persist explicit memory records with parameterized literal text search; do not add automatic memory extraction or a vector database. SQLite content is local but unencrypted in v0.1, so keep API keys and tokens out of it. Close the database after workers stop during app shutdown.
 
 ## Deferred extension points
 
