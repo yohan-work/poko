@@ -1,14 +1,69 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IPC_CHANNELS, type ConversationReply, type WorkspaceInfo } from "./shared";
+import {
+  IPC_CHANNELS,
+  type AgentEvent,
+  type TaskEventPayload,
+  type TaskStartResponse,
+  type WorkspaceInfo,
+} from "./shared";
+
+function isTaskEventPayload(value: unknown): value is TaskEventPayload {
+  if (typeof value !== "object" || value === null || !("taskId" in value) || !("event" in value)) {
+    return false;
+  }
+  const payload = value as { taskId: unknown; event: unknown };
+  if (
+    typeof payload.taskId !== "string" ||
+    typeof payload.event !== "object" ||
+    payload.event === null
+  ) {
+    return false;
+  }
+
+  const event = payload.event as Record<string, unknown>;
+  switch (event.type) {
+    case "started":
+    case "cancelled":
+      return true;
+    case "thinking":
+      return event.message === undefined || typeof event.message === "string";
+    case "tool":
+      return (
+        typeof event.tool === "string" &&
+        (event.detail === undefined || typeof event.detail === "string")
+      );
+    case "output":
+      return typeof event.content === "string";
+    case "completed":
+      return typeof event.result === "string";
+    case "error":
+      return typeof event.error === "string";
+    default:
+      return false;
+  }
+}
+
+function isAgentEvent(value: unknown): value is AgentEvent {
+  return typeof value === "object" && value !== null && "type" in value;
+}
 
 const pokoApi = {
   workspace: {
     get: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceGet),
     select: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceSelect),
   },
-  conversation: {
-    send: (message: string): Promise<ConversationReply> =>
-      ipcRenderer.invoke(IPC_CHANNELS.conversationSend, message),
+  tasks: {
+    start: (message: string): Promise<TaskStartResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.taskStart, message),
+    cancel: (taskId: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.taskCancel, taskId),
+    onEvent: (callback: (payload: TaskEventPayload) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, rawPayload: unknown): void => {
+        if (isTaskEventPayload(rawPayload) && isAgentEvent(rawPayload.event)) callback(rawPayload);
+      };
+      ipcRenderer.on(IPC_CHANNELS.taskEvent, listener);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.taskEvent, listener);
+    },
   },
 };
 

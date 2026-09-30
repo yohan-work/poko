@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import type { AppView } from "../../../electron/shared";
 import { useAppStore } from "./state/appStore";
 import { ChatPanel } from "./components/chat/ChatPanel";
+import { ActivityPanel } from "./components/activity/ActivityPanel";
+import { TasksPanel } from "./components/activity/TasksPanel";
 
 const navigation: { id: AppView; label: string; shortLabel: string }[] = [
   { id: "conversation", label: "대화", shortLabel: "대화" },
@@ -17,11 +19,11 @@ const futureViewCopy: Record<Exclude<AppView, "conversation">, { title: string; 
   },
   tasks: {
     title: "함께한 작업을 여기서 볼 수 있어.",
-    copy: "Codex를 연결하면 진행 중이거나 끝난 작업이 이곳에 모여.",
+    copy: "이번에 포코에게 부탁한 일이 여기에 모여.",
   },
   activity: {
     title: "포코의 작업 기록이 여기에 남아.",
-    copy: "작업 도구를 연결한 뒤 어떤 일을 했는지 확인할 수 있어.",
+    copy: "포코가 프로젝트를 살펴본 과정이 여기에 남아.",
   },
 };
 
@@ -116,7 +118,15 @@ export function App() {
       </header>
 
       <main className="main-content">
-        {activeView === "conversation" ? <ChatPanel /> : <EmptyView view={activeView} />}
+        {activeView === "conversation" ? (
+          <ChatPanel />
+        ) : activeView === "activity" ? (
+          <ActivityPanel />
+        ) : activeView === "tasks" ? (
+          <TasksPanel />
+        ) : (
+          <EmptyView view={activeView} />
+        )}
       </main>
 
       <nav className="bottom-nav" aria-label="주요 화면">

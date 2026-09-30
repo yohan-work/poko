@@ -10,14 +10,25 @@ function SendIcon() {
   );
 }
 
+function StopIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+      <rect x="5" y="5" width="10" height="10" rx="2" />
+    </svg>
+  );
+}
+
 export function ChatPanel() {
   const [draft, setDraft] = useState("");
   const messages = useAppStore((state) => state.messages);
   const characterState = useAppStore((state) => state.characterState);
   const isSending = useAppStore((state) => state.isSending);
+  const progressMessage = useAppStore((state) => state.progressMessage);
   const errorMessage = useAppStore((state) => state.errorMessage);
   const workspace = useAppStore((state) => state.workspace);
   const sendMessage = useAppStore((state) => state.sendMessage);
+  const cancelTask = useAppStore((state) => state.cancelTask);
+  const activeTaskId = useAppStore((state) => state.activeTaskId);
 
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,7 +54,7 @@ export function ChatPanel() {
             <p className="welcome__eyebrow">안녕, 나는 포코야</p>
             <h1>무엇을 같이 살펴볼까?</h1>
             <p className="welcome__copy">
-              프로젝트를 골라두면 다음 단계에서 코드 작업도 함께할 수 있어.
+              프로젝트를 고르면 포코가 파일을 읽고 구조와 개선점을 살펴볼게.
             </p>
             {!workspace && <p className="welcome__hint">먼저 위에서 작업할 폴더를 선택해 줘.</p>}
           </div>
@@ -68,6 +79,9 @@ export function ChatPanel() {
                     <i />
                     <i />
                     <i />
+                  </span>
+                  <span className="message__progress">
+                    {progressMessage ?? "프로젝트를 살펴보고 있어."}
                   </span>
                 </li>
               )}
@@ -106,27 +120,31 @@ export function ChatPanel() {
           />
           <button
             className="send-button"
-            type="submit"
-            disabled={!draft.trim() || isSending}
+            type={isSending ? "button" : "submit"}
+            onClick={isSending ? () => void cancelTask() : undefined}
+            disabled={isSending ? !activeTaskId : !draft.trim()}
             data-state={
               isSending
-                ? "loading"
+                ? "cancel"
                 : errorMessage
                   ? "error"
                   : characterState === "success"
                     ? "success"
                     : "default"
             }
-            aria-label={isSending ? "메시지 보내는 중" : "메시지 보내기"}
+            aria-label={isSending ? "작업 멈추기" : "메시지 보내기"}
           >
-            {isSending ? <span className="spinner" aria-hidden="true" /> : <SendIcon />}
+            {isSending ? <StopIcon /> : <SendIcon />}
           </button>
         </div>
         <div className="composer__meta">
           <p id={errorMessage ? "composer-error" : "composer-hint"} className="composer__hint">
-            {errorMessage ?? "Enter로 보내기 · Shift + Enter로 줄 바꾸기"}
+            {errorMessage ??
+              (isSending
+                ? "작업이 끝날 때까지 기다리거나 멈출 수 있어."
+                : "Enter로 보내기 · Shift + Enter로 줄 바꾸기")}
           </p>
-          <span className="composer__mode">미리보기</span>
+          <span className="composer__mode">읽기 전용</span>
         </div>
       </form>
     </section>
