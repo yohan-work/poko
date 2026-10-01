@@ -2,12 +2,12 @@
 
 - 상태: 진행 중
 - 마지막 갱신: 2026-10-01 Asia/Seoul
-- 현재 작업 단위: Phase 05 대화 품질 (기억·대화 맥락, Markdown, 스트리밍)
+- 현재 작업 단위: Phase 05 완료 → 실제 환경 승인 검증 준비
 
 ## 목표와 성공 기준
 
 - 목표: Poko v0.1을 단계별 PR → 리뷰 → 머지 흐름으로 구현해 로컬 AI desktop agent를 제공한다.
-- 성공 기준: Phase 00–02가 머지됐고, 캐릭터·workspace·읽기 전용 Codex 분석 시나리오가 구현됐다. 후속 Phase의 persistence, approval, providers, tools를 PR 단위로 검증해 완성한다.
+- 성공 기준: Phase 00–05가 머지됐다(캐릭터 UI, 읽기 전용 Codex 분석, 저장, 승인 게이트, 대화 품질). 실제 환경 검증 후 Phase 06 쓰기 모드와 Phase 07 여러 대화를 PR 단위로 검증해 완성한다.
 
 ## 범위와 확정된 결정
 
@@ -38,14 +38,18 @@
 - 완료: UI 개편 PR #12(사이드바·대화 화면), #13(검정 구 + 코랄 위성 캐릭터), #14(작업·기억·활동 탭)가 리뷰 후 squash merge됐다. 최신 `main`은 `76948f6`이다.
 - 결정: 작업 완료 후 PR → 리뷰 → 지적 반영 → squash merge까지 사용자 확인 없이 진행한다(사용자 지시, 2026-10-01).
 - 결정: 다음 순서는 Phase 05 대화 품질 → 실제 환경 승인 검증(사용자 참여) → Phase 06 승인 기반 쓰기 모드 → Phase 07 여러 대화. 계획은 [phase-05](../phases/phase-05.md).
+- 완료: Phase 05 대화 품질. PR #15(계획), #17(기억·대화 맥락, `tasks.conversation_id`/`result` migration), #19(Markdown), #20(스트리밍)이 리뷰 후 squash merge됐다. 최신 `main`은 `4c24790`이다.
+- 검증: `pnpm check`(typecheck, lint, 60 tests, build), `pnpm format:check`, `git diff --check` 통과. 화면은 stub preload로 렌더링해 확인했다.
+- 미검증: 실제 Codex 요청으로 기억 반영, 후속 질문, 스트리밍을 확인하지 않았다(비용/데이터 전송).
+- 운영 메모: 같은 작업 폴더를 다른 세션도 사용한다. 브랜치 전환이 섞이지 않도록 별도 git worktree에서 작업한다.
 
 ## 마지막 체크포인트
 
-- Handoff: [2026-10-01-0922-phase-04-approval-complete](../handoff/2026-10-01-0922-phase-04-approval-complete.md)
-- Socratic: [2026-10-01-0922-phase-04-approval-complete](../socratic/2026-10-01-0922-phase-04-approval-complete.md)
+- Handoff: [2026-10-01-1258-phase-05-complete](../handoff/2026-10-01-1258-phase-05-complete.md)
+- Socratic: [2026-10-01-1258-phase-05-complete](../socratic/2026-10-01-1258-phase-05-complete.md)
 
 ## 재개 지점
 
-1. 원격 `main`에서 시작한다. 로컬 `main`은 사전 divergence가 있으므로 checkout/reset하지 않는다.
-2. Phase 05 마일스톤을 순서대로 각각 PR로 진행한다: 1) 기억·대화 맥락, 2) Markdown, 3) 스트리밍.
-3. 실제 Codex 요청 검증은 비용/데이터 전송이 있으므로 사용자 참여로 진행한다. write mode는 검증 전까지 비활성이다.
+1. 원격 `main`에서 시작한다. 공유 작업 폴더의 브랜치는 바꾸지 말고 git worktree를 사용한다.
+2. 사용자와 함께 실제 Codex 요청으로 Phase 04/05를 확인한다: 승인 카드와 거절 시 미실행, 기억 반영, 후속 질문, 스트리밍.
+3. 검증이 끝나면 Phase 06 승인 기반 쓰기 모드 계획 PR부터 시작한다. 그 전까지 write mode는 비활성이다.
