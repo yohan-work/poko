@@ -655,7 +655,10 @@ export function touchesGitDirectory(root: string, path: string): boolean {
     const name = part.toLowerCase().replace(/[. ]+$/, "");
     return name === ".git" || /^git~\d+$/.test(name);
   };
-  return [path, relative(realRoot, realTarget)].some((candidate) =>
+  // Only the part below the workspace is checked, so folders above it (or a Windows drive
+  // like `C:`) never count; both the written and the symlink-resolved paths are checked.
+  const lexical = relative(resolve(root), resolve(root, path));
+  return [lexical, relative(realRoot, realTarget)].some((candidate) =>
     candidate.split(/[\\/]/).some(isGit),
   );
 }
