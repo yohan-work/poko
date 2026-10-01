@@ -512,7 +512,7 @@ button:disabled {
 
 .character--error .character__sprout {
   animation: none;
-  transform: rotate(-38deg);
+  transform: rotate(40deg);
 }
 
 .character--error .character__body-group {
