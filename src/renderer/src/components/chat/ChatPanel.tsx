@@ -1,36 +1,40 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
+import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
 
-function SendIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-      <path d="M4 10h11M10 4l6 6-6 6" />
-    </svg>
-  );
+function greeting(date = new Date()): string {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 11) return "좋은 아침이야";
+  if (hour >= 11 && hour < 17) return "좋은 오후야";
+  if (hour >= 17 && hour < 22) return "좋은 저녁이야";
+  return "늦은 밤이네";
 }
 
-function StopIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-      <rect x="5" y="5" width="10" height="10" rx="2" />
-    </svg>
-  );
-}
-
-export function ChatPanel() {
+function Composer({ autoFocus }: { autoFocus: boolean }) {
   const [draft, setDraft] = useState("");
-  const messages = useAppStore((state) => state.messages);
-  const characterState = useAppStore((state) => state.characterState);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const isSending = useAppStore((state) => state.isSending);
-  const progressMessage = useAppStore((state) => state.progressMessage);
   const errorMessage = useAppStore((state) => state.errorMessage);
   const workspace = useAppStore((state) => state.workspace);
+  const isSelectingWorkspace = useAppStore((state) => state.isSelectingWorkspace);
+  const selectWorkspace = useAppStore((state) => state.selectWorkspace);
   const sendMessage = useAppStore((state) => state.sendMessage);
   const cancelTask = useAppStore((state) => state.cancelTask);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
-  const hasPendingApproval = useAppStore((state) => state.pendingApprovals.length > 0);
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the draft changes
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 240)}px`;
+  }, [draft]);
 
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +44,7 @@ export function ChatPanel() {
     void sendMessage(message);
   }
 
-  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
@@ -48,108 +52,122 @@ export function ChatPanel() {
   }
 
   return (
-    <section className="chat-panel" aria-label="Poko와 대화">
-      <div className="chat-panel__conversation" role="log" aria-live="polite">
-        {messages.length === 0 ? (
-          <div className="welcome">
-            <Character state={characterState} />
-            <p className="welcome__eyebrow">안녕, 나는 포코야</p>
-            <h1>무엇을 같이 살펴볼까?</h1>
-            <p className="welcome__copy">
-              프로젝트를 고르면 포코가 파일을 읽고 구조와 개선점을 살펴볼게.
-            </p>
-            {!workspace && <p className="welcome__hint">먼저 위에서 작업할 폴더를 선택해 줘.</p>}
-          </div>
-        ) : (
-          <>
-            <div className="chat-panel__companion">
-              <Character state={characterState} />
-            </div>
-            <ol className="message-list" aria-label="대화 기록">
-              {messages.map((message) => (
-                <li className={`message message--${message.role}`} key={message.id}>
-                  {message.role === "assistant" && <span className="message__sender">포코</span>}
-                  <p>{message.content}</p>
-                </li>
-              ))}
-              <ApprovalCard />
-              {isSending && !hasPendingApproval && (
-                <li
-                  className="message message--assistant message--loading"
-                  aria-label="응답 기다리는 중"
-                >
-                  <span className="thinking-dots" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                  <span className="message__progress">
-                    {progressMessage ?? "프로젝트를 살펴보고 있어."}
-                  </span>
-                </li>
-              )}
-            </ol>
-          </>
-        )}
-      </div>
-
-      <form className="composer" onSubmit={submitMessage}>
-        <label className="composer__label" htmlFor="poko-message">
+    <form className="composer" onSubmit={submitMessage}>
+      <div className="composer__box" data-state={errorMessage ? "error" : "default"}>
+        <label className="sr-only" htmlFor="poko-message">
           포코에게 메시지
         </label>
-        <div
-          className="composer__row"
-          data-state={
-            isSending
-              ? "loading"
-              : errorMessage
-                ? "error"
-                : characterState === "success"
-                  ? "success"
-                  : "default"
-          }
-        >
-          <textarea
-            id="poko-message"
-            className="composer__input"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            placeholder="메시지를 입력해 줘"
-            rows={1}
-            disabled={isSending}
-            aria-describedby={errorMessage ? "composer-error" : "composer-hint"}
-            aria-invalid={Boolean(errorMessage)}
-          />
+        <textarea
+          ref={inputRef}
+          id="poko-message"
+          className="composer__input"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={workspace ? "무엇을 같이 살펴볼까?" : "먼저 작업할 폴더를 골라 줘"}
+          rows={1}
+          disabled={isSending}
+          aria-describedby={errorMessage ? "composer-error" : undefined}
+          aria-invalid={Boolean(errorMessage)}
+        />
+        <div className="composer__toolbar">
+          <button
+            className="chip"
+            type="button"
+            onClick={() => void selectWorkspace()}
+            disabled={isSelectingWorkspace || isSending}
+            title={workspace?.path ?? "작업할 폴더 선택"}
+          >
+            <Icon name="folder" />
+            <span>{workspace?.name ?? "폴더 선택"}</span>
+            <Icon name="chevron" />
+          </button>
+          <span className="composer__mode" title="포코는 확인 없이 파일을 바꾸지 않아">
+            읽기 전용
+          </span>
           <button
             className="send-button"
             type={isSending ? "button" : "submit"}
             onClick={isSending ? () => void cancelTask() : undefined}
             disabled={isSending ? !activeTaskId : !draft.trim()}
-            data-state={
-              isSending
-                ? "cancel"
-                : errorMessage
-                  ? "error"
-                  : characterState === "success"
-                    ? "success"
-                    : "default"
-            }
+            data-state={isSending ? "cancel" : "send"}
             aria-label={isSending ? "작업 멈추기" : "메시지 보내기"}
+            title={isSending ? "작업 멈추기" : "보내기 (Enter)"}
           >
-            {isSending ? <StopIcon /> : <SendIcon />}
+            <Icon name={isSending ? "stop" : "send"} />
           </button>
         </div>
-        <div className="composer__meta">
-          <p id={errorMessage ? "composer-error" : "composer-hint"} className="composer__hint">
-            {errorMessage ??
-              (isSending
-                ? "작업이 끝날 때까지 기다리거나 멈출 수 있어."
-                : "Enter로 보내기 · Shift + Enter로 줄 바꾸기")}
+      </div>
+      {errorMessage && (
+        <p id="composer-error" className="composer__error" role="alert">
+          {errorMessage}
+        </p>
+      )}
+    </form>
+  );
+}
+
+export function ChatPanel() {
+  const messages = useAppStore((state) => state.messages);
+  const characterState = useAppStore((state) => state.characterState);
+  const isSending = useAppStore((state) => state.isSending);
+  const progressMessage = useAppStore((state) => state.progressMessage);
+  const hasPendingApproval = useAppStore((state) => state.pendingApprovals.length > 0);
+  const endRef = useRef<HTMLDivElement>(null);
+  const isEmpty = messages.length === 0;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the log grows
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length, isSending, hasPendingApproval]);
+
+  if (isEmpty) {
+    return (
+      <section className="chat-panel chat-panel--empty" aria-label="Poko와 대화">
+        <div className="welcome">
+          <h1 className="welcome__title">
+            <Character state={characterState} size={44} />
+            <span>{greeting()}</span>
+          </h1>
+          <Composer autoFocus />
+          <p className="welcome__hint">
+            포코가 고른 폴더의 파일을 읽고 구조와 개선점을 살펴볼게. 명령 실행이나 파일 변경은 항상
+            먼저 물어볼게.
           </p>
-          <span className="composer__mode">읽기 전용</span>
         </div>
-      </form>
+      </section>
+    );
+  }
+
+  return (
+    <section className="chat-panel" aria-label="Poko와 대화">
+      <div className="chat-panel__scroll" role="log" aria-live="polite">
+        <ol className="message-list" aria-label="대화 기록">
+          {messages.map((message) =>
+            message.role === "user" ? (
+              <li className="message message--user" key={message.id}>
+                <p>{message.content}</p>
+              </li>
+            ) : (
+              <li className="message message--assistant" key={message.id}>
+                <Character state="idle" size={26} />
+                <p>{message.content}</p>
+              </li>
+            ),
+          )}
+          <ApprovalCard />
+          {isSending && !hasPendingApproval && (
+            <li className="message message--assistant message--loading">
+              <Character state={characterState} size={26} />
+              <p className="message__progress">{progressMessage ?? "프로젝트를 살펴보고 있어."}</p>
+            </li>
+          )}
+        </ol>
+        <div ref={endRef} />
+      </div>
+      <div className="chat-panel__composer">
+        <Composer autoFocus={false} />
+      </div>
     </section>
   );
 }

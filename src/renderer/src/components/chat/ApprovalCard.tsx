@@ -1,4 +1,5 @@
 import { useAppStore } from "../../state/appStore";
+import { Character } from "../character/Character";
 
 export function ApprovalCard() {
   const approval = useAppStore((state) => state.pendingApprovals[0]);
@@ -12,10 +13,12 @@ export function ApprovalCard() {
 
   return (
     <li className="approval-card" aria-label="포코의 확인 요청">
-      <span className="message__sender">포코</span>
-      <p className="approval-card__title">
-        {isCommand ? "이 명령을 실행해도 될까?" : "이 파일 변경을 적용해도 될까?"}
-      </p>
+      <div className="approval-card__header">
+        <Character state="approval" size={26} />
+        <p className="approval-card__title">
+          {isCommand ? "이 명령을 실행해도 될까?" : "이 파일 변경을 적용해도 될까?"}
+        </p>
+      </div>
       {isCommand ? (
         <pre className="approval-card__code">{approval.summary}</pre>
       ) : (
