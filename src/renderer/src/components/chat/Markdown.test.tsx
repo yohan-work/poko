@@ -28,6 +28,14 @@ describe("Markdown", () => {
     expect(block).not.toContain("<div onclick");
   });
 
+  it("keeps Korean ranges like 1~2시간 and strikes only double tildes", () => {
+    const html = render("보통 1~2시간 걸리고, 검토는 3~4일 정도야. ~~취소~~");
+    expect(html).toContain("1~2시간");
+    expect(html).toContain("3~4일");
+    expect(html).toContain("<del>취소</del>");
+    expect(html.match(/<del>/g)).toHaveLength(1);
+  });
+
   it("labels footnotes in Korean without exposing internal anchors", () => {
     const html = render("본문[^1]\n\n[^1]: 설명");
     expect(html).toContain("각주");

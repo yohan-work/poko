@@ -62,7 +62,8 @@ export function Markdown({ children }: { children: string }) {
   return (
     <div className="markdown">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        // Korean uses a single "~" for ranges (1~2시간), so only "~~" means strikethrough.
+        remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
         remarkRehypeOptions={{ footnoteLabel: "각주", footnoteBackLabel: "본문으로" }}
         components={components}
       >
