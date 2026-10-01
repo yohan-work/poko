@@ -15,9 +15,10 @@
  *   exec, and any shell other than the single outermost `<shell> -c '<command>'` wrapper Codex
  *   uses, whose command is screened in turn.
  * - git uses an allowlist of local subcommands, so remote-reaching commands fail closed.
- * - Every unquoted token position is checked, so `xargs rm`, `find -exec rm`, and
- *   `python -m pip` are covered. Directories are stripped only from paths that look like
- *   executables (`/bin/rm`, `./x`, `~/x`), not from arguments like `src/docker`.
+ * - Only tokens the shell would run as programs are judged: the start of each segment (after
+ *   variable assignments and keywords like `then`), `python -m <module>`, and every non-option
+ *   word after a program-running prefix (`xargs`, `env`, `find -exec`). Their directories are
+ *   stripped (`bin/rm` is `rm`), so plain arguments like `mkdir docker` are not misread.
  * A false positive only means a request is declined instead of offered.
  */
 
@@ -140,14 +141,6 @@ function tokenize(command: string): Token[][] {
   return segments;
 }
 
-function programName(token: Token): string {
-  const text = token.text.toLowerCase();
-  const isPath = /^(\/|\.\.?\/|~\/)/.test(text);
-  const name = isPath ? (text.split("/").pop() ?? text) : text;
-  // pip3, pip3.12 -> pip
-  return /^pip\d[\d.]*$/.test(name) ? "pip" : name;
-}
-
 /** A quoted argument containing spaces, such as a commit message. Single words still count. */
 function isPhrase(token: Token): boolean {
   return token.quoted && /\s/.test(token.text);
@@ -161,6 +154,8 @@ function gitReason(rest: Token[]): string | null {
   let index = 0;
   while (index < rest.length) {
     const text = rest[index].text;
+    // Inline config (`-c core.pager=…`, `--config-env`) can run any program, so it is declined.
+    if (text === "-c" || text.startsWith("--config-env")) return "git remote or discard";
     if (GIT_OPTIONS_WITH_VALUE.has(text)) index += 2;
     else if (text.startsWith("-")) index += 1;
     else break;
@@ -169,16 +164,22 @@ function gitReason(rest: Token[]): string | null {
   if (!subcommand) return null;
   const after = words(rest.slice(index + 1));
   const has = (...flags: string[]) => after.some((arg) => flags.includes(arg));
-  if (!GIT_ALLOWED_SUBCOMMANDS.has(subcommand)) return "git remote or discard";
-  if (subcommand === "checkout" && has(".", "--", "-f", "--force")) return "git remote or discard";
-  if (subcommand === "switch" && has("-f", "--force", "--discard-changes"))
-    return "git remote or discard";
-  if (subcommand === "branch" && has("-d", "--delete", "-m", "-f", "--force"))
-    return "git remote or discard";
-  if (subcommand === "stash" && has("drop", "clear")) return "git remote or discard";
-  if (subcommand === "rm" && after.some((arg) => /^-[a-z]*r/.test(arg)))
-    return "git remote or discard";
-  if (subcommand === "tag" && has("-d", "--delete")) return "git remote or discard";
+  const positional = after.filter((arg) => !arg.startsWith("-"));
+  const deny = "git remote or discard";
+  if (!GIT_ALLOWED_SUBCOMMANDS.has(subcommand)) return deny;
+  // checkout only switches branches here (`checkout main`, `checkout -b new [start]`); paths or
+  // force would overwrite uncommitted work.
+  if (subcommand === "checkout") {
+    if (has(".", "--", "-f", "--force", "-p", "--patch")) return deny;
+    if (has("-b", "-B") ? positional.length > 2 : positional.length > 1) return deny;
+  }
+  if (subcommand === "switch" && has("-f", "--force", "--discard-changes")) return deny;
+  if (subcommand === "branch" && has("-d", "--delete", "-m", "-f", "--force")) return deny;
+  if (subcommand === "stash" && has("drop", "clear", "pop")) return deny;
+  if (subcommand === "commit" && has("--amend")) return deny;
+  if (subcommand === "rm" && after.some((arg) => /^-[a-z]*[rf]/.test(arg) || arg === "--force"))
+    return deny;
+  if (subcommand === "tag" && has("-d", "--delete", "-f", "--force")) return deny;
   return null;
 }
 
@@ -221,17 +222,58 @@ function reasonAt(name: string, rest: Token[]): string | null {
   return null;
 }
 
-/** Programs whose next argument is itself a program (`xargs rm`, `env X=1 git push`). */
+/**
+ * Programs that run another program given later in their arguments (`xargs rm`, `env X=1 git`,
+ * `find … -exec rm`). Every non-option word after one of these is treated as a command.
+ */
 const COMMAND_PREFIXES = new Set(
   "xargs env command nice nohup time timeout stdbuf caffeinate -exec -execdir -ok -okdir".split(
     " ",
   ),
 );
+/** Shell keywords after which a command starts. */
+const KEYWORDS = new Set(
+  "if then else elif fi do done while until for case esac ! { } time".split(" "),
+);
+const INDIRECTION = new Set(["eval", "source", ".", "exec"]);
 
 /** Directory-stripped program name for a token in command position (`bin/rm` is `rm`). */
 function commandName(token: Token): string {
   const name = (token.text.split("/").pop() ?? token.text).toLowerCase();
   return /^pip\d[\d.]*$/.test(name) ? "pip" : name;
+}
+
+/** Indexes of tokens that the shell would run as programs. */
+function commandPositions(tokens: Token[]): number[] {
+  const positions: number[] = [];
+  let expectCommand = true;
+  let afterPrefix = false;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (isPhrase(token)) {
+      expectCommand = false;
+      continue;
+    }
+    const text = token.text;
+    if (KEYWORDS.has(text)) {
+      expectCommand = true;
+      continue;
+    }
+    // Variable assignments before a command (`X=1 rm …`) don't take its place.
+    if ((expectCommand || afterPrefix) && /^[A-Za-z_][A-Za-z0-9_]*=/.test(text)) continue;
+    if (afterPrefix) {
+      if (!text.startsWith("-")) positions.push(index);
+    } else if (expectCommand) {
+      positions.push(index);
+      expectCommand = false;
+    }
+    const name = commandName(token);
+    if (COMMAND_PREFIXES.has(name) || COMMAND_PREFIXES.has(text)) afterPrefix = true;
+    // `python -m pip install …` runs the module as a program.
+    if (/^python[\d.]*$/.test(name) && tokens[index + 1]?.text === "-m" && tokens[index + 2])
+      positions.push(index + 2);
+  }
+  return positions;
 }
 
 /**
@@ -242,29 +284,21 @@ function commandName(token: Token): string {
 function screen(command: string, depth: number): string | null {
   if (command.includes("`") || command.includes("$(")) return "shell indirection";
   const segments = tokenize(command);
-  for (const [segmentIndex, tokens] of segments.entries()) {
+  for (const tokens of segments) {
     const first = tokens[0];
     // The one wrapper we follow: `/bin/zsh -lc "<command>"` as the entire top-level command.
     if (
       depth === 0 &&
       segments.length === 1 &&
-      segmentIndex === 0 &&
       SHELLS.has(commandName(first)) &&
       tokens.length === 3 &&
       /^-[a-z]*c[a-z]*$/.test(tokens[1].text)
     ) {
       return screen(tokens[2].text, depth + 1);
     }
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
-      if (isPhrase(token)) continue;
-      const previous = tokens[index - 1];
-      const inCommandPosition =
-        index === 0 ||
-        (previous !== undefined && COMMAND_PREFIXES.has(previous.text.toLowerCase()));
-      const name = inCommandPosition ? commandName(token) : programName(token);
-      if (SHELLS.has(name) || ["eval", "source", ".", "exec"].includes(name))
-        return "shell indirection";
+    for (const index of commandPositions(tokens)) {
+      const name = commandName(tokens[index]);
+      if (SHELLS.has(name) || INDIRECTION.has(name)) return "shell indirection";
       const reason = reasonAt(name, tokens.slice(index + 1));
       if (reason) return reason;
     }
