@@ -367,7 +367,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearError: () => set({ errorMessage: null, workspaceError: null }),
 }));
 
-const OUTPUT_PROGRESS = "답변을 쓰고 있어.";
+/** Progress text while Codex is writing the answer itself. */
+export const OUTPUT_PROGRESS = "답변을 쓰고 있어.";
 
 // Deltas arrive per token; render them at most once per frame.
 const deltaBuffer = createDeltaBuffer((deltas) =>

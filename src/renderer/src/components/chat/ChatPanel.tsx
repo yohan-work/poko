@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { useAppStore } from "../../state/appStore";
+import { OUTPUT_PROGRESS, useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
@@ -166,12 +166,18 @@ export function ChatPanel() {
             </li>
           )}
           <ApprovalCard />
-          {isSending && !hasPendingApproval && !streamingText && (
-            <li className="message message--assistant message--loading">
-              <Character state={characterState} size={26} />
-              <p className="message__progress">{progressMessage ?? "프로젝트를 살펴보고 있어."}</p>
-            </li>
-          )}
+          {/* Keep showing progress (tools, steps after an approval) below a streamed message;
+              hide it only while the answer itself is being written. */}
+          {isSending &&
+            !hasPendingApproval &&
+            !(streamingText && progressMessage === OUTPUT_PROGRESS) && (
+              <li className="message message--assistant message--loading">
+                <Character state={characterState} size={26} />
+                <p className="message__progress">
+                  {progressMessage ?? "프로젝트를 살펴보고 있어."}
+                </p>
+              </li>
+            )}
         </ol>
         <div ref={endRef} />
       </div>
