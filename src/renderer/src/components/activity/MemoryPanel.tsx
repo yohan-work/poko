@@ -3,6 +3,7 @@ import type { PersistedMemory } from "../../../../../electron/shared";
 import type { MemoryInput } from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
 import { relativeTime } from "../../lib/time";
+import { useNow } from "../../lib/useNow";
 import { Icon } from "../Icon";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 
@@ -138,6 +139,7 @@ export function MemoryPanel() {
 
 function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const now = useNow();
   const [overflows, setOverflows] = useState(false);
   const contentRef = useRef<HTMLParagraphElement>(null);
 
@@ -173,7 +175,7 @@ function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: (
         )}
       </div>
       <div className="memory-card__footer">
-        <time dateTime={memory.updatedAt}>{relativeTime(memory.updatedAt)}</time>
+        <time dateTime={memory.updatedAt}>{relativeTime(memory.updatedAt, now)}</time>
         <button
           className="icon-button memory-card__delete"
           type="button"

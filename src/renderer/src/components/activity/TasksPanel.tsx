@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useAppStore, type SessionTask } from "../../state/appStore";
 import { relativeTime } from "../../lib/time";
+import { useNow } from "../../lib/useNow";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 
 const statusLabel: Record<SessionTask["status"], string> = {
@@ -31,6 +32,7 @@ export function TasksPanel() {
   const tasks = useAppStore((state) => state.tasks);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const now = useNow();
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -80,7 +82,7 @@ export function TasksPanel() {
                 <span className={`status-badge status-badge--${task.status}`}>
                   {statusLabel[task.status]}
                 </span>
-                <time dateTime={task.createdAt}>{relativeTime(task.createdAt)}</time>
+                <time dateTime={task.createdAt}>{relativeTime(task.createdAt, now)}</time>
               </span>
             </li>
           ))}

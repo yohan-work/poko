@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { useAppStore, type ActivityEntry } from "../../state/appStore";
 import { clockTime, dayKey, dayLabel } from "../../lib/time";
+import { useNow } from "../../lib/useNow";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 
 export function ActivityPanel() {
   const activities = useAppStore((state) => state.activities);
   const [query, setQuery] = useState("");
+  const now = useNow();
 
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -19,12 +21,12 @@ export function ActivityPanel() {
     const byDay = new Map<string, { label: string; entries: ActivityEntry[] }>();
     for (const entry of sorted) {
       const key = dayKey(entry.createdAt);
-      const group = byDay.get(key) ?? { label: dayLabel(entry.createdAt), entries: [] };
+      const group = byDay.get(key) ?? { label: dayLabel(entry.createdAt, now), entries: [] };
       group.entries.push(entry);
       byDay.set(key, group);
     }
     return [...byDay.entries()];
-  }, [activities, query]);
+  }, [activities, query, now]);
 
   return (
     <Page labelledBy="activity-title">
