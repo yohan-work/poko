@@ -11,8 +11,10 @@
  * How it reads a command:
  * - A small quote-aware tokenizer joins adjacent fragments the way the shell does (`r"m"` is
  *   `rm`) and keeps a quoted argument as one token, so a commit message is not read as commands.
- * - Strings run by a shell (`sh -c "…"`, `zsh -lc "…"`, `eval "…"`) and `$(…)` are screened
- *   as commands too.
+ * - Anything it can't follow is declined (fail closed): command substitution, eval, source,
+ *   exec, and any shell other than the single outermost `<shell> -c '<command>'` wrapper Codex
+ *   uses, whose command is screened in turn.
+ * - git uses an allowlist of local subcommands, so remote-reaching commands fail closed.
  * - Every unquoted token position is checked, so `xargs rm`, `find -exec rm`, and
  *   `python -m pip` are covered. Directories are stripped only from paths that look like
  *   executables (`/bin/rm`, `./x`, `~/x`), not from arguments like `src/docker`.
@@ -49,8 +51,12 @@ const OTHER_PACKAGE_MANAGERS = new Set(
 const OTHER_INSTALL_WORDS = new Set(
   "install download add publish get sync lock update upgrade uninstall remove".split(" "),
 );
-const GIT_DENIED_SUBCOMMANDS = new Set(
-  "push pull fetch clone remote reset clean rebase restore submodule gc prune filter-branch filter-repo worktree".split(
+/**
+ * git subcommands that stay local and keep work. Everything else (remotes, LFS, email, history
+ * rewrites, config, hooks) is declined, so new remote-reaching commands fail closed.
+ */
+const GIT_ALLOWED_SUBCOMMANDS = new Set(
+  "status diff log show add commit mv rm branch checkout switch stash tag blame grep rev-parse ls-files describe shortlog init apply".split(
     " ",
   ),
 );
@@ -63,10 +69,12 @@ interface Token {
   quoted: boolean;
 }
 
-/** Splits a command into segments of tokens, honoring quotes and backslash escapes. */
-function tokenize(command: string): { segments: Token[][]; substitutions: string[] } {
+/**
+ * Splits a command into segments of tokens, honoring quotes and backslash escapes. Command
+ * substitution never reaches here: `screen` declines it first.
+ */
+function tokenize(command: string): Token[][] {
   const segments: Token[][] = [];
-  const substitutions: string[] = [];
   let segment: Token[] = [];
   let text = "";
   let quoted = false;
@@ -99,21 +107,6 @@ function tokenize(command: string): { segments: Token[][]; substitutions: string
       index += 1;
       continue;
     }
-    if (char === "$" && next === "(") {
-      // Screen the substitution as its own command, whether or not it is inside quotes.
-      let depth = 1;
-      let end = index + 2;
-      while (end < command.length && depth > 0) {
-        if (command[end] === "(") depth += 1;
-        else if (command[end] === ")") depth -= 1;
-        end += 1;
-      }
-      substitutions.push(command.slice(index + 2, depth === 0 ? end - 1 : end));
-      text += "$";
-      started = true;
-      index = end - 1;
-      continue;
-    }
     if (quote === '"') {
       if (char === '"') quote = null;
       else text += char;
@@ -123,12 +116,6 @@ function tokenize(command: string): { segments: Token[][]; substitutions: string
       quote = char;
       quoted = true;
       started = true;
-      continue;
-    }
-    if (char === "`") {
-      const end = command.indexOf("`", index + 1);
-      substitutions.push(command.slice(index + 1, end === -1 ? undefined : end));
-      index = end === -1 ? command.length : end;
       continue;
     }
     if (
@@ -150,7 +137,7 @@ function tokenize(command: string): { segments: Token[][]; substitutions: string
     started = true;
   }
   endSegment();
-  return { segments, substitutions };
+  return segments;
 }
 
 function programName(token: Token): string {
@@ -182,13 +169,15 @@ function gitReason(rest: Token[]): string | null {
   if (!subcommand) return null;
   const after = words(rest.slice(index + 1));
   const has = (...flags: string[]) => after.some((arg) => flags.includes(arg));
-  if (GIT_DENIED_SUBCOMMANDS.has(subcommand)) return "git remote or discard";
+  if (!GIT_ALLOWED_SUBCOMMANDS.has(subcommand)) return "git remote or discard";
   if (subcommand === "checkout" && has(".", "--", "-f", "--force")) return "git remote or discard";
   if (subcommand === "switch" && has("-f", "--force", "--discard-changes"))
     return "git remote or discard";
   if (subcommand === "branch" && has("-d", "--delete", "-m", "-f", "--force"))
     return "git remote or discard";
   if (subcommand === "stash" && has("drop", "clear")) return "git remote or discard";
+  if (subcommand === "rm" && after.some((arg) => /^-[a-z]*r/.test(arg)))
+    return "git remote or discard";
   if (subcommand === "tag" && has("-d", "--delete")) return "git remote or discard";
   return null;
 }
@@ -226,36 +215,56 @@ function reasonAt(name: string, rest: Token[]): string | null {
     name === "find" &&
     (args.includes("-delete") ||
       (args.some((arg) => ["-exec", "-execdir", "-ok", "-okdir"].includes(arg)) &&
-        args.includes("rm")))
+        args.some((arg) => (arg.split("/").pop() ?? arg) === "rm")))
   )
     return "recursive delete";
   return null;
 }
 
+/** Programs whose next argument is itself a program (`xargs rm`, `env X=1 git push`). */
+const COMMAND_PREFIXES = new Set(
+  "xargs env command nice nohup time timeout stdbuf caffeinate -exec -execdir -ok -okdir".split(
+    " ",
+  ),
+);
+
+/** Directory-stripped program name for a token in command position (`bin/rm` is `rm`). */
+function commandName(token: Token): string {
+  const name = (token.text.split("/").pop() ?? token.text).toLowerCase();
+  return /^pip\d[\d.]*$/.test(name) ? "pip" : name;
+}
+
+/**
+ * Screens one shell command line. Anything the screen cannot follow is declined outright
+ * (fail closed): command substitution, eval/source/exec, and any shell that isn't the single
+ * outermost `<shell> -c '<command>'` wrapper Codex uses.
+ */
 function screen(command: string, depth: number): string | null {
-  if (depth > 4) return "nested shell";
-  const { segments, substitutions } = tokenize(command);
-  for (const substitution of substitutions) {
-    const reason = screen(substitution, depth + 1);
-    if (reason) return reason;
-  }
-  for (const tokens of segments) {
+  if (command.includes("`") || command.includes("$(")) return "shell indirection";
+  const segments = tokenize(command);
+  for (const [segmentIndex, tokens] of segments.entries()) {
+    const first = tokens[0];
+    // The one wrapper we follow: `/bin/zsh -lc "<command>"` as the entire top-level command.
+    if (
+      depth === 0 &&
+      segments.length === 1 &&
+      segmentIndex === 0 &&
+      SHELLS.has(commandName(first)) &&
+      tokens.length === 3 &&
+      /^-[a-z]*c[a-z]*$/.test(tokens[1].text)
+    ) {
+      return screen(tokens[2].text, depth + 1);
+    }
     for (let index = 0; index < tokens.length; index += 1) {
       const token = tokens[index];
-      const previous = tokens[index - 1];
-      // A string handed to a shell (`-c`, `-lc`) or to eval is itself a command.
-      if (
-        isPhrase(token) &&
-        previous &&
-        (/^-[a-z]*c$/.test(previous.text) || programName(previous) === "eval")
-      ) {
-        const reason = screen(token.text, depth + 1);
-        if (reason) return reason;
-        continue;
-      }
       if (isPhrase(token)) continue;
-      const name = programName(token);
-      if (name === "eval" || SHELLS.has(name)) continue;
+      const previous = tokens[index - 1];
+      const inCommandPosition =
+        index === 0 ||
+        (previous !== undefined && COMMAND_PREFIXES.has(previous.text.toLowerCase()));
+      const name = inCommandPosition ? commandName(token) : programName(token);
+      if (SHELLS.has(name) || ["eval", "source", ".", "exec"].includes(name))
+        return "shell indirection";
       const reason = reasonAt(name, tokens.slice(index + 1));
       if (reason) return reason;
     }
