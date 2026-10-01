@@ -51,7 +51,7 @@ Poko analyzes a selected workspace through the locally installed Codex CLI with 
 
 ## Security direction
 
-Poko keeps tool execution and SQLite out of the UI renderer. Codex runs through its App Server in a read-only sandbox. When Codex asks to run a command or change files, Poko shows the concrete action and lets you approve it once or decline. Requests that leave the workspace, need network access, or would widen permissions are declined automatically. Write mode stays off until the sandbox's pause-before-action behavior is verified on each supported OS. SQLite content is local and unencrypted in v0.1; credentials are not stored in the database.
+Poko keeps tool execution and SQLite out of the UI renderer. Codex runs through its App Server in a read-only sandbox. When Codex asks to run a command or change files, Poko shows the concrete action and lets you approve it once or decline. Requests that leave the workspace, need network access, or would widen permissions are declined automatically. Write mode stays off until the sandbox's pause-before-action behavior is verified on each supported OS. SQLite content is local and unencrypted in v0.1; credentials are not stored in the database. With each request, Poko also sends your saved memories and the last few completed exchanges of the conversation to Codex, so it can follow up and respect your preferences. Nothing else from the database is sent.
 
 ## Contributing
 

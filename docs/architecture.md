@@ -117,6 +117,8 @@ Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:mi
 
 `codex exec --json` is intentionally non-interactive and is not the approval transport. In Phase 04 the main process runs `CodexAppServerProvider`, a per-task `codex app-server --listen stdio://` child speaking JSONL JSON-RPC, so it can receive and answer one-shot command/file approval requests. Agent Core and the Poko event model are unchanged; approval requests become `approvalRequired` events. Requests that are malformed, outside the workspace, broaden network or exec policy, or use an unsupported method are declined or stop the task. Tasks still run in read-only mode; writes stay disabled until pause-before-action semantics and sandbox enforcement are verified on supported operating systems. See [the Phase 04 plan](phases/phase-04.md).
 
+In Phase 05 the main process builds a `TaskContext` for each task before it starts: saved memories by importance, and the most recent completed exchanges from the task's conversation (`tasks.conversation_id`, `tasks.result`), capped by count and characters in `electron/agent/context.ts`. Agent Core formats it into the prompt between the project guidance and the user request. Memories are labeled as user-written facts that never override the safety rules. See [the Phase 05 plan](phases/phase-05.md).
+
 ## Workspace and permission boundary
 
 The native folder picker selects the workspace. The selected path is persisted as an app setting. A selected workspace is the working root for an agent task; it is not by itself a complete operating-system sandbox. Before running a provider, the main process must canonicalize and validate the working directory, and provider permissions must be configured explicitly.

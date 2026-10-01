@@ -61,3 +61,11 @@ Each milestone is its own PR with review.
 - Assistant answers show formatted code blocks, lists, and tables. Raw HTML is shown as text, and remote images are not loaded.
 - The answer appears progressively while Codex writes it, and a cancelled task leaves no partial answer behind.
 - `pnpm check`, `pnpm format:check`, and the new tests pass.
+
+## Implementation status
+
+- **Milestone 1 (context):** done.
+  - Migration `20261001020914_task_context` adds `tasks.conversation_id` (`ON DELETE SET NULL`) and `tasks.result` with plain `ALTER TABLE` statements and an index, and backfills both columns.
+  - `PokoDatabase.getTaskContext` reads memories and same-conversation exchanges. `limitContext` and `formatContext` in `electron/agent/context.ts` apply the caps and build the prompt sections.
+  - Startup task DTOs now select explicit columns, so prompts and results stay in main.
+  - Tests cover the caps and newest-first selection, prompt order, failed and cancelled exclusion, conversation isolation, and the backfill on a database created with the earlier migrations.

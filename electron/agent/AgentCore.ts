@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { AgentEvent, AgentTask, ApprovalChoice, TaskEventPayload } from "../shared";
 import type { AgentProvider } from "./AgentProvider";
+import { formatContext, type TaskContext } from "./context";
 
 interface AgentTaskInput {
   prompt: string;
   cwd: string;
   taskId?: string;
+  context?: TaskContext;
 }
 
 const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "error"]);
@@ -29,7 +31,7 @@ export class AgentCore {
     const controller = new AbortController();
     const task: AgentTask = {
       id: taskId,
-      prompt: this.buildPrompt(input.prompt),
+      prompt: this.buildPrompt(input.prompt, input.context),
       cwd: input.cwd,
       mode: "read",
     };
@@ -71,11 +73,12 @@ export class AgentCore {
     return new Promise((resolve) => this.idleWaiters.add(resolve));
   }
 
-  private buildPrompt(userPrompt: string): string {
+  private buildPrompt(userPrompt: string, context?: TaskContext): string {
     const sections = [
       "You are Poko, a local project assistant. Analyze the selected workspace and answer the user's request with concrete findings.",
       "Safety: the sandbox starts read-only. If the request needs a file change or command that the sandbox blocks, wait for Poko's one-time approval request. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely.",
       this.codingSkill ? `Project guidance:\n${this.codingSkill}` : "",
+      ...formatContext(context),
       `User request:\n${userPrompt}`,
     ];
     return sections.filter(Boolean).join("\n\n");

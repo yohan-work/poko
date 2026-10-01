@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -136,5 +137,72 @@ describe("PokoDatabase", () => {
     expect(database.resolveApproval(taskId, "1", "approve")).toBe(false);
     expect(database.getBootstrapData().tasks[0]).toMatchObject({ status: "cancelled" });
     database.close();
+  });
+
+  it("builds context from saved memories and completed exchanges in the same conversation", async () => {
+    const database = await openDatabase();
+    database.saveMemory({ type: "fact", content: "덜 중요한 기억", importance: 2 });
+    database.saveMemory({ type: "preference", content: "답변은 간결하게", importance: 5 });
+
+    const done = database.createTask("구조 설명해 줘", "/tmp/project");
+    database.recordTaskEvent(done, "completed", "마쳤어.", "Electron 앱이야.");
+    const failed = database.createTask("실패한 요청", "/tmp/project");
+    database.recordTaskEvent(failed, "error", "실패했어.", "작업을 마치지 못했어.");
+    const cancelled = database.createTask("취소한 요청", "/tmp/project");
+    database.recordTaskEvent(cancelled, "cancelled", "멈췄어.", "요청을 멈췄어.");
+    const current = database.createTask("그거 다시 설명해 줘", "/tmp/project");
+
+    const context = database.getTaskContext(current);
+    expect(context.memories.map((memory) => memory.content)).toEqual([
+      "답변은 간결하게",
+      "덜 중요한 기억",
+    ]);
+    expect(context.history).toEqual([{ request: "구조 설명해 줘", answer: "Electron 앱이야." }]);
+    database.close();
+
+    // A task in another conversation must not see this conversation's history.
+    const client = new DatabaseSync(join(directory, "poko.sqlite"));
+    const now = new Date().toISOString();
+    client
+      .prepare("INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)")
+      .run("other", "다른 대화", now, now);
+    client
+      .prepare(
+        "INSERT INTO tasks (id, title, prompt, provider, status, conversation_id, created_at) VALUES (?, ?, ?, 'codex', 'running', 'other', ?)",
+      )
+      .run("other-task", "새 질문", "새 질문", now);
+    client.close();
+    const reopened = await openDatabase();
+    expect(reopened.getTaskContext("other-task").history).toEqual([]);
+    reopened.close();
+  });
+
+  it("backfills conversation and result for tasks saved before the context migration", async () => {
+    directory = await mkdtemp(join(tmpdir(), "poko-database-"));
+    const migrations = (await readdir(migrationsPath)).sort();
+    const olderMigrations = join(directory, "older-migrations");
+    for (const name of migrations.slice(0, migrations.indexOf("20261001020914_task_context"))) {
+      await cp(join(migrationsPath, name), join(olderMigrations, name), { recursive: true });
+    }
+    const dbPath = join(directory, "poko.sqlite");
+    (await PokoDatabase.open(dbPath, olderMigrations)).close();
+
+    const client = new DatabaseSync(dbPath);
+    const at = "2026-09-30T10:00:00.000Z";
+    client.exec(`
+      INSERT INTO conversations VALUES ('c1', '대화', '${at}', '${at}');
+      INSERT INTO tasks (id, title, prompt, provider, status, created_at, completed_at)
+        VALUES ('old', '구조 설명해 줘', '구조 설명해 줘', 'codex', 'completed', '${at}', '${at}');
+      INSERT INTO messages VALUES ('m1', 'c1', 'user', '구조 설명해 줘', '${at}');
+      INSERT INTO messages VALUES ('m2', 'c1', 'assistant', 'Electron 앱이야.', '${at}');
+    `);
+    client.close();
+
+    const upgraded = await PokoDatabase.open(dbPath, migrationsPath);
+    const next = upgraded.createTask("그거 다시 설명해 줘", "/tmp/project");
+    expect(upgraded.getTaskContext(next).history).toEqual([
+      { request: "구조 설명해 줘", answer: "Electron 앱이야." },
+    ]);
+    upgraded.close();
   });
 });
