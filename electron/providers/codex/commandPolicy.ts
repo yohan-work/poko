@@ -30,17 +30,28 @@ type Rule = (args: Token[]) => string | null;
 function pathLike(text: string): string | null {
   if (text === "/dev/null") return null;
   if (text.includes("://")) return "network";
-  if (text.startsWith("/") || text.startsWith("~") || text.split("/").includes(".."))
+  const parts = text.split("/");
+  if (text.startsWith("/") || text.startsWith("~") || parts.includes(".."))
     return "path outside the workspace";
+  // Git config and hooks run programs, so nothing inside .git is touched.
+  if (parts.includes(".git")) return "git internals";
   return null;
 }
 
-/** Every argument (and every `--option=value` value) must stay inside the workspace. */
+/**
+ * Every argument must stay inside the workspace, including option values written as
+ * `--option=value` or attached to a short option (`-o/tmp/x`).
+ */
 function checkPaths(args: Token[]): string | null {
   for (const arg of args) {
-    const value = arg.text.startsWith("-") ? arg.text.split("=").slice(1).join("=") : arg.text;
-    const reason = value ? pathLike(value) : null;
-    if (reason) return reason;
+    const text = arg.text;
+    const candidates = text.startsWith("-")
+      ? [text.split("=").slice(1).join("="), text.startsWith("--") ? "" : text.slice(2)]
+      : [text];
+    for (const value of candidates) {
+      const reason = value ? pathLike(value) : null;
+      if (reason) return reason;
+    }
   }
   return null;
 }
@@ -69,9 +80,12 @@ const JS_SUBCOMMANDS = new Set([
   "format",
   "check",
 ]);
-/** Project scripts only: installs, publishing, and package downloads are not offered. */
+/**
+ * Project scripts only: installs, publishing, and package downloads are not offered. The
+ * subcommand must come first, so an option value (`--filter test add`) can't pose as one.
+ */
 const jsPackageManager: Rule = (args) => {
-  const subcommand = positional(args)[0]?.text;
+  const subcommand = args[0]?.text;
   if (!subcommand || !JS_SUBCOMMANDS.has(subcommand)) return "install or publish";
   return checkPaths(args);
 };
@@ -79,7 +93,7 @@ const jsPackageManager: Rule = (args) => {
 const subcommandOnly =
   (allowed: string[]): Rule =>
   (args) => {
-    const subcommand = positional(args)[0]?.text;
+    const subcommand = args[0]?.text;
     return subcommand && allowed.includes(subcommand) ? checkPaths(args) : "not offered";
   };
 
@@ -91,11 +105,12 @@ const GIT_SUBCOMMANDS = new Set(
 const git: Rule = (args) => {
   const deny = "git remote or discard";
   let index = 0;
-  // Global options only change the directory or output; inline config could run programs.
+  // Only output options are allowed before the subcommand: `-C` could point outside the
+  // workspace and inline config could run programs.
   while (index < args.length && args[index].text.startsWith("-")) {
     const text = args[index].text;
-    if (text !== "--no-pager" && text !== "-C" && text !== "--no-optional-locks") return deny;
-    index += text === "-C" ? 2 : 1;
+    if (text !== "--no-pager" && text !== "--no-optional-locks") return deny;
+    index += 1;
   }
   const subcommand = args[index]?.text;
   const rest = args.slice(index + 1);
@@ -289,8 +304,9 @@ export function deniedCommandReason(command: string): string | null {
   const outer = parse(command);
   if (typeof outer !== "string" && outer.length === 1 && outer[0].length === 3) {
     const [shell, flag, inner] = outer[0];
-    const shellName = shell.text.split("/").pop() ?? "";
-    if (!shell.quoted && SHELLS.has(shellName) && /^-[a-z]*c[a-z]*$/.test(flag.text))
+    // Only a system shell: a bare name, /bin/<shell>, or /usr/bin/<shell>, never a file in the workspace.
+    const match = /^(?:\/bin\/|\/usr\/bin\/)?([a-z]+)$/.exec(shell.text);
+    if (!shell.quoted && match && SHELLS.has(match[1]) && /^-[a-z]*c[a-z]*$/.test(flag.text))
       return checkLine(inner.text);
   }
   return checkLine(command);
