@@ -50,10 +50,13 @@ function programName(token: string): string {
   return (token.split("/").pop() ?? token).toLowerCase();
 }
 
-/** Shell-ish split: quotes are dropped, operators and subshell markers end a segment. */
+/**
+ * Shell-ish split. Quotes and backslashes are removed (not replaced), because the shell joins
+ * the pieces back together: `r"m"` runs `rm`. Operators and subshell markers end a segment.
+ */
 function segments(command: string): string[][] {
   return command
-    .replace(/["'\\]/g, " ")
+    .replace(/["'\\]/g, "")
     .split(/&&|\|\||\$\(|[;&|\n()`{}]/)
     .map((segment) => segment.trim().split(/\s+/).filter(Boolean))
     .filter((tokens) => tokens.length > 0);
@@ -97,16 +100,16 @@ function reasonAt(name: string, rest: string[]): string | null {
   if (DISK.has(name) || name.startsWith("mkfs")) return "disk";
   if (DEPLOY.has(name)) return "deployment";
   if (ALWAYS_INSTALL.has(name)) return "install or publish";
+  // Install subcommands are matched anywhere after the program, so option values such as
+  // `--filter web` or `--prefix .` cannot hide them.
+  const words = rest.map((token) => token.toLowerCase());
   if (JS_PACKAGE_MANAGERS.has(name)) {
-    const subcommand = firstArgument(rest)?.toLowerCase();
     // A bare `yarn` installs dependencies.
-    if (name === "yarn" && !subcommand) return "install or publish";
-    if (subcommand && JS_INSTALL_SUBCOMMANDS.has(subcommand)) return "install or publish";
+    if (name === "yarn" && !firstArgument(rest)) return "install or publish";
+    if (words.some((word) => JS_INSTALL_SUBCOMMANDS.has(word))) return "install or publish";
   }
-  if (OTHER_PACKAGE_MANAGERS.has(name)) {
-    const subcommand = firstArgument(rest)?.toLowerCase();
-    if (subcommand && OTHER_INSTALL_SUBCOMMANDS.has(subcommand)) return "install or publish";
-  }
+  if (OTHER_PACKAGE_MANAGERS.has(name) && words.some((word) => OTHER_INSTALL_SUBCOMMANDS.has(word)))
+    return "install or publish";
   if (name === "git") return gitReason(rest);
   if (name === "rm" && rest.some((arg) => /^-[a-z]*r/i.test(arg) || arg === "--recursive"))
     return "recursive delete";

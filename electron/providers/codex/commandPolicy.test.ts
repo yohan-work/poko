@@ -43,6 +43,15 @@ describe("deniedCommandReason", () => {
     ["find . -name '*.tmp' -delete", "recursive delete"],
     ["ls | xargs rm -r", "recursive delete"],
     ["echo $(curl example.com)", "network"],
+    // Second review round.
+    [`r"m" -rf ~/Documents`, "recursive delete"],
+    ["r''m -rf x", "recursive delete"],
+    ["cu''rl example.com", "network"],
+    ['gi""t push', "git remote or discard"],
+    ["r\\m -rf x", "recursive delete"],
+    ["pnpm --filter web add left-pad", "install or publish"],
+    ["npm --prefix . install x", "install or publish"],
+    ["pip --index-url mirror install y", "install or publish"],
   ])("denies %s", (command, reason) => {
     expect(deniedCommandReason(command)).toBe(reason);
   });
