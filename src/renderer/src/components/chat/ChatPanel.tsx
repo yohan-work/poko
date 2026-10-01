@@ -130,11 +130,12 @@ export function ChatPanel() {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, isSending, hasPendingApproval]);
 
-  // A streaming answer is followed only while the reader is at the bottom.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: follow each streamed frame
+  // Streamed text and progress lines that appear under it are followed only while the reader
+  // is at the bottom.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follow each streamed frame and progress change
   useEffect(() => {
     if (followRef.current) endRef.current?.scrollIntoView({ block: "end" });
-  }, [streamingText]);
+  }, [streamingText, progressMessage]);
 
   if (isEmpty) {
     return (

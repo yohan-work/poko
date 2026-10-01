@@ -33,18 +33,11 @@ describe("createDeltaBuffer", () => {
   function setup() {
     let scheduled: (() => void) | null = null;
     const onFlush = vi.fn();
-    const cancel = vi.fn(() => {
-      scheduled = null;
+    const buffer = createDeltaBuffer(onFlush, (flush) => {
+      scheduled = flush;
+      return 1;
     });
-    const buffer = createDeltaBuffer(
-      onFlush,
-      (flush) => {
-        scheduled = flush;
-        return 1;
-      },
-      cancel,
-    );
-    return { buffer, onFlush, runFrame: () => scheduled?.(), cancel };
+    return { buffer, onFlush, runFrame: () => scheduled?.() };
   }
 
   it("delivers all deltas from one frame together", () => {
@@ -56,17 +49,12 @@ describe("createDeltaBuffer", () => {
     expect(onFlush).toHaveBeenCalledExactlyOnceWith([delta("a"), delta("b")]);
   });
 
-  it("can flush immediately and discard a finished task's leftovers", () => {
-    const { buffer, onFlush, cancel } = setup();
-    buffer.push(delta("a"));
-    buffer.flushNow();
-    expect(cancel).toHaveBeenCalled();
-    expect(onFlush).toHaveBeenCalledWith([delta("a")]);
-
+  it("discards a finished task's leftovers before the next frame", () => {
+    const { buffer, onFlush, runFrame } = setup();
     buffer.push(delta("x", "m1", "t1"));
     buffer.push(delta("y", "m1", "t2"));
     buffer.discard("t1");
-    buffer.flushNow();
-    expect(onFlush).toHaveBeenLastCalledWith([delta("y", "m1", "t2")]);
+    runFrame();
+    expect(onFlush).toHaveBeenCalledExactlyOnceWith([delta("y", "m1", "t2")]);
   });
 });

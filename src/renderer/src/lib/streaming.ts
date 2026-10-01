@@ -31,13 +31,11 @@ export function applyDeltas(
 }
 
 type Schedule = (flush: () => void) => number;
-type Cancel = (handle: number) => void;
 
 /** Collects deltas and hands them over once per animation frame. */
 export function createDeltaBuffer(
   onFlush: (deltas: OutputDelta[]) => void,
   schedule: Schedule = (flush) => window.requestAnimationFrame(flush),
-  cancel: Cancel = (handle) => window.cancelAnimationFrame(handle),
 ) {
   let pending: OutputDelta[] = [];
   let handle: number | null = null;
@@ -53,11 +51,6 @@ export function createDeltaBuffer(
     push(delta: OutputDelta) {
       pending.push(delta);
       if (handle === null) handle = schedule(flush);
-    },
-    /** Delivers anything pending right away, e.g. before the task's final event is applied. */
-    flushNow() {
-      if (handle !== null) cancel(handle);
-      flush();
     },
     /** Drops pending deltas for a task that ended without an answer. */
     discard(taskId: string) {
