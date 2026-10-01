@@ -25,11 +25,17 @@ Let the user keep separate conversations, the way Claude's sidebar does: start a
 - **Database**
   - `Database` gets `listConversations`, `getConversationMessages(id)`, `renameConversation`, and `deleteConversation`.
   - `createTask(message, workspace, conversationId | null)` creates the conversation when the id is null and returns both ids.
+  - `recordTaskEvent` saves a finished task's reply into **the task's own** `tasks.conversation_id`, not the oldest conversation. This fixes a bug that one conversation hid. A task whose conversation was deleted keeps its result on the task and adds no message.
+  - `ensureConversation()` goes away: bootstrap and every write path never create an empty conversation.
+- **Active conversation**
   - The active conversation id is a setting (`activeConversationId`).
-  - A migration backfills the existing conversation's title from its first user message. No schema change is needed.
+  - Bootstrap opens it if it still exists. Otherwise it opens the most recently active conversation, or the greeting screen (no conversation) when there are none.
+  - Deleting the active conversation clears the setting.
+- **Migration:** backfills the existing conversation's title from its first user message, and deletes conversations with no messages (the auto-created ones). No schema change is needed.
 - **IPC**
   - `conversations:list`, `conversations:open`, `conversations:rename`, and `conversations:delete`. All are trusted-renderer only, and ids and titles are validated (title 1–80 characters).
   - `tasks:start`, `screen:look`, and `screen:act` take the conversation id (or null for a new one) and return the conversation id they used.
+  - A conversation id that no longer exists is refused with a plain message ("이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘."), never a database error.
   - Main refuses to delete a conversation with a running task, and refuses to open another conversation while one runs, even if the renderer allows it.
 - **Renderer**
   - The store holds `conversations` and `activeConversationId`. The sidebar replaces "최근 작업" with the conversation list; the 작업 page still lists every task.
