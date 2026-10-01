@@ -7,7 +7,7 @@
 ## 목표와 성공 기준
 
 - 목표: Poko v0.1을 단계별 PR → 리뷰 → 머지 흐름으로 구현해 로컬 AI desktop agent를 제공한다.
-- 성공 기준: Phase 00–02가 머지됐고, 캐릭터·workspace·읽기 전용 Codex 분석 시나리오가 구현됐다. 후속 Phase의 persistence, approval, providers, tools를 PR 단위로 검증해 완성한다.
+- 성공 기준: Phase 00–05가 머지됐다(캐릭터 UI, 읽기 전용 Codex 분석, 저장, 승인 게이트, 대화 품질). 실제 환경 검증 후 Phase 06 쓰기 모드와 Phase 07 여러 대화를 PR 단위로 검증해 완성한다.
 
 ## 범위와 확정된 결정
 
@@ -45,8 +45,8 @@
 
 ## 마지막 체크포인트
 
-- Handoff: [2026-10-01-0922-phase-04-approval-complete](../handoff/2026-10-01-0922-phase-04-approval-complete.md)
-- Socratic: [2026-10-01-0922-phase-04-approval-complete](../socratic/2026-10-01-0922-phase-04-approval-complete.md)
+- Handoff: [2026-10-01-1258-phase-05-complete](../handoff/2026-10-01-1258-phase-05-complete.md)
+- Socratic: [2026-10-01-1258-phase-05-complete](../socratic/2026-10-01-1258-phase-05-complete.md)
 
 ## 재개 지점
 
