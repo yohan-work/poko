@@ -38,6 +38,12 @@ const paths = {
     </>
   ),
   plus: <path d="M10 4.5v11M4.5 10h11" />,
+  screen: (
+    <>
+      <rect x="3" y="4" width="14" height="9.5" rx="1.5" />
+      <path d="M7.5 16.5h5M10 13.5v3" />
+    </>
+  ),
   trash: (
     <>
       <path d="M4.5 6h11M8 6V4.5h4V6" />

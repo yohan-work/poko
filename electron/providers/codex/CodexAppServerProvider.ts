@@ -1,4 +1,5 @@
 import {
+  execFile,
   spawn as nodeSpawn,
   type ChildProcessWithoutNullStreams,
   type SpawnOptions,
@@ -222,6 +223,82 @@ interface ProviderOptions {
   requestTimeoutMs?: number;
   approvalTimeoutMs?: number;
   taskTimeoutMs?: number;
+  /** Feature names this Codex knows, or null when they can't be listed. */
+  listFeatures?: () => Promise<ReadonlySet<string> | null>;
+}
+
+/** `codex features list` prints one feature per line, name first. */
+export function parseFeatureList(output: string): Set<string> {
+  return new Set(
+    output
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/)[0])
+      .filter((name) => /^[a-z][a-z0-9_]*$/.test(name)),
+  );
+}
+
+function listCodexFeatures(executable: string): Promise<ReadonlySet<string> | null> {
+  return new Promise((resolve) => {
+    execFile(executable, ["features", "list"], { timeout: 15_000 }, (error, stdout) => {
+      const features = error ? null : parseFeatureList(stdout);
+      resolve(features?.size ? features : null);
+    });
+  });
+}
+
+/**
+ * Codex features Poko never uses. Its own computer, browser, and automation control would act
+ * on the user's machine outside Poko's approvals. A screen task also gets no shell, no Codex
+ * memories, and no plugins: it only looks at the attached screenshot.
+ */
+const ALWAYS_DISABLED = [
+  "computer_use",
+  "browser_use",
+  "browser_use_external",
+  "browser_use_full_cdp_access",
+  "in_app_browser",
+  "in_app_local_automation",
+];
+const SCREEN_DISABLED = [
+  "shell_tool",
+  "unified_exec",
+  "memories",
+  "apps",
+  "plugins",
+  "multi_agent",
+  "image_generation",
+  // The screenshot is attached directly; no tool may open other image files by path.
+  "view_image",
+];
+
+/** A screen task must be able to turn these off, or it doesn't run. */
+const SCREEN_REQUIRED = ["shell_tool", "unified_exec"];
+
+/**
+ * `--disable` fails on a name this Codex doesn't know, so only known features are passed.
+ * Returns null when a screen task can't be contained on this Codex.
+ */
+export function disabledFeatures(
+  profile: "project" | "screen",
+  known: ReadonlySet<string> | null,
+): string[] | null {
+  if (profile === "screen" && !SCREEN_REQUIRED.every((feature) => known?.has(feature))) return null;
+  const wanted = profile === "screen" ? [...ALWAYS_DISABLED, ...SCREEN_DISABLED] : ALWAYS_DISABLED;
+  return wanted.filter((feature) => known?.has(feature));
+}
+
+/** Project tasks read the workspace; screen tasks read only their empty temp folder. */
+export function permissionProfile(profile: "project" | "screen") {
+  const filesystem: Record<string, unknown> =
+    profile === "screen"
+      ? { ":root": "deny", ":workspace_roots": { ".": "read" } }
+      : { ":root": "deny", ":minimal": "read", ":workspace_roots": { ".": "read" } };
+  return { extends: ":read-only", filesystem, network: { enabled: false } };
+}
+
+function permissionsToml(profile: "project" | "screen"): string {
+  const minimal = profile === "screen" ? "" : '":minimal"="read",';
+  return `{extends=":read-only",filesystem={":root"="deny",${minimal}":workspace_roots"={"."="read"}},network={enabled=false}}`;
 }
 
 export class CodexAppServerProvider implements AgentProvider {
@@ -231,6 +308,8 @@ export class CodexAppServerProvider implements AgentProvider {
   private readonly approvalTimeoutMs: number;
   private readonly taskTimeoutMs: number;
   private sessions = new Map<string, TaskSession>();
+  private readonly listFeatures: () => Promise<ReadonlySet<string> | null>;
+  private features: Promise<ReadonlySet<string> | null> | null = null;
 
   constructor(options: ProviderOptions = {}) {
     this.executable = options.executable ?? "codex";
@@ -241,6 +320,15 @@ export class CodexAppServerProvider implements AgentProvider {
     this.requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
     this.approvalTimeoutMs = options.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
     this.taskTimeoutMs = options.taskTimeoutMs ?? TASK_TIMEOUT_MS;
+    this.listFeatures = options.listFeatures ?? (() => listCodexFeatures(this.executable));
+  }
+
+  /** Listed once per provider; a failed listing is retried next task. */
+  private async knownFeatures(): Promise<ReadonlySet<string> | null> {
+    this.features ??= this.listFeatures();
+    const features = await this.features;
+    if (!features) this.features = null;
+    return features;
   }
 
   async *runTask(
@@ -249,6 +337,19 @@ export class CodexAppServerProvider implements AgentProvider {
   ): AsyncIterable<AgentEvent> {
     if (input.mode !== "read") {
       yield { type: "error", error: "현재 포코는 승인된 읽기 전용 요청만 처리할 수 있어." };
+      return;
+    }
+    if (options.signal?.aborted) {
+      yield { type: "cancelled" };
+      return;
+    }
+    const profile = input.profile ?? "project";
+    const disabled = disabledFeatures(profile, await this.knownFeatures());
+    if (!disabled) {
+      yield {
+        type: "error",
+        error: "화면 보기에는 더 새로운 Codex CLI가 필요해. Codex CLI를 업데이트해 줘.",
+      };
       return;
     }
     if (options.signal?.aborted) {
@@ -265,9 +366,10 @@ export class CodexAppServerProvider implements AgentProvider {
           "--config",
           'default_permissions="poko-readonly"',
           "--config",
-          'permissions={"poko-readonly"={extends=":read-only",filesystem={":root"="deny",":minimal"="read",":workspace_roots"={"."="read"}},network={enabled=false}}}',
+          `permissions={"poko-readonly"=${permissionsToml(profile)}}`,
           "--config",
           "mcp_servers={}",
+          ...disabled.flatMap((feature) => ["--disable", feature]),
           "app-server",
           "--listen",
           "stdio://",
@@ -344,17 +446,7 @@ export class CodexAppServerProvider implements AgentProvider {
           sandbox: "read-only",
           config: {
             default_permissions: "poko-readonly",
-            permissions: {
-              "poko-readonly": {
-                extends: ":read-only",
-                filesystem: {
-                  ":root": "deny",
-                  ":minimal": "read",
-                  ":workspace_roots": { ".": "read" },
-                },
-                network: { enabled: false },
-              },
-            },
+            permissions: { "poko-readonly": permissionProfile(profile) },
             mcp_servers: {},
           },
         }),
@@ -370,7 +462,10 @@ export class CodexAppServerProvider implements AgentProvider {
         connection.request("turn/start", {
           threadId,
           cwd: input.cwd,
-          input: [{ type: "text", text: input.prompt }],
+          input: [
+            { type: "text", text: input.prompt },
+            ...(input.images ?? []).map((path) => ({ type: "localImage", path })),
+          ],
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
           sandboxPolicy: { type: "readOnly", networkAccess: false },
@@ -590,6 +685,17 @@ export class CodexAppServerProvider implements AgentProvider {
   ): ApprovalEvent {
     const itemId = readString(params.itemId);
     const item = itemId ? session.fileChanges.get(itemId) : undefined;
+    // A screen task only looks; text on screen must never turn into a file change.
+    if (session.task.profile === "screen")
+      return {
+        type: "approvalRequired",
+        requestId,
+        kind: "file_change",
+        summary: "화면 보기 중에는 파일을 바꾸지 않아.",
+        cwd: session.task.cwd,
+        reason: "화면 보기는 설명만 해서 파일 변경 요청을 거절했어.",
+        canApprove: false,
+      };
     const changes = item ? getFileChanges(item, session.task.cwd) : null;
     const grantRoot = readString(params.grantRoot);
     const canApprove = Boolean(changes?.length) && !grantRoot;

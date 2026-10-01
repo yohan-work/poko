@@ -8,6 +8,8 @@ interface AgentTaskInput {
   cwd: string;
   taskId?: string;
   context?: TaskContext;
+  /** A screen task: the prompt is already complete and a screenshot is attached. */
+  screen?: { images: string[] };
 }
 
 const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "error"]);
@@ -29,12 +31,22 @@ export class AgentCore {
 
     const taskId = input.taskId ?? randomUUID();
     const controller = new AbortController();
-    const task: AgentTask = {
-      id: taskId,
-      prompt: this.buildPrompt(input.prompt, input.context),
-      cwd: input.cwd,
-      mode: "read",
-    };
+    const task: AgentTask = input.screen
+      ? {
+          id: taskId,
+          prompt: input.prompt,
+          cwd: input.cwd,
+          mode: "read",
+          profile: "screen",
+          images: input.screen.images,
+        }
+      : {
+          id: taskId,
+          prompt: this.buildPrompt(input.prompt, input.context),
+          cwd: input.cwd,
+          mode: "read",
+          profile: "project",
+        };
 
     this.activeTasks.set(taskId, controller);
     void this.run(task, controller);

@@ -10,6 +10,9 @@ import {
   CodexAppServerProvider,
   getFileChanges,
   isInside,
+  disabledFeatures,
+  parseFeatureList,
+  permissionProfile,
   touchesGitDirectory,
 } from "./CodexAppServerProvider";
 
@@ -81,10 +84,29 @@ class FakeAppServer extends EventEmitter {
 
 const task: AgentTask = { id: "task-1", prompt: "Analyze", cwd: "/workspace", mode: "read" };
 
+/** Every feature name Poko may disable, as a current Codex would list them. */
+const allFeatures = new Set([
+  "computer_use",
+  "browser_use",
+  "browser_use_external",
+  "browser_use_full_cdp_access",
+  "in_app_browser",
+  "in_app_local_automation",
+  "shell_tool",
+  "unified_exec",
+  "memories",
+  "apps",
+  "plugins",
+  "multi_agent",
+  "image_generation",
+  "view_image",
+]);
+
 function providerFor(server: FakeAppServer, options = {}): CodexAppServerProvider {
   return new CodexAppServerProvider({
     executable: "codex",
     spawnProcess: () => server as unknown as ChildProcessWithoutNullStreams,
+    listFeatures: async () => allFeatures,
     ...options,
   });
 }
@@ -576,5 +598,88 @@ describe("CodexAppServerProvider", () => {
     } finally {
       await rm(base, { recursive: true, force: true });
     }
+  });
+
+  it("turns off Codex's own computer and browser control, but only flags this Codex knows", () => {
+    expect(disabledFeatures("project", allFeatures)).toEqual(
+      expect.arrayContaining(["computer_use", "browser_use", "in_app_local_automation"]),
+    );
+    expect(disabledFeatures("project", allFeatures)).not.toContain("shell_tool");
+    // `--disable` with an unknown name stops Codex from starting, so unknown names are skipped.
+    expect(disabledFeatures("project", new Set(["computer_use", "shell_tool"]))).toEqual([
+      "computer_use",
+    ]);
+    expect(disabledFeatures("project", null)).toEqual([]);
+    // A screen task can't be contained without turning the shell off.
+    expect(disabledFeatures("screen", new Set(["computer_use"]))).toBeNull();
+    expect(disabledFeatures("screen", null)).toBeNull();
+    expect(
+      parseFeatureList(
+        "apps                stable   true\nshell_tool          stable   true\nWARNING: x\n",
+      ),
+    ).toEqual(new Set(["apps", "shell_tool"]));
+  });
+
+  it("refuses a screen task on a Codex that can't turn its shell off", async () => {
+    let spawned = false;
+    const provider = new CodexAppServerProvider({
+      spawnProcess: () => {
+        spawned = true;
+        return new FakeAppServer() as unknown as ChildProcessWithoutNullStreams;
+      },
+      listFeatures: async () => new Set(["computer_use"]),
+    });
+    const events: AgentEvent[] = [];
+    for await (const event of provider.runTask({ ...task, profile: "screen" })) events.push(event);
+    expect(spawned).toBe(false);
+    expect(events).toEqual([{ type: "error", error: expect.stringContaining("업데이트") }]);
+  });
+
+  it("declines file changes during a screen task", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask({ ...task, profile: "screen" }));
+    await turnStarted(server);
+    sendFileChange(server);
+    expect(await stream.next("approvalRequired")).toMatchObject({
+      kind: "file_change",
+      canApprove: false,
+    });
+    expect(await server.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "decline" },
+    });
+    server.kill();
+    await stream.done;
+  });
+
+  it("runs screen tasks with no shell, no file reads beyond the work folder, and the screenshot attached", async () => {
+    const server = new FakeAppServer();
+    const args: string[] = [];
+    const provider = new CodexAppServerProvider({
+      executable: "codex",
+      spawnProcess: (_command, spawnArgs) => {
+        args.push(...spawnArgs);
+        return server as unknown as ChildProcessWithoutNullStreams;
+      },
+      listFeatures: async () => allFeatures,
+    });
+    const stream = consume(
+      provider.runTask({ ...task, profile: "screen", images: ["/tmp/screen.png"] }),
+    );
+    await turnStarted(server);
+    expect(args.join(" ")).toContain("--disable shell_tool");
+    expect(args.join(" ")).toContain("--disable view_image");
+    expect(args.join(" ")).not.toContain('":minimal"');
+    const thread = await server.waitFor((m) => m.method === "thread/start");
+    expect(JSON.stringify(thread.params)).not.toContain(":minimal");
+    const turn = await server.waitFor((m) => m.method === "turn/start");
+    expect((turn.params as { input: unknown[] }).input).toEqual([
+      { type: "text", text: "Analyze" },
+      { type: "localImage", path: "/tmp/screen.png" },
+    ]);
+    expect(permissionProfile("project").filesystem).toHaveProperty(":minimal", "read");
+    server.kill();
+    await stream.done;
   });
 });

@@ -71,6 +71,14 @@ Each milestone is its own PR with review.
 2. **Overlay character.** The transparent overlay window. Poko flies to and circles elements referenced in the look answer. It hides while Poko captures or measures (content protection is only an extra layer) and respects reduced motion.
 3. **One approved step at a time.** The action schema and validation, the approval card with a target crop, the stop shortcut, AX execution with re-check, the step loop, and the safety rules above.
 
+### Milestone 1 notes (implemented)
+
+- `native/poko-ax/main.swift` builds with `pnpm native` (run by `dev` and `build`, macOS only) into the git-ignored `native/build/`. It is read-only: `permissions`, `windows`, and `snapshot <windowId>`. Packaging the helper into a release build is left for the packaging phase.
+- Chromium-based apps expose page content only after `AXManualAccessibility` is set on the app. Page content sits deep in the tree, so the snapshot walks up to depth 40 and stops at 400 elements (about 0.7 s for a busy Chrome window).
+- The screen profile reads only the task's empty work folder (no `:minimal`). Codex starts with `--disable` for `shell_tool`, `unified_exec`, `view_image`, `memories`, `apps`, `plugins`, `multi_agent`, and `image_generation`. Every Poko task, project or screen, also disables Codex's own `computer_use`, browser, and local automation features so nothing acts outside Poko's approvals. `--disable` fails on a name Codex doesn't know, so Poko runs `codex features list` once and passes only known names. A screen task refuses to start if `shell_tool` and `unified_exec` can't both be disabled. Screen tasks also decline every file-change request.
+- Real-run gate (Codex 0.159.3, 2026-10-01): a screen task with a screenshot attached described the image, and asked to read `~/.ssh/known_hosts` and `~/.codex/auth.json`, answered that both are outside its allowed folder. It made no tool calls. With the feature list applied, it reported having no file-reading tool at all. A project task still read `package.json`.
+- The screenshot and work folder live in `userData/screen-tmp/<uuid>` and are removed when the task ends and on every start.
+
 ## Open questions to settle in implementation
 
 These come from plan review. Each milestone PR must answer them with real-browser evidence.

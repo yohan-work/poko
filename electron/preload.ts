@@ -4,6 +4,9 @@ import {
   type AgentEvent,
   type ApprovalChoice,
   type ApprovalOutcome,
+  type ScreenLookResponse,
+  type ScreenStatus,
+  type ScreenWindow,
   type TaskEventPayload,
   type TaskStartResponse,
   type WorkspaceInfo,
@@ -91,6 +94,15 @@ const pokoApi = {
       ipcRenderer.on(IPC_CHANNELS.taskEvent, listener);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.taskEvent, listener);
     },
+  },
+  screen: {
+    status: (): Promise<ScreenStatus> => ipcRenderer.invoke(IPC_CHANNELS.screenStatus),
+    openSettings: (kind: "screen" | "accessibility"): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.screenOpenSettings, kind),
+    acceptNotice: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.screenAcceptNotice),
+    listWindows: (): Promise<ScreenWindow[]> => ipcRenderer.invoke(IPC_CHANNELS.screenListWindows),
+    look: (windowId: number, question: string): Promise<ScreenLookResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.screenLook, { windowId, question }),
   },
   approvals: {
     respond: (

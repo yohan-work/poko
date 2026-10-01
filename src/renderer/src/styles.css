@@ -1042,6 +1042,176 @@ button:disabled {
   font-size: 0.84rem;
 }
 
+/* ── Screen picker ─────────────────────────────────────── */
+
+.screen-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  background: oklch(0% 0 0 / 45%);
+}
+
+.screen-picker__panel {
+  display: grid;
+  width: min(100%, 760px);
+  max-height: min(100%, 680px);
+  padding: 20px 22px;
+  overflow-y: auto;
+  gap: 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-composer);
+}
+
+.screen-picker__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.screen-picker__header h2 {
+  flex: 1 1 auto;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 400;
+}
+
+.screen-picker__note {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+}
+
+.screen-picker__error {
+  margin: 0;
+  color: var(--color-error);
+}
+
+.screen-notice {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.screen-notice p,
+.screen-notice ul {
+  margin: 0;
+}
+
+.screen-notice ul {
+  padding-left: 20px;
+  color: var(--color-text-soft);
+  line-height: 1.6;
+}
+
+.screen-permissions {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.screen-permissions ul {
+  display: grid;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  gap: 8px;
+  list-style: none;
+}
+
+.screen-permission {
+  display: flex;
+  padding: 12px 14px;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.screen-permission > div {
+  flex: 1 1 auto;
+}
+
+.screen-permission__state {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font-size: 0.76rem;
+}
+
+.screen-permission[data-granted="true"] .screen-permission__state {
+  color: var(--color-success);
+  background: var(--color-surface-raised);
+}
+
+.screen-permission__title,
+.screen-permission__why {
+  margin: 0;
+}
+
+.screen-permission__why {
+  color: var(--color-text-faint);
+  font-size: 0.84rem;
+}
+
+.screen-windows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  list-style: none;
+}
+
+.screen-window {
+  display: grid;
+  width: 100%;
+  padding: 10px;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  text-align: left;
+}
+
+.screen-window:hover {
+  border-color: var(--color-accent-border);
+}
+
+.screen-window img,
+.screen-window__blank {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--color-surface-raised);
+}
+
+.screen-window__blank {
+  display: grid;
+  place-items: center;
+  color: var(--color-text-faint);
+}
+
+.screen-window__app {
+  font-weight: 500;
+}
+
+.screen-window__title {
+  overflow: hidden;
+  color: var(--color-text-faint);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Approval card ─────────────────────────────────────── */
 
 .approval-card {

@@ -10,7 +10,31 @@ export const IPC_CHANNELS = {
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
   approvalRespond: "approval:respond",
+  screenStatus: "screen:status",
+  screenOpenSettings: "screen:open-settings",
+  screenAcceptNotice: "screen:accept-notice",
+  screenListWindows: "screen:list-windows",
+  screenLook: "screen:look",
 } as const;
+
+export interface ScreenStatus {
+  /** macOS with the helper built. */
+  supported: boolean;
+  permissions: { accessibility: boolean; screen: boolean };
+  /** The user has read what a screen task sends to Codex. */
+  noticeAccepted: boolean;
+}
+
+/** A screen look either starts a task or explains, in plain words, why it couldn't. */
+export type ScreenLookResponse = { taskId: string } | { error: string };
+
+export interface ScreenWindow {
+  id: number;
+  app: string;
+  title: string;
+  /** Small PNG data URL, or null without Screen Recording permission. */
+  thumbnail: string | null;
+}
 
 export type CharacterState =
   | "idle"
@@ -33,6 +57,13 @@ export interface AgentTask {
   prompt: string;
   cwd: string;
   mode: "read" | "write";
+  /**
+   * `project` reads the selected workspace. `screen` reads nothing from disk except its empty
+   * temp folder, and Codex's shell is turned off.
+   */
+  profile?: "project" | "screen";
+  /** Local image files attached to the prompt (screenshots). */
+  images?: string[];
 }
 
 export type AgentEvent =

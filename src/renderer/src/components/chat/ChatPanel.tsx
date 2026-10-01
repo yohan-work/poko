@@ -4,6 +4,7 @@ import { Character } from "../character/Character";
 import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
 import { Markdown } from "./Markdown";
+import { ScreenPicker } from "./ScreenPicker";
 import { useNow } from "../../lib/useNow";
 
 function greeting(date = new Date()): string {
@@ -25,6 +26,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   const sendMessage = useAppStore((state) => state.sendMessage);
   const cancelTask = useAppStore((state) => state.cancelTask);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
+  const openScreen = useAppStore((state) => state.openScreen);
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
@@ -84,6 +86,16 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             <span>{workspace?.name ?? "폴더 선택"}</span>
             <Icon name="chevron" />
           </button>
+          <button
+            className="chip"
+            type="button"
+            onClick={() => void openScreen()}
+            disabled={isSending}
+            title="고른 창을 보고 설명해 줘"
+          >
+            <Icon name="screen" />
+            <span>화면 보기</span>
+          </button>
           <span className="composer__mode" title="포코는 확인 없이 파일을 바꾸지 않아">
             읽기 전용
           </span>
@@ -105,6 +117,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
           {errorMessage}
         </p>
       )}
+      <ScreenPicker question={draft} onPicked={() => setDraft("")} />
     </form>
   );
 }
