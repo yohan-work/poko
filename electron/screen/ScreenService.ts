@@ -11,6 +11,7 @@ import {
   parseWindows,
   runHelper,
   type ScreenWindowInfo,
+  type WindowSnapshot,
 } from "./axHelper";
 import { captureMatchesWindow, windowIdFromSource } from "./capture";
 import { buildLookPrompt } from "./lookPrompt";
@@ -28,6 +29,8 @@ export interface PreparedLook {
   /** Removed when the task ends. */
   tempDir: string;
   app: string;
+  /** The elements the prompt listed, so the answer's `[id]` citations can be resolved. */
+  snapshot: WindowSnapshot;
 }
 
 /** Window capture and accessibility for screen tasks. Main process only. */
@@ -110,6 +113,7 @@ export class ScreenService {
       workDir,
       tempDir,
       app: window.owner || window.bundleId || "앱",
+      snapshot,
     };
   }
 

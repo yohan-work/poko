@@ -16,14 +16,17 @@ import { resolveCodexExecutable } from "./providers/codex/CodexProvider";
 import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
 import { PokoDatabase } from "./database/Database";
 import { ScreenService } from "./screen/ScreenService";
-import { HelperError } from "./screen/axHelper";
+import { HelperError, type WindowSnapshot } from "./screen/axHelper";
+import { ScreenOverlay } from "./screen/ScreenOverlay";
+import { buildOverlayScene, citedElements, replaceCitations } from "./screen/overlayScene";
 
 let mainWindow: BrowserWindow | null = null;
 let agentCore: AgentCore | null = null;
 let database: PokoDatabase | null = null;
 let screenService: ScreenService | null = null;
-/** Temp folders (screenshot and empty work folder) of running screen tasks. */
-const screenTempDirs = new Map<string, string>();
+let screenOverlay: ScreenOverlay | null = null;
+/** Running screen tasks: their temp folder (screenshot and empty work folder) and snapshot. */
+const screenTasks = new Map<string, { tempDir: string; snapshot: WindowSnapshot }>();
 
 const screenErrors: Record<string, string> = {
   window_not_found: "그 창을 더 이상 찾을 수 없어. 다시 골라 줘.",
@@ -187,6 +190,8 @@ function registerIpcHandlers(): void {
 
     let look: Awaited<ReturnType<ScreenService["prepareLook"]>>;
     try {
+      // Poko leaves the screen before it looks, so it never covers what it reads.
+      await screenOverlay?.hide();
       look = await screenService.prepareLook(request.windowId as number, request.question);
     } catch (error) {
       const code = error instanceof HelperError ? error.code : "";
@@ -199,7 +204,7 @@ function registerIpcHandlers(): void {
       `🖥️ ${look.app} 화면 보기: ${question}`,
       `screen:${look.app}`,
     );
-    screenTempDirs.set(taskId, look.tempDir);
+    screenTasks.set(taskId, { tempDir: look.tempDir, snapshot: look.snapshot });
     try {
       agentCore.startTask({
         prompt: look.prompt,
@@ -208,7 +213,7 @@ function registerIpcHandlers(): void {
         screen: { images: [look.imagePath] },
       });
     } catch {
-      screenTempDirs.delete(taskId);
+      screenTasks.delete(taskId);
       void screenService.cleanup(look.tempDir);
       database.recordTaskEvent(
         taskId,
@@ -269,6 +274,17 @@ function registerIpcHandlers(): void {
   });
 }
 
+async function pointAt(snapshot: WindowSnapshot, answer: string): Promise<void> {
+  if (!screenOverlay) return;
+  try {
+    const display = screenOverlay.displayFor(snapshot.window.frame);
+    const scene = buildOverlayScene(snapshot, citedElements(answer, snapshot, display), display);
+    if (scene) await screenOverlay.show(scene, display);
+  } catch (error) {
+    console.error("Could not show Poko on screen.", error);
+  }
+}
+
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1024,
@@ -291,6 +307,7 @@ async function createWindow(): Promise<void> {
   });
   mainWindow.on("closed", () => {
     agentCore?.cancelAll();
+    screenOverlay?.destroy();
     mainWindow = null;
   });
 
@@ -319,17 +336,32 @@ app
       join(userDataDirectory, "screen-tmp"),
     );
     await screenService.cleanupAll().catch(() => undefined);
+    screenOverlay = new ScreenOverlay(
+      join(__dirname, "../preload/preload.js"),
+      process.env.ELECTRON_RENDERER_URL,
+      join(__dirname, "../renderer/index.html"),
+    );
     const executable = await resolveCodexExecutable();
     agentCore = new AgentCore(
       new CodexAppServerProvider({ executable }),
       (payload: TaskEventPayload) => {
-        const event = payload.event;
-        // A finished screen task's screenshot and work folder are removed right away.
-        const tempDir = screenTempDirs.get(payload.taskId);
-        if (tempDir && ["completed", "error", "cancelled"].includes(event.type)) {
-          screenTempDirs.delete(payload.taskId);
-          void screenService?.cleanup(tempDir);
+        const screenTask = screenTasks.get(payload.taskId);
+        if (screenTask && ["completed", "error", "cancelled"].includes(payload.event.type)) {
+          // A finished screen task's screenshot and work folder are removed right away.
+          screenTasks.delete(payload.taskId);
+          void screenService?.cleanup(screenTask.tempDir);
+          if (payload.event.type === "completed") {
+            const { snapshot } = screenTask;
+            const answer = payload.event.result;
+            // Poko flies to what it talked about, and the chat names it instead of `[12]`.
+            void pointAt(snapshot, answer);
+            payload = {
+              ...payload,
+              event: { ...payload.event, result: replaceCitations(answer, snapshot) },
+            };
+          }
         }
+        const event = payload.event;
         let rendererPayload = payload;
         if (event.type === "approvalRequired") {
           const request: ApprovalRequest = { taskId: payload.taskId, ...event };

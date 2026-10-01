@@ -15,7 +15,17 @@ export const IPC_CHANNELS = {
   screenAcceptNotice: "screen:accept-notice",
   screenListWindows: "screen:list-windows",
   screenLook: "screen:look",
+  overlayScene: "overlay:scene",
+  overlayHide: "overlay:hide",
 } as const;
+
+/** What the on-screen Poko shows: frames are in points, relative to its display. */
+export interface OverlayScene {
+  display: { width: number; height: number };
+  /** The picked window; Poko starts from its corner. */
+  origin: { x: number; y: number; width: number; height: number };
+  points: { frame: { x: number; y: number; width: number; height: number }; say: string }[];
+}
 
 export interface ScreenStatus {
   /** macOS with the helper built. */

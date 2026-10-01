@@ -79,6 +79,13 @@ Each milestone is its own PR with review.
 - Real-run gate (Codex 0.159.3, 2026-10-01): a screen task with a screenshot attached described the image, and asked to read `~/.ssh/known_hosts` and `~/.codex/auth.json`, answered that both are outside its allowed folder. It made no tool calls. With the feature list applied, it reported having no file-reading tool at all. A project task still read `package.json`.
 - The screenshot and work folder live in `userData/screen-tmp/<uuid>` and are removed when the task ends and on every start.
 
+### Milestone 2 notes (implemented)
+
+- After a look answer, the main process resolves the answer's `[id]` citations against that task's snapshot (at most three, in order, only elements with a frame inside the picked window). The chat shows the element's name in quotes instead of the number. Names are untrusted labels, so Markdown characters are stripped.
+- One overlay window (`#overlay` route of the same renderer) is moved onto the display holding the picked window. It is transparent, click-through, never focusable, above other windows, and content-protected. It receives scenes from main and sends nothing back, and the IPC trust check only accepts the main window.
+- Poko starts at the window's corner, flies to each point, rings it, and says `여기야: <name>`. The overlay hides on its own after about 3 seconds per point, right before every capture, and when the main window closes. Reduced motion turns the flight into a jump.
+- Streaming text may show `[12]` briefly; the final answer replaces it.
+
 ## Open questions to settle in implementation
 
 These come from plan review. Each milestone PR must answer them with real-browser evidence.
