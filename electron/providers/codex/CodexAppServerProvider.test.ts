@@ -183,6 +183,7 @@ describe("CodexAppServerProvider", () => {
 
   it.each([
     ["outside the workspace", { cwd: "/elsewhere" }],
+    ["in a workspace subfolder", { cwd: "/workspace/.git" }],
     ["without a command", { command: null }],
     ["asking for network access", { networkApprovalContext: { host: "example.com" } }],
     ["asking for a network policy change", { proposedNetworkPolicyAmendments: [{}] }],

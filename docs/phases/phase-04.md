@@ -53,6 +53,7 @@ The planned change replaces only the Codex provider transport with a per-task `c
   - git subcommands each have an exact flag allowlist, so bundled or abbreviated flags fail closed. `checkout` is offered only with `-b`, and branches are switched with `switch`.
   - A command that writes a file and runs project code in the same line is declined (`printf … > a.js && node a.js`). A runner saving its own output is fine.
   - The `.git` check is case-insensitive.
+  - Runners never take `-` (a program read from standard input). An approvable command must run in the workspace root itself, not a subfolder or `.git`. `git mv` counts as a write.
   - Known limit: allowed tools can still run project code (`pnpm test`, `make`, `node x.js`). That's why the card warns on every command, and Phase 06 should run approved commands inside a workspace-write sandbox.
 - An unanswered approval is cancelled after 5 minutes, and the task stops. When a task ends, its pending approval rows become `expired` (or `cancelled` on user cancel). On startup, pending rows become `expired`.
 - The main process writes the audit row before forwarding the decision to Codex. If the DB write fails, the request is declined.

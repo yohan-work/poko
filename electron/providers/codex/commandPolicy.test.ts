@@ -174,6 +174,11 @@ describe("deniedCommandReason (allowlist)", () => {
     "cargo test --config x",
     "npm run test --script-shell=bash",
     "node -e 1",
+    // Twelfth review round.
+    "printf x | node -",
+    "printf x | python3 -",
+    "printf x | bun run -",
+    "git mv notes.txt a.js && node a.js",
   ])("declines %s", (command) => {
     expect(deniedCommandReason(command)).not.toBeNull();
   });

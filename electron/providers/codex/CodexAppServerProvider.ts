@@ -566,7 +566,9 @@ export class CodexAppServerProvider implements AgentProvider {
     const canApprove =
       kind === "command" &&
       Boolean(command && command.length <= 8_000) &&
-      Boolean(cwd && isInside(session.task.cwd, cwd)) &&
+      // Only the workspace root: a subfolder (or .git itself) could hold a repository
+      // whose config runs programs.
+      Boolean(cwd && isWorkspaceRoot(session.task.cwd, cwd)) &&
       !needsNetwork &&
       !denied;
     return {
@@ -654,6 +656,13 @@ export function getFileChanges(
     changes.push({ path: value.path, change: `${kind}:\n${value.diff}` });
   }
   return changes;
+}
+
+/** True when `target` resolves to the workspace root itself. */
+function isWorkspaceRoot(root: string, target: string): boolean {
+  if (!isAbsolute(target)) return false;
+  const realRoot = realPath(resolve(root));
+  return realRoot !== null && realRoot === realPath(resolve(target));
 }
 
 export function isInside(root: string, target: string): boolean {

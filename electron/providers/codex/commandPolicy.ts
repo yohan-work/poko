@@ -75,6 +75,8 @@ interface ProgramSpec {
   noAssignments?: boolean;
   /** The first argument must be a file, not inline code. */
   needsFile?: boolean;
+  /** Runs code, so `-` (a program read from standard input) is not accepted. */
+  noStdin?: boolean;
 }
 
 function specRule(spec: ProgramSpec): Rule {
@@ -83,6 +85,7 @@ function specRule(spec: ProgramSpec): Rule {
     const own = dashes === -1 ? args : args.slice(0, dashes);
     if (spec.subcommands && !spec.subcommands.includes(own[0]?.text ?? "")) return "not offered";
     if (spec.needsFile && (!own[0] || isFlag(own[0]))) return "inline code";
+    if (spec.noStdin && args.some((arg) => arg.text === "-")) return "inline code";
     for (const arg of own) {
       if (!isFlag(arg)) continue;
       if (spec.numericFlags && /^-\d+$/.test(arg.text)) continue;
@@ -100,6 +103,7 @@ function specRule(spec: ProgramSpec): Rule {
 const JS_SCRIPT: ProgramSpec = {
   subcommands: ["run", "test", "start", "build", "lint", "typecheck", "format", "check"],
   scriptArgsAfterDashes: true,
+  noStdin: true,
 };
 
 /**
@@ -203,9 +207,9 @@ const PROGRAMS: Record<string, Rule> = {
   rm,
   // Running and checking the project. Their options can load plugins or run programs, so
   // only a few output switches are accepted.
-  node: specRule({ needsFile: true }),
-  python: specRule({ needsFile: true }),
-  python3: specRule({ needsFile: true }),
+  node: specRule({ needsFile: true, noStdin: true }),
+  python: specRule({ needsFile: true, noStdin: true }),
+  python3: specRule({ needsFile: true, noStdin: true }),
   npm: specRule(JS_SCRIPT),
   pnpm: specRule(JS_SCRIPT),
   yarn: specRule(JS_SCRIPT),
@@ -218,9 +222,9 @@ const PROGRAMS: Record<string, Rule> = {
   jest: specRule({}),
   mocha: specRule({}),
   pytest: specRule({ flags: ["-q", "-x", "-v"] }),
-  make: specRule({ noAssignments: true }),
-  go: specRule({ subcommands: ["test", "build", "vet", "fmt"] }),
-  cargo: specRule({ subcommands: ["test", "build", "check", "fmt", "clippy"] }),
+  make: specRule({ noAssignments: true, noStdin: true }),
+  go: specRule({ subcommands: ["test", "build", "vet", "fmt"], noStdin: true }),
+  cargo: specRule({ subcommands: ["test", "build", "check", "fmt", "clippy"], noStdin: true }),
   git,
 };
 
@@ -352,7 +356,10 @@ function checkSegment(tokens: Token[]): SegmentResult {
   return {
     reason: rule ? rule(args) : "not offered",
     runs: RUNNERS.has(program.text) || runsHooks,
-    writes: writes || WRITERS.has(program.text),
+    writes:
+      writes ||
+      WRITERS.has(program.text) ||
+      (program.text === "git" && gitSubcommand(args) === "mv"),
   };
 }
 
