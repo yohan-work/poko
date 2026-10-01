@@ -152,7 +152,7 @@ Add foreign keys and indexes with the first migration. Import the existing works
 
 - `src/providers/claude`: future provider, no implementation in v0.1.
 - `src/tools/browser`: future Playwright integration, no browser automation in v0.1.
-- `electron/agent/screen`: Phase 06 screen companion. Main-process window capture, a Swift accessibility helper, one-approved-step actions, and the overlay window. See [Phase 06](phases/phase-06.md).
+- `electron/screen`: Phase 06 screen companion. Main-process window capture, a Swift accessibility helper, one-approved-step actions, and the overlay window. See [Phase 06](phases/phase-06.md).
 - `src/agent/scheduler`: future routines and scheduling, no scheduler in v0.1.
 - `skills/`: prompt guidance loaded by the Agent Core; begin with the coding skill when Codex integration lands.
 

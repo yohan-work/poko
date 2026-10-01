@@ -27,7 +27,7 @@ All privileged work stays in the Electron main process. The renderer only shows 
   - It reads that window's element tree, capped by depth and count, and returns `{ id, role, label, value, frame, secure, settable }`.
 
   JXA through System Events can't match a capture to a window reliably, so it isn't used.
-- **Screen agent** (`electron/agent/screen/`): runs the loop of snapshot, Codex turn, proposed action, approval, execute, and snapshot again.
+- **Screen agent** (`electron/screen/`): runs the loop of snapshot, Codex turn, proposed action, approval, execute, and snapshot again.
   - It uses one App Server thread per screen task, so later steps keep context.
   - The thread is meant to have no access to the user's files. Its working directory is an empty per-task temp folder, and it gets a permission profile that denies `:root` and grants read access only to that folder, plus whatever platform paths Codex strictly needs. Unlike Phase 02's profile, it does not grant all of `:minimal`, unless milestone 1 shows Codex can't run without it. The shell tool is disabled for screen tasks if the App Server supports it. Every command and file-change approval request is declined.
   - Codex can run read-only commands *without* asking, so containment must come from that profile, not from approvals. Milestone 1 must prove it with a real run of the **exact profile that ships**: a screen task told to read `~/.ssh` or `~/.codex/auth.json` must fail. Until that check passes, screen tasks don't ship.
