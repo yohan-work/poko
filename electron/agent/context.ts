@@ -26,7 +26,12 @@ export const CONTEXT_LIMITS = {
 
 function truncate(text: string, max: number): string {
   const trimmed = text.trim();
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
+  if (trimmed.length <= max) return trimmed;
+  let cut = trimmed.slice(0, max - 1);
+  // Never leave half of a surrogate pair: the provider rejects lone surrogates in JSON.
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+  return `${cut}…`;
 }
 
 /**

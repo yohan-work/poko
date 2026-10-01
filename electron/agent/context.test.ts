@@ -40,6 +40,16 @@ describe("limitContext", () => {
     ).toHaveLength(CONTEXT_LIMITS.memoryEntryChars);
   });
 
+  it("never splits an emoji at the cut", () => {
+    const max = CONTEXT_LIMITS.memoryEntryChars;
+    // The emoji's high surrogate lands exactly on the last kept code unit.
+    const content = `${"a".repeat(max - 2)}😀${"b".repeat(10)}`;
+    const [memory] = limitContext([{ type: "fact", content }], []).memories;
+    expect(memory.content.endsWith("…")).toBe(true);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(memory.content)).toBe(false);
+    expect(() => JSON.parse(JSON.stringify(memory.content))).not.toThrow();
+  });
+
   it("drops empty entries", () => {
     const result = limitContext([{ type: "fact", content: "   " }], [{ request: "q", answer: "" }]);
     expect(result).toEqual({ memories: [], history: [] });
