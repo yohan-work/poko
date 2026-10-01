@@ -30,7 +30,7 @@ export function ChatPanel() {
   const sendMessage = useAppStore((state) => state.sendMessage);
   const cancelTask = useAppStore((state) => state.cancelTask);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
-  const hasPendingApproval = useAppStore((state) => state.pendingApproval !== null);
+  const hasPendingApproval = useAppStore((state) => state.pendingApprovals.length > 0);
 
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

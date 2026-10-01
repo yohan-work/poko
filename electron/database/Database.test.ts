@@ -121,6 +121,17 @@ describe("PokoDatabase", () => {
       reason: null,
       canApprove: true,
     });
+    database.recordApprovalRequest({
+      taskId,
+      requestId: "2",
+      kind: "command",
+      summary: "pnpm lint",
+      cwd: "/tmp/example-project",
+      reason: null,
+      canApprove: true,
+    });
+    expect(database.resolveApproval(taskId, "2", "decline")).toBe(true);
+    expect(database.getBootstrapData().tasks[0]).toMatchObject({ status: "waiting_approval" });
     database.recordTaskEvent(taskId, "cancelled", "요청을 멈췄어.", "요청을 멈췄어.");
     expect(database.resolveApproval(taskId, "1", "approve")).toBe(false);
     expect(database.getBootstrapData().tasks[0]).toMatchObject({ status: "cancelled" });

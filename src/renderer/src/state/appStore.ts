@@ -45,7 +45,8 @@ interface AppState {
   activities: ActivityEntry[];
   tasks: SessionTask[];
   activeTaskId: string | null;
-  pendingApproval: PendingApproval | null;
+  /** Oldest first; Codex may ask again before the user answers. */
+  pendingApprovals: PendingApproval[];
   isRespondingToApproval: boolean;
   progressMessage: string | null;
   workspace: WorkspaceInfo | null;
@@ -139,7 +140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activities: [],
   tasks: [],
   activeTaskId: null,
-  pendingApproval: null,
+  pendingApprovals: [],
   isRespondingToApproval: false,
   progressMessage: null,
   workspace: null,
@@ -297,7 +298,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   respondToApproval: async (choice) => {
-    const approval = get().pendingApproval;
+    const approval = get().pendingApprovals[0];
     if (!approval || get().isRespondingToApproval) return;
     set({ isRespondingToApproval: true });
     let accepted = false;
@@ -307,20 +308,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       accepted = false;
     }
     useAppStore.setState((state) => {
-      if (state.pendingApproval?.requestId !== approval.requestId) {
+      const pendingApprovals = state.pendingApprovals.filter(
+        (item) => item.taskId !== approval.taskId || item.requestId !== approval.requestId,
+      );
+      if (pendingApprovals.length === state.pendingApprovals.length) {
         return { isRespondingToApproval: false };
       }
+      const stillWaiting = pendingApprovals.some((item) => item.taskId === approval.taskId);
       return {
         isRespondingToApproval: false,
-        pendingApproval: null,
-        characterState: "working",
+        pendingApprovals,
+        characterState: stillWaiting ? "approval" : "working",
         progressMessage: accepted
           ? choice === "approve"
             ? "확인한 작업을 한 번 진행하고 있어."
             : "요청을 거절하고 이어서 살펴보고 있어."
           : "이 확인 요청은 이미 끝났어.",
         tasks: state.tasks.map((task) =>
-          task.id === approval.taskId && task.status === "waiting_approval"
+          task.id === approval.taskId && task.status === "waiting_approval" && !stillWaiting
             ? { ...task, status: "running" as const }
             : task,
         ),
@@ -368,18 +373,19 @@ function applyTaskEvent(payload: TaskEventPayload): void {
             ? { ...task, status: "waiting_approval" as const }
             : task,
     );
-    const pendingApproval = waitingForUser
-      ? { ...event, taskId }
+    const pendingApprovals = waitingForUser
+      ? [...state.pendingApprovals, { ...event, taskId }]
       : status === null
-        ? state.pendingApproval
-        : null;
+        ? state.pendingApprovals
+        : state.pendingApprovals.filter((item) => item.taskId !== taskId);
 
     return {
-      characterState: eventCharacterState(event),
+      characterState:
+        status === null && pendingApprovals.length > 0 ? "approval" : eventCharacterState(event),
       errorMessage: event.type === "error" ? event.error : null,
       isSending: status === null,
       activeTaskId: status === null ? state.activeTaskId : null,
-      pendingApproval,
+      pendingApprovals,
       progressMessage:
         event.type === "output"
           ? "프로젝트 내용을 정리하고 있어."

@@ -3,10 +3,12 @@ import {
   type ChildProcessWithoutNullStreams,
   type SpawnOptions,
 } from "node:child_process";
+import { lstatSync, realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
 import type { AgentProvider } from "../../agent/AgentProvider";
+import { signalProcess } from "./CodexProvider";
 import {
   encodeRequestId,
   isRecord,
@@ -289,7 +291,7 @@ export class CodexAppServerProvider implements AgentProvider {
     let terminal = false;
     const terminate = (): void => {
       try {
-        connection.child.kill("SIGTERM");
+        signalProcess(connection.child, "SIGTERM");
       } catch {
         /* child may already be closed */
       }
@@ -410,6 +412,8 @@ export class CodexAppServerProvider implements AgentProvider {
           }
           break;
         } else if (message.method === "error") {
+          // Transient failures (e.g. a dropped model stream) are retried by Codex itself.
+          if (message.params.willRetry === true) continue;
           terminal = true;
           yield { type: "error", error: "Codex App Server에서 오류가 발생했어. 다시 시도해 줘." };
           break;
@@ -516,7 +520,7 @@ export class CodexAppServerProvider implements AgentProvider {
       } catch {
         /* the child is terminated next */
       }
-      session.connection.child.kill("SIGTERM");
+      signalProcess(session.connection.child, "SIGTERM");
     }, this.approvalTimeoutMs);
     timer.unref?.();
     session.pending.set(requestId, { wireId: message.id, timer });
@@ -626,8 +630,36 @@ export function getFileChanges(
   return changes;
 }
 
-function isInside(root: string, target: string): boolean {
+export function isInside(root: string, target: string): boolean {
   if (!isAbsolute(target)) return false;
-  const path = relative(resolve(root), resolve(target));
+  const realRoot = realPath(resolve(root));
+  const realTarget = realPath(resolve(target));
+  if (!realRoot || !realTarget) return false;
+  const path = relative(realRoot, realTarget);
   return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+}
+
+/**
+ * Resolves symlinks through the nearest existing ancestor so a path that does not exist yet
+ * cannot escape the workspace via a linked directory. Returns null for a dangling link.
+ */
+function realPath(path: string): string | null {
+  const missing: string[] = [];
+  let current = path;
+  for (;;) {
+    try {
+      return join(realpathSync.native(current), ...missing);
+    } catch {
+      try {
+        lstatSync(current);
+        return null;
+      } catch {
+        /* does not exist yet; check its parent */
+      }
+      const parent = dirname(current);
+      if (parent === current) return null;
+      missing.unshift(basename(current));
+      current = parent;
+    }
+  }
 }

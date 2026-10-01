@@ -1,10 +1,12 @@
 import { useAppStore } from "../../state/appStore";
 
 export function ApprovalCard() {
-  const approval = useAppStore((state) => state.pendingApproval);
+  const approval = useAppStore((state) => state.pendingApprovals[0]);
+  const waitingCount = useAppStore((state) => state.pendingApprovals.length);
   const isResponding = useAppStore((state) => state.isRespondingToApproval);
   const respondToApproval = useAppStore((state) => state.respondToApproval);
   if (!approval) return null;
+  const laterCount = waitingCount - 1;
 
   const isCommand = approval.kind === "command";
 
@@ -39,6 +41,9 @@ export function ApprovalCard() {
           <pre className="approval-card__code">{entry.change}</pre>
         </details>
       ))}
+      {laterCount > 0 && (
+        <p className="approval-card__queue">이 다음에 확인할 요청이 {laterCount}개 더 있어.</p>
+      )}
       <div className="approval-card__actions">
         <button
           className="approval-card__button"

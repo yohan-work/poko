@@ -584,6 +584,12 @@ textarea:focus-visible {
   margin-top: 6px;
 }
 
+.approval-card__queue {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
 .approval-card__actions {
   display: flex;
   justify-content: flex-end;

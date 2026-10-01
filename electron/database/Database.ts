@@ -362,7 +362,14 @@ export class PokoDatabase {
         .set({ decision: choice === "approve" ? "approved" : "denied", resolvedAt: timestamp })
         .where(eq(approvals.id, pending.id))
         .run();
-      tx.update(tasks).set({ status: "running" }).where(eq(tasks.id, taskId)).run();
+      const stillWaiting = tx
+        .select({ id: approvals.id })
+        .from(approvals)
+        .where(sql`${approvals.taskId} = ${taskId} AND ${approvals.decision} = 'pending'`)
+        .get();
+      if (!stillWaiting) {
+        tx.update(tasks).set({ status: "running" }).where(eq(tasks.id, taskId)).run();
+      }
       tx.insert(activities)
         .values({
           id: randomUUID(),

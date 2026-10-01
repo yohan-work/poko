@@ -1,9 +1,12 @@
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { CodexAppServerProvider, getFileChanges } from "./CodexAppServerProvider";
+import { CodexAppServerProvider, getFileChanges, isInside } from "./CodexAppServerProvider";
 
 type Message = Record<string, unknown> & { id?: unknown; method?: string };
 
@@ -12,6 +15,7 @@ class FakeAppServer extends EventEmitter {
   stdin = new PassThrough();
   stdout = new PassThrough();
   stderr = new PassThrough();
+  pid: number | undefined;
   received: Message[] = [];
   killed = false;
   private waiters: Array<{ match: (message: Message) => boolean; resolve: (m: Message) => void }> =
@@ -308,5 +312,68 @@ describe("CodexAppServerProvider", () => {
     for await (const event of provider.runTask({ ...task, mode: "write" })) events.push(event);
     expect(spawned).toBe(false);
     expect(events).toEqual([{ type: "error", error: expect.any(String) }]);
+  });
+
+  it("keeps going when Codex reports an error it will retry", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    server.send({
+      method: "error",
+      params: { error: { message: "stream lost" }, willRetry: true },
+    });
+    server.send({ method: "item/agentMessage/delta", params: { delta: "Recovered." } });
+    server.send({ method: "turn/completed", params: { turn: { status: "completed" } } });
+
+    expect(await stream.next("completed")).toEqual({ type: "completed", result: "Recovered." });
+    expect(stream.events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "stops the whole process group so approved commands do not outlive the task",
+    async () => {
+      const server = new FakeAppServer();
+      server.pid = 4242;
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+        server.kill();
+        return true;
+      });
+      try {
+        const provider = providerFor(server);
+        const controller = new AbortController();
+        const stream = consume(provider.runTask(task, { signal: controller.signal }));
+        await turnStarted(server);
+        controller.abort();
+        await stream.done;
+        expect(kill).toHaveBeenCalledWith(-4242, "SIGTERM");
+      } finally {
+        kill.mockRestore();
+      }
+    },
+  );
+
+  it("does not treat a path through a symlink as inside the workspace", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "poko-symlink-")));
+    try {
+      const workspace = join(base, "workspace");
+      const outside = join(base, "outside");
+      await mkdir(workspace);
+      await mkdir(outside);
+      await symlink(outside, join(workspace, "linked"));
+      await symlink(join(base, "missing"), join(workspace, "dangling"));
+
+      expect(isInside(workspace, join(workspace, "src", "new.ts"))).toBe(true);
+      expect(isInside(workspace, join(workspace, "linked", "config"))).toBe(false);
+      expect(isInside(workspace, join(workspace, "dangling"))).toBe(false);
+      expect(
+        getFileChanges(
+          { changes: [{ path: "linked/config", kind: { type: "add" }, diff: "" }] },
+          workspace,
+        ),
+      ).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
   });
 });
