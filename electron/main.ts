@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import {
   IPC_CHANNELS,
   type ApprovalChoice,
+  type ApprovalOutcome,
   type ApprovalRequest,
   type MemoryInput,
   type TaskEventPayload,
@@ -116,14 +117,18 @@ function registerIpcHandlers(): void {
       (request.choice !== "approve" && request.choice !== "decline")
     )
       throw new TypeError("Invalid approval response.");
-    const choice = request.choice as ApprovalChoice;
-    if (!agentCore.hasPendingApproval(request.taskId, request.requestId)) return false;
-    if (!database.resolveApproval(request.taskId, request.requestId, choice)) return false;
+    if (!agentCore.hasPendingApproval(request.taskId, request.requestId)) return "stale";
+    // Decide before recording, so the audit row always matches what Codex receives.
+    const unsafe =
+      request.choice === "approve" && !agentCore.canStillApprove(request.taskId, request.requestId);
+    const choice: ApprovalChoice = unsafe ? "decline" : (request.choice as ApprovalChoice);
+    if (!database.resolveApproval(request.taskId, request.requestId, choice)) return "stale";
     if (!agentCore.respondToApproval(request.taskId, request.requestId, choice)) {
-      console.error("The approval was recorded but Codex no longer has that request pending.");
-      return false;
+      console.error("The decision was recorded but could not be sent to Codex.");
+      return "stale";
     }
-    return true;
+    const outcome: ApprovalOutcome = unsafe ? "declined_unsafe" : "applied";
+    return outcome;
   });
 
   ipcMain.handle(IPC_CHANNELS.appBootstrap, (event) => {

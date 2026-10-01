@@ -3,6 +3,7 @@ import { applyDeltas, createDeltaBuffer, type StreamingAnswer } from "../lib/str
 import type {
   AgentEvent,
   ApprovalChoice,
+  ApprovalOutcome,
   AppView,
   CharacterState,
   TaskEventPayload,
@@ -322,12 +323,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     const approval = get().pendingApprovals[0];
     if (!approval || get().isRespondingToApproval) return;
     set({ isRespondingToApproval: true });
-    let accepted = false;
+    let outcome: ApprovalOutcome = "stale";
     try {
-      accepted = await window.poko.approvals.respond(approval.taskId, approval.requestId, choice);
+      outcome = await window.poko.approvals.respond(approval.taskId, approval.requestId, choice);
     } catch {
-      accepted = false;
+      outcome = "stale";
     }
+    const messages: Record<ApprovalOutcome, { progress: string; activity: string }> = {
+      applied:
+        choice === "approve"
+          ? {
+              progress: "확인한 작업을 한 번 진행하고 있어.",
+              activity: "확인했어. 이 요청을 한 번 진행할게.",
+            }
+          : { progress: "요청을 거절하고 이어서 살펴보고 있어.", activity: "요청을 거절했어." },
+      declined_unsafe: {
+        progress: "안전하지 않은 변경이라 거절하고 이어서 살펴보고 있어.",
+        activity: "지금은 안전하게 적용할 수 없는 변경이라 거절했어.",
+      },
+      stale: {
+        progress: "이 확인 요청은 이미 끝났어.",
+        activity: "확인 요청이 이미 끝나서 적용하지 않았어.",
+      },
+    };
+    const { progress, activity } = messages[outcome];
     useAppStore.setState((state) => {
       const pendingApprovals = state.pendingApprovals.filter(
         (item) => item.taskId !== approval.taskId || item.requestId !== approval.requestId,
@@ -340,25 +359,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         isRespondingToApproval: false,
         pendingApprovals,
         characterState: stillWaiting ? "approval" : "working",
-        progressMessage: accepted
-          ? choice === "approve"
-            ? "확인한 작업을 한 번 진행하고 있어."
-            : "요청을 거절하고 이어서 살펴보고 있어."
-          : "이 확인 요청은 이미 끝났어.",
+        progressMessage: progress,
         tasks: state.tasks.map((task) =>
           task.id === approval.taskId && task.status === "waiting_approval" && !stillWaiting
             ? { ...task, status: "running" as const }
             : task,
         ),
-        activities: addActivity(
-          state,
-          approval.taskId,
-          accepted
-            ? choice === "approve"
-              ? "확인했어. 이 요청을 한 번 진행할게."
-              : "요청을 거절했어."
-            : "확인 요청이 이미 끝나서 적용하지 않았어.",
-        ),
+        activities: addActivity(state, approval.taskId, activity),
       };
     });
   },

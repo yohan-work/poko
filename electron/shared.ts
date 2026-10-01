@@ -56,6 +56,11 @@ export type AgentEvent =
   | { type: "error"; error: string };
 
 export type ApprovalChoice = "approve" | "decline";
+/**
+ * What happened to an approval response: applied as chosen, turned into a decline because the
+ * change is no longer safe to approve, or ignored because the request is gone.
+ */
+export type ApprovalOutcome = "applied" | "declined_unsafe" | "stale";
 export interface ApprovalRequest {
   taskId: string;
   requestId: string;

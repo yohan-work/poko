@@ -572,4 +572,39 @@ describe("CodexAppServerProvider", () => {
     expect(provider.hasPendingApproval("task-1", '"a"')).toBe(true);
     server.kill();
   });
+
+  it("re-checks a pending file change before it is approved", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "poko-recheck-")));
+    try {
+      const server = new FakeAppServer();
+      const provider = providerFor(server);
+      const stream = consume(provider.runTask({ ...task, cwd: base }));
+      await turnStarted(server);
+      server.send({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "patch-1",
+            status: "inProgress",
+            changes: [{ path: "t/objects/x", kind: { type: "add" }, diff: "" }],
+          },
+        },
+      });
+      server.send({
+        id: "a",
+        method: "item/fileChange/requestApproval",
+        params: { threadId: "thread-1", turnId: "turn-1", itemId: "patch-1", startedAtMs: 1 },
+      });
+      await stream.next("approvalRequired");
+      expect(provider.canStillApprove("task-1", '"a"')).toBe(true);
+      // Meanwhile the folder gains HEAD and refs/ on disk.
+      await mkdir(join(base, "t", "refs"), { recursive: true });
+      await writeFile(join(base, "t", "HEAD"), "ref: refs/heads/main");
+      expect(provider.canStillApprove("task-1", '"a"')).toBe(false);
+      server.kill();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
 });

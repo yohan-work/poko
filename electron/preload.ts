@@ -3,6 +3,7 @@ import {
   IPC_CHANNELS,
   type AgentEvent,
   type ApprovalChoice,
+  type ApprovalOutcome,
   type TaskEventPayload,
   type TaskStartResponse,
   type WorkspaceInfo,
@@ -92,7 +93,11 @@ const pokoApi = {
     },
   },
   approvals: {
-    respond: (taskId: string, requestId: string, choice: ApprovalChoice): Promise<boolean> =>
+    respond: (
+      taskId: string,
+      requestId: string,
+      choice: ApprovalChoice,
+    ): Promise<ApprovalOutcome> =>
       ipcRenderer.invoke(IPC_CHANNELS.approvalRespond, { taskId, requestId, choice }),
   },
   memory: {

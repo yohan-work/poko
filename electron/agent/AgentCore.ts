@@ -53,6 +53,12 @@ export class AgentCore {
     return this.provider.respondToApproval?.(taskId, requestId, choice) ?? false;
   }
 
+  canStillApprove(taskId: string, requestId: string): boolean {
+    return (
+      this.activeTasks.has(taskId) && (this.provider.canStillApprove?.(taskId, requestId) ?? true)
+    );
+  }
+
   hasPendingApproval(taskId: string, requestId: string): boolean {
     return (
       this.activeTasks.has(taskId) &&

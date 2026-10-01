@@ -461,6 +461,21 @@ export class CodexAppServerProvider implements AgentProvider {
     return this.sessions.get(taskId)?.pending.has(requestId) ?? false;
   }
 
+  /**
+   * Re-checks a pending file change right before approval: the disk or other pending patches
+   * may have changed since it was offered.
+   */
+  canStillApprove(taskId: string, requestId: string): boolean {
+    const session = this.sessions.get(taskId);
+    const pending = session?.pending.get(requestId);
+    if (!session || !pending) return false;
+    if (pending.paths.length === 0) return true;
+    const others = [...session.pending.entries()]
+      .filter(([id]) => id !== requestId)
+      .flatMap(([, other]) => other.paths);
+    return !buildsRepository(session.task.cwd, [...pending.paths, ...others]);
+  }
+
   respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
     const session = this.sessions.get(taskId);
     const pending = session?.pending.get(requestId);
@@ -468,17 +483,12 @@ export class CodexAppServerProvider implements AgentProvider {
     // One-shot: the request is consumed even if writing the reply fails.
     session.pending.delete(requestId);
     clearTimeout(pending.timer);
-    // Re-check at approval time: the disk or other pending patches may have changed since.
-    const unsafe =
-      choice === "approve" &&
-      pending.paths.length > 0 &&
-      buildsRepository(session.task.cwd, [...pending.paths, ...pendingPaths(session)]);
     try {
       // Only the single-request decisions are ever sent; session-wide trust is never granted.
       session.connection.respond(pending.wireId, {
-        decision: choice === "approve" && !unsafe ? "accept" : "decline",
+        decision: choice === "approve" ? "accept" : "decline",
       });
-      return !unsafe;
+      return true;
     } catch {
       return false;
     }
