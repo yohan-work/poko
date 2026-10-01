@@ -58,43 +58,49 @@ function checkPaths(args: Token[]): string | null {
   return null;
 }
 
-const fileTool: Rule = checkPaths;
+/** The shell strips quotes, so a quoted `"--amend"` is still a flag to the program. */
+const isFlag = (arg: Token) => arg.text.startsWith("-") && arg.text.length > 1;
 
-const rm: Rule = (args) =>
-  args.some((arg) => /^-[a-z]*r/i.test(arg.text) || arg.text === "--recursive")
-    ? "recursive delete"
-    : checkPaths(args);
+interface ProgramSpec {
+  /** The only flags accepted, matched exactly; anything else fails closed. */
+  flags?: string[];
+  /** Also accept numeric flags such as `-20` (head, tail). */
+  numericFlags?: boolean;
+  /** The first argument must be one of these. */
+  subcommands?: string[];
+  maxPositional?: number;
+  /** Arguments after `--` go to the project's own script and aren't screened as flags. */
+  scriptArgsAfterDashes?: boolean;
+  /** Reject `NAME=value` arguments (make variables can replace its shell). */
+  noAssignments?: boolean;
+  /** The first argument must be a file, not inline code. */
+  needsFile?: boolean;
+}
 
-/** `node file.js` or `python3 script.py`; inline code (`-e`, `-c`, `-m`) is not offered. */
-const scriptRunner: Rule = (args) =>
-  args[0] && !args[0].text.startsWith("-") ? checkPaths(args) : "inline code";
-
-const JS_SUBCOMMANDS = new Set([
-  "run",
-  "test",
-  "start",
-  "build",
-  "lint",
-  "typecheck",
-  "format",
-  "check",
-]);
-/**
- * Project scripts only: installs, publishing, and package downloads are not offered. The
- * subcommand must come first, so an option value (`--filter test add`) can't pose as one.
- */
-const jsPackageManager: Rule = (args) => {
-  const subcommand = args[0]?.text;
-  if (!subcommand || !JS_SUBCOMMANDS.has(subcommand)) return "install or publish";
-  return checkPaths(args);
-};
-
-const subcommandOnly =
-  (allowed: string[]): Rule =>
-  (args) => {
-    const subcommand = args[0]?.text;
-    return subcommand && allowed.includes(subcommand) ? checkPaths(args) : "not offered";
+function specRule(spec: ProgramSpec): Rule {
+  return (args) => {
+    const dashes = spec.scriptArgsAfterDashes ? args.findIndex((arg) => arg.text === "--") : -1;
+    const own = dashes === -1 ? args : args.slice(0, dashes);
+    if (spec.subcommands && !spec.subcommands.includes(own[0]?.text ?? "")) return "not offered";
+    if (spec.needsFile && (!own[0] || isFlag(own[0]))) return "inline code";
+    for (const arg of own) {
+      if (!isFlag(arg)) continue;
+      if (spec.numericFlags && /^-\d+$/.test(arg.text)) continue;
+      if (!spec.flags?.includes(arg.text)) return "option not offered";
+    }
+    const positional = own.filter((arg) => !isFlag(arg));
+    if (spec.maxPositional !== undefined && positional.length > spec.maxPositional)
+      return "not offered";
+    if (spec.noAssignments && positional.some((arg) => arg.text.includes("=")))
+      return "not offered";
+    return checkPaths(args);
   };
+}
+
+const JS_SCRIPT: ProgramSpec = {
+  subcommands: ["run", "test", "start", "build", "lint", "typecheck", "format", "check"],
+  scriptArgsAfterDashes: true,
+};
 
 /**
  * git subcommands Poko may offer, each with the only flags it accepts. Flags are matched
@@ -129,13 +135,19 @@ const GIT_RULES: Record<string, { flags: string[]; maxPositional?: number; needs
     tag: { flags: ["-a", "-m", "--message", "-l", "--list"], maxPositional: 1 },
   };
 const STASH_SUBCOMMANDS = new Set(["push", "list", "show"]);
+/** git subcommands that run repository hooks. */
+const GIT_HOOK_SUBCOMMANDS = new Set(["commit", "switch", "checkout"]);
+
+function gitSubcommand(args: Token[]): string | undefined {
+  return args.find((arg) => !isFlag(arg))?.text;
+}
 
 const git: Rule = (args) => {
   const deny = "git remote or discard";
   let index = 0;
   // Only output options are allowed before the subcommand: `-C` could point outside the
   // workspace and inline config could run programs.
-  while (index < args.length && args[index].text.startsWith("-")) {
+  while (index < args.length && isFlag(args[index])) {
     const text = args[index].text;
     if (text !== "--no-pager" && text !== "--no-optional-locks") return deny;
     index += 1;
@@ -144,66 +156,71 @@ const git: Rule = (args) => {
   const rule = subcommand && Object.hasOwn(GIT_RULES, subcommand) ? GIT_RULES[subcommand] : null;
   if (!rule) return deny;
   const rest = args.slice(index + 1);
-  const flags = rest.filter((arg) => !arg.quoted && arg.text.startsWith("-"));
-  // `-m` and `--message` take the next word as their value.
+  // The word after `-m` or `--message` is the message, even if it starts with "-".
   const values = new Set<Token>();
   rest.forEach((arg, position) => {
     if (["-m", "--message", "-am"].includes(arg.text) && rest[position + 1])
       values.add(rest[position + 1]);
   });
-  const positionals = rest.filter(
-    (arg) => !values.has(arg) && (arg.quoted || !arg.text.startsWith("-")),
-  );
+  const flags = rest.filter((arg) => !values.has(arg) && isFlag(arg));
+  const positionals = rest.filter((arg) => !values.has(arg) && !isFlag(arg));
   if (flags.some((flag) => !rule.flags.includes(flag.text))) return deny;
   if (rule.needsFlag && !flags.some((flag) => rule.needsFlag?.includes(flag.text))) return deny;
   if (rule.maxPositional !== undefined && positionals.length > rule.maxPositional) return deny;
   if (subcommand === "stash" && positionals[0] && !STASH_SUBCOMMANDS.has(positionals[0].text))
     return deny;
-  return checkPaths(rest);
+  return checkPaths(rest.filter((arg) => !values.has(arg)));
 };
 
+/** `rm` of files only: any flag other than `-f` (recursive, interactive tricks) is declined. */
+const rm: Rule = (args) => {
+  if (args.some((arg) => isFlag(arg) && arg.text !== "-f")) return "recursive delete";
+  return checkPaths(args);
+};
+
+/** Every allowed program, each with the only flags it accepts. */
 const PROGRAMS: Record<string, Rule> = {
   // Files and text inside the workspace.
-  printf: fileTool,
-  echo: fileTool,
-  cat: fileTool,
-  ls: fileTool,
-  mkdir: fileTool,
-  touch: fileTool,
-  cp: fileTool,
-  mv: fileTool,
-  head: fileTool,
-  tail: fileTool,
-  wc: fileTool,
-  sort: fileTool,
-  uniq: fileTool,
-  diff: fileTool,
-  cmp: fileTool,
-  grep: fileTool,
-  pwd: fileTool,
-  true: fileTool,
-  false: fileTool,
-  test: fileTool,
+  printf: specRule({}),
+  echo: specRule({ flags: ["-n", "-e"] }),
+  cat: specRule({ flags: ["-n"] }),
+  ls: specRule({ flags: ["-l", "-a", "-la", "-al", "-1", "-R", "-lh"] }),
+  mkdir: specRule({ flags: ["-p"] }),
+  touch: specRule({}),
+  cp: specRule({ flags: ["-r", "-R"] }),
+  mv: specRule({}),
+  head: specRule({ flags: ["-n"], numericFlags: true }),
+  tail: specRule({ flags: ["-n"], numericFlags: true }),
+  wc: specRule({ flags: ["-l", "-w", "-c"] }),
+  sort: specRule({ flags: ["-r", "-n", "-u"] }),
+  uniq: specRule({ flags: ["-c", "-d", "-u"], maxPositional: 1 }),
+  diff: specRule({ flags: ["-u", "-r", "-q"] }),
+  cmp: specRule({}),
+  grep: specRule({ flags: ["-n", "-i", "-r", "-l", "-c", "-v", "-E", "-F", "-w"] }),
+  pwd: specRule({}),
+  true: specRule({}),
+  false: specRule({}),
   rm,
-  // Running and checking the project.
-  node: scriptRunner,
-  python: scriptRunner,
-  python3: scriptRunner,
-  npm: jsPackageManager,
-  pnpm: jsPackageManager,
-  yarn: jsPackageManager,
-  bun: jsPackageManager,
-  tsc: fileTool,
-  eslint: fileTool,
-  prettier: fileTool,
-  biome: fileTool,
-  vitest: fileTool,
-  jest: fileTool,
-  mocha: fileTool,
-  pytest: fileTool,
-  make: fileTool,
-  go: subcommandOnly(["test", "build", "vet", "fmt"]),
-  cargo: subcommandOnly(["test", "build", "check", "fmt", "clippy"]),
+  // Running and checking the project. Their options can load plugins or run programs, so
+  // only a few output switches are accepted.
+  node: specRule({ needsFile: true }),
+  python: specRule({ needsFile: true }),
+  python3: specRule({ needsFile: true }),
+  npm: specRule(JS_SCRIPT),
+  pnpm: specRule(JS_SCRIPT),
+  yarn: specRule(JS_SCRIPT),
+  bun: specRule(JS_SCRIPT),
+  tsc: specRule({ flags: ["--noEmit"] }),
+  eslint: specRule({ flags: ["--fix"] }),
+  prettier: specRule({ flags: ["--check", "--write"] }),
+  biome: specRule({ subcommands: ["check", "lint", "format"], flags: ["--write"] }),
+  vitest: specRule({ flags: ["--run"] }),
+  jest: specRule({}),
+  mocha: specRule({}),
+  pytest: specRule({ flags: ["-q", "-x", "-v"] }),
+  make: specRule({ noAssignments: true }),
+  go: specRule({ subcommands: ["test", "build", "vet", "fmt"] }),
+  cargo: specRule({ subcommands: ["test", "build", "check", "fmt", "clippy"] }),
   git,
 };
 
@@ -294,7 +311,8 @@ const WRITERS = new Set(["cp", "mv", "touch"]);
 
 interface SegmentResult {
   reason: string | null;
-  program?: string;
+  /** Runs project code, configuration, or hooks. */
+  runs?: boolean;
   writes: boolean;
 }
 
@@ -330,9 +348,10 @@ function checkSegment(tokens: Token[]): SegmentResult {
   // Program names are bare words: no paths and no assignments.
   if (/[/=]/.test(program.text)) return { reason: "not offered", writes };
   const rule = Object.hasOwn(PROGRAMS, program.text) ? PROGRAMS[program.text] : undefined;
+  const runsHooks = program.text === "git" && GIT_HOOK_SUBCOMMANDS.has(gitSubcommand(args) ?? "");
   return {
     reason: rule ? rule(args) : "not offered",
-    program: program.text,
+    runs: RUNNERS.has(program.text) || runsHooks,
     writes: writes || WRITERS.has(program.text),
   };
 }
@@ -347,8 +366,7 @@ function checkLine(line: string): string | null {
   // Writing a file and running project code in one command would let any code through the
   // allowlist (`printf … > a.js && node a.js`), so that pairing is declined.
   // A runner saving its own output (`pnpm test > out.txt`) is fine on its own.
-  const isRunner = (result: SegmentResult) =>
-    Boolean(result.program && RUNNERS.has(result.program));
+  const isRunner = (result: SegmentResult) => Boolean(result.runs);
   const runners = results.filter(isRunner);
   const otherWrites = results.some((result) => result.writes && !isRunner(result));
   const runnerWrites = runners.some((result) => result.writes);

@@ -48,6 +48,8 @@ The planned change replaces only the Codex provider transport with a per-task `c
   - Every segment must start with an allowed program, given as a bare name: file and text tools; project scripts through npm, pnpm, yarn, or bun `run/test/build/lint/…`; test runners; `node`/`python` with a script file; `go`/`cargo` build and test; and local git subcommands without inline config, external-program options, or discard flags.
   - Path arguments, option values (including attached short options such as `-o/tmp/x`), and redirect targets must stay relative, with no leading `/` or `~` and no `..`. `/dev/null` is the one exception. Nothing under `.git` is touched, because git config and hooks run programs.
   - The wrapper shell must be a system shell (a bare name, `/bin/…`, or `/usr/bin/…`). Package managers must name their subcommand first. git takes no `-C` or inline config.
+  - Every allowed program accepts only an exact list of flags. Quoted flags count as flags, because the shell strips the quotes. Runners such as `node`, `go`, `cargo`, and `make` take essentially no options, because options can load plugins or run programs (`go test -exec`, `make --eval`, `cargo --config`). npm, pnpm, yarn, and bun take none before `--`.
+  - git commands that run hooks (`commit`, `switch`, `checkout`) count as running project code for the write-and-run rule.
   - git subcommands each have an exact flag allowlist, so bundled or abbreviated flags fail closed. `checkout` is offered only with `-b`, and branches are switched with `switch`.
   - A command that writes a file and runs project code in the same line is declined (`printf … > a.js && node a.js`). A runner saving its own output is fine.
   - The `.git` check is case-insensitive.

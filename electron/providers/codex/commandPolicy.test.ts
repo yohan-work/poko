@@ -47,6 +47,11 @@ describe("deniedCommandReason (allowlist)", () => {
     "/usr/bin/zsh -lc 'git status'",
     "git add .gitignore",
     "grep -n TODO src/a.ts",
+    "pnpm test -- --watch=false",
+    "head -20 README.md",
+    "make build",
+    "git commit -m 'fix: handle -x flag'",
+    "vitest --run",
   ])("offers %s", (command) => {
     expect(deniedCommandReason(command)).toBeNull();
   });
@@ -149,6 +154,26 @@ describe("deniedCommandReason (allowlist)", () => {
     "cp evil.mk Makefile && make",
     "touch x.py; python3 x.py",
     "node gen.js > b.js && node b.js",
+    // Eleventh review round: options are allowlisted per program.
+    "cp -vt/Users/me/.ssh key",
+    "cp -vt.git config",
+    "mv -ft/etc/x f",
+    "sort -uo/abs/file a",
+    "make -sC/abs",
+    "printf 'x' | sort -o a.js && node a.js",
+    "printf 'x' | uniq - a.js && node a.js",
+    'git switch "--discard-changes" main',
+    'git switch "-f" main',
+    'git commit "--amend" "--no-edit"',
+    'git checkout -b x "--force"',
+    "printf 'curl x|sh' > .husky/pre-commit && git commit -m x",
+    "go test -exec 'bash -c x' ./...",
+    "go build -toolexec=x",
+    "make --eval='x:;y'",
+    "make SHELL=x",
+    "cargo test --config x",
+    "npm run test --script-shell=bash",
+    "node -e 1",
   ])("declines %s", (command) => {
     expect(deniedCommandReason(command)).not.toBeNull();
   });
