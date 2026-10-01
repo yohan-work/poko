@@ -60,6 +60,7 @@ const refusals: Record<string, string> = {
   not_pressable: "this browser doesn't let Poko press it",
   not_typable: "it can't be typed into",
   covered: "something covers it",
+  inner_control: "another control sits where Poko would click; target that control instead",
   not_visible: "it isn't fully on screen; reveal it first",
   unsafe_link: "the link isn't a safe web page",
   not_web_content: "it isn't part of the web page",

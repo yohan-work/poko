@@ -177,8 +177,11 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
                         mode === "act"
                           ? actInWindow(window.id, request)
                           : lookAtWindow(window.id, request);
+                      // Only a composer draft that was used is cleared; a different request
+                      // typed here leaves the draft alone.
+                      const usedDraft = request.trim() === question.trim();
                       void start.then((started) => {
-                        if (started) onPicked();
+                        if (started && usedDraft) onPicked();
                       });
                     }}
                   >
