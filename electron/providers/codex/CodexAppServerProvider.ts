@@ -626,10 +626,10 @@ export function getFileChanges(
     const kind = readString(value.kind.type);
     if (!kind || !["add", "update", "delete"].includes(kind)) return null;
     if (!isInside(root, resolve(root, value.path))) return null;
-    // Git config and hooks run programs, so a patch never touches .git (any case, for macOS).
-    if (touchesGitDirectory(value.path)) return null;
+    // Git config and hooks run programs, so a patch never touches .git.
+    if (touchesGitDirectory(root, value.path)) return null;
     const movePath = value.kind.move_path;
-    if (typeof movePath === "string" && touchesGitDirectory(movePath)) return null;
+    if (typeof movePath === "string" && touchesGitDirectory(root, movePath)) return null;
     if (
       movePath != null &&
       (typeof movePath !== "string" || !isInside(root, resolve(root, movePath)))
@@ -640,8 +640,22 @@ export function getFileChanges(
   return changes;
 }
 
-function touchesGitDirectory(path: string): boolean {
-  return path.split(/[\\/]/).some((part) => part.toLowerCase() === ".git");
+/**
+ * Whether a path reaches the workspace's `.git` directory. The check runs on the real path
+ * (after symlinks), case-insensitively for macOS, and treats Windows aliases (`GIT~1`,
+ * `.git.`) as `.git`.
+ */
+export function touchesGitDirectory(root: string, path: string): boolean {
+  const realRoot = realPath(resolve(root));
+  const realTarget = realPath(resolve(root, path));
+  if (!realRoot || !realTarget) return true;
+  const isGit = (part: string) => {
+    const name = part.toLowerCase().replace(/[. ]+$/, "");
+    return name === ".git" || /^git~\d+$/.test(name);
+  };
+  return [path, relative(realRoot, realTarget)].some((candidate) =>
+    candidate.split(/[\\/]/).some(isGit),
+  );
 }
 
 export function isInside(root: string, target: string): boolean {

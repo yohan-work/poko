@@ -6,7 +6,12 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { CodexAppServerProvider, getFileChanges, isInside } from "./CodexAppServerProvider";
+import {
+  CodexAppServerProvider,
+  getFileChanges,
+  isInside,
+  touchesGitDirectory,
+} from "./CodexAppServerProvider";
 
 type Message = Record<string, unknown> & { id?: unknown; method?: string };
 
@@ -427,6 +432,19 @@ describe("CodexAppServerProvider", () => {
       expect(isInside(workspace, join(workspace, "src", "new.ts"))).toBe(true);
       expect(isInside(workspace, join(workspace, "linked", "config"))).toBe(false);
       expect(isInside(workspace, join(workspace, "dangling"))).toBe(false);
+      // A symlink into .git is still .git.
+      await mkdir(join(workspace, ".git", "hooks"), { recursive: true });
+      await symlink(join(workspace, ".git", "hooks"), join(workspace, "hooks"));
+      expect(touchesGitDirectory(workspace, "hooks/pre-commit")).toBe(true);
+      expect(touchesGitDirectory(workspace, "GIT~1/config")).toBe(true);
+      expect(touchesGitDirectory(workspace, ".git./config")).toBe(true);
+      expect(touchesGitDirectory(workspace, "src/app.ts")).toBe(false);
+      expect(
+        getFileChanges(
+          { changes: [{ path: "hooks/pre-commit", kind: { type: "add" }, diff: "" }] },
+          workspace,
+        ),
+      ).toBeNull();
       expect(
         getFileChanges(
           { changes: [{ path: "linked/config", kind: { type: "add" }, diff: "" }] },
