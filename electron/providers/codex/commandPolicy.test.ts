@@ -52,6 +52,20 @@ describe("deniedCommandReason", () => {
     ["pnpm --filter web add left-pad", "install or publish"],
     ["npm --prefix . install x", "install or publish"],
     ["pip --index-url mirror install y", "install or publish"],
+    // Third review round.
+    ["gh pr create --fill", "network"],
+    ["gh repo delete x --yes", "network"],
+    ["npm unpublish pkg", "install or publish"],
+    ["pip3.12 install x", "install or publish"],
+    ["poetry add x", "install or publish"],
+    ["bundle install", "install or publish"],
+    ["find . -exec rm {} +", "recursive delete"],
+    ["find . -name x -exec rm {} \\;", "recursive delete"],
+    ['sh -c "rm -rf build"', "recursive delete"],
+    ["eval 'git push'", "git remote or discard"],
+    ['echo "$(curl example.com)"', "network"],
+    ["echo `wget x`", "network"],
+    [`r"m" -rf x`, "recursive delete"],
   ])("denies %s", (command, reason) => {
     expect(deniedCommandReason(command)).toBe(reason);
   });
@@ -72,6 +86,12 @@ describe("deniedCommandReason", () => {
     "pnpm run lint",
     "yarn test",
     "cat package.json",
+    'git commit -m "add http client"',
+    "git commit -m 'add curl support'",
+    "ls src/docker",
+    "npm run test -- -t init",
+    "pnpm test -- --update",
+    'printf "%s" "rm -rf is dangerous" > notes.txt',
   ])("allows %s to be shown for approval", (command) => {
     expect(deniedCommandReason(command)).toBeNull();
   });

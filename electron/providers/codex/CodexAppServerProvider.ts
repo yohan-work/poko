@@ -559,7 +559,8 @@ export class CodexAppServerProvider implements AgentProvider {
       params.networkApprovalContext != null || params.proposedNetworkPolicyAmendments != null;
     // An approved command runs outside the sandbox, so commands Phase 04 keeps unavailable
     // (network, installs, deploys, remote or destructive git, sudo, recursive delete) are never offered.
-    const denied = command ? deniedCommandReason(command) : null;
+    // Length first: the screen is linear, but there is no reason to scan an oversized command.
+    const denied = command && command.length <= 8_000 ? deniedCommandReason(command) : null;
     const canApprove =
       kind === "command" &&
       Boolean(command && command.length <= 8_000) &&
