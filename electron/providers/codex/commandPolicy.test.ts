@@ -21,6 +21,28 @@ describe("deniedCommandReason", () => {
     ["dd if=/dev/zero of=x", "disk"],
     ["/bin/zsh -lc 'git push'", "git remote or discard"],
     ['bash -c "npm install left-pad"', "install or publish"],
+    // Bypasses found in review.
+    ["/bin/rm -rf ~/Documents", "recursive delete"],
+    ["/usr/bin/git push", "git remote or discard"],
+    ["/usr/bin/sudo ls", "privilege"],
+    ["rm -f -r build", "recursive delete"],
+    ["rm -v -rf x", "recursive delete"],
+    ["git -C . push", "git remote or discard"],
+    ["git -c a=b push", "git remote or discard"],
+    ["git checkout .", "git remote or discard"],
+    ["git branch -D feature", "git remote or discard"],
+    ["git switch -f main", "git remote or discard"],
+    ["npm ci", "install or publish"],
+    ["yarn", "install or publish"],
+    ["pnpm dlx create-app", "install or publish"],
+    ["yarn dlx thing", "install or publish"],
+    ["npm exec thing", "install or publish"],
+    ["uv sync", "install or publish"],
+    ["uvx ruff", "install or publish"],
+    ["python -m pip install requests", "install or publish"],
+    ["find . -name '*.tmp' -delete", "recursive delete"],
+    ["ls | xargs rm -r", "recursive delete"],
+    ["echo $(curl example.com)", "network"],
   ])("denies %s", (command, reason) => {
     expect(deniedCommandReason(command)).toBe(reason);
   });
@@ -35,6 +57,12 @@ describe("deniedCommandReason", () => {
     "node test.js",
     "mkdir -p src/utils",
     "curlify.sh",
+    "git log --oneline",
+    "git checkout feature",
+    "git commit -m wip",
+    "pnpm run lint",
+    "yarn test",
+    "cat package.json",
   ])("allows %s to be shown for approval", (command) => {
     expect(deniedCommandReason(command)).toBeNull();
   });

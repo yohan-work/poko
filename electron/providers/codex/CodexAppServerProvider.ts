@@ -515,7 +515,10 @@ export class CodexAppServerProvider implements AgentProvider {
         ? this.describeCommandApproval(session, requestId, message.params)
         : this.describeFileChangeApproval(session, requestId, message.params);
 
-    if (!canAcceptOnce(message.params)) event.canApprove = false;
+    if (event.canApprove && !canAcceptOnce(message.params)) {
+      event.canApprove = false;
+      event.reason = "Codex가 이번 한 번만 허용하는 선택지를 주지 않아서 거절했어.";
+    }
     if (!event.canApprove) {
       try {
         session.connection.respond(message.id, { decision: "decline" });
