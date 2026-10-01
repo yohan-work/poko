@@ -9,6 +9,7 @@ export const IPC_CHANNELS = {
   memorySearch: "memory:search",
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
+  approvalRespond: "approval:respond",
 } as const;
 
 export type CharacterState =
@@ -41,7 +42,29 @@ export type AgentEvent =
   | { type: "output"; content: string }
   | { type: "completed"; result: string }
   | { type: "cancelled" }
+  | {
+      type: "approvalRequired";
+      requestId: string;
+      kind: "command" | "file_change";
+      summary: string;
+      cwd: string | null;
+      reason: string | null;
+      diff?: Array<{ path: string; change: string }>;
+      canApprove: boolean;
+    }
   | { type: "error"; error: string };
+
+export type ApprovalChoice = "approve" | "decline";
+export interface ApprovalRequest {
+  taskId: string;
+  requestId: string;
+  kind: "command" | "file_change";
+  summary: string;
+  cwd: string | null;
+  reason: string | null;
+  diff?: Array<{ path: string; change: string }>;
+  canApprove: boolean;
+}
 
 export interface TaskEventPayload {
   taskId: string;

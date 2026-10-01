@@ -2,6 +2,7 @@ import { useAppStore } from "../../state/appStore";
 
 const statusLabel = {
   running: "살펴보는 중",
+  waiting_approval: "확인 기다리는 중",
   completed: "완료",
   failed: "멈춤",
   cancelled: "취소됨",

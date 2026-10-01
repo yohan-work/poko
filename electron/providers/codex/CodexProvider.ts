@@ -287,7 +287,8 @@ export class CodexProvider implements AgentProvider {
   }
 }
 
-function signalProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+/** Signals the whole detached process group so commands Codex started stop with it. */
+export function signalProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
   if (process.platform !== "win32" && child.pid) {
     try {
       process.kill(-child.pid, signal);

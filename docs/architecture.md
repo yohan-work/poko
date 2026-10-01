@@ -64,7 +64,7 @@ Requests use a typed request/response API; long-running task updates use a typed
 | `app.bootstrap` | renderer → main | 03 | Returns workspace, default conversation messages, tasks, and Activity |
 | `memory.list/search/save/delete` | renderer → main | 03 | Explicit local memory CRUD and literal text search |
 
-Cancellation and approval responses will be added as explicit operations when those flows are implemented. Do not create a generic IPC escape hatch.
+Cancellation and approval responses are explicit operations: `task:cancel` takes a task id, and `approval:respond` takes only `{taskId, requestId, choice}`. Do not create a generic IPC escape hatch.
 
 ## Agent Core and provider contracts
 
@@ -115,7 +115,7 @@ The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and t
 
 Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:minimal` platform paths and the selected `:workspace_roots` as read-only, and disable command network access. The task ignores user-level Codex config so an existing broad sandbox setting cannot replace Poko's policy; Codex authentication remains in the user's Codex home. Unsupported profile configuration fails closed, with no broad read-only fallback. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. Phase 03 persists task, conversation, Activity, workspace, and explicit memory records.
 
-`codex exec --json` is intentionally non-interactive and is not the planned approval transport. Phase 04 proposes moving the Codex provider to the Codex App Server's stdio JSON-RPC interface so the main process can receive and answer one-shot command/file approval requests. This is a provider-level transport change; it does not replace Agent Core or the Poko event model. Keep all writes disabled until the actual pause-before-action semantics and sandbox enforcement have been verified on supported operating systems. See [the Phase 04 plan](phases/phase-04.md).
+`codex exec --json` is intentionally non-interactive and is not the approval transport. In Phase 04 the main process runs `CodexAppServerProvider`, a per-task `codex app-server --listen stdio://` child speaking JSONL JSON-RPC, so it can receive and answer one-shot command/file approval requests. Agent Core and the Poko event model are unchanged; approval requests become `approvalRequired` events. Requests that are malformed, outside the workspace, broaden network or exec policy, or use an unsupported method are declined or stop the task. Tasks still run in read-only mode; writes stay disabled until pause-before-action semantics and sandbox enforcement are verified on supported operating systems. See [the Phase 04 plan](phases/phase-04.md).
 
 ## Workspace and permission boundary
 

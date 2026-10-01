@@ -517,6 +517,117 @@ textarea:focus-visible {
   gap: 10px;
 }
 
+.approval-card {
+  display: grid;
+  width: min(100%, 520px);
+  align-self: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--color-accent-soft);
+  border-radius: 14px 14px 14px 5px;
+  background: var(--color-paper-raised);
+  box-shadow: var(--shadow-soft);
+  gap: 9px;
+  overflow-wrap: anywhere;
+}
+
+.approval-card .message__sender {
+  margin-bottom: 0;
+}
+
+.approval-card__title,
+.approval-card__summary {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.approval-card__title {
+  font-weight: 650;
+}
+
+.approval-card__code {
+  max-height: 220px;
+  margin: 0;
+  padding: 9px 11px;
+  overflow: auto;
+  border-radius: var(--radius-control);
+  background: var(--color-paper-soft);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.approval-card__details {
+  display: grid;
+  margin: 0;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
+.approval-card__details dt {
+  font-weight: 600;
+}
+
+.approval-card__details dd {
+  margin: 0;
+}
+
+.approval-card__diff summary {
+  cursor: pointer;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
+.approval-card__diff .approval-card__code {
+  margin-top: 6px;
+}
+
+.approval-card__queue {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
+.approval-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.approval-card__button {
+  padding: 8px 14px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-pill);
+  color: var(--color-ink);
+  background: var(--color-paper-raised);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approval-card__button:hover:not(:disabled) {
+  background: var(--color-paper-soft);
+}
+
+.approval-card__button--primary {
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
+  background: var(--color-accent-soft);
+}
+
+.approval-card__button--primary:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-hover);
+}
+
+.approval-card__button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .message__progress {
   color: var(--color-ink-soft);
   font-size: 0.82rem;
@@ -1012,6 +1123,10 @@ textarea:focus-visible {
   background: var(--color-accent-soft);
   font-size: 0.68rem;
   text-align: center;
+}
+
+.task-list__status--waiting_approval {
+  color: var(--color-accent);
 }
 
 .task-list__status--completed {

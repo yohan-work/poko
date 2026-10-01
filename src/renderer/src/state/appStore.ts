@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   AgentEvent,
+  ApprovalChoice,
   AppView,
   CharacterState,
   TaskEventPayload,
@@ -23,10 +24,14 @@ export interface ActivityEntry {
   createdAt: string;
 }
 
+export type PendingApproval = Extract<AgentEvent, { type: "approvalRequired" }> & {
+  taskId: string;
+};
+
 export interface SessionTask {
   id: string;
   title: string;
-  status: "running" | "completed" | "failed" | "cancelled";
+  status: "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   createdAt: string;
   completedAt?: string;
 }
@@ -40,6 +45,9 @@ interface AppState {
   activities: ActivityEntry[];
   tasks: SessionTask[];
   activeTaskId: string | null;
+  /** Oldest first; Codex may ask again before the user answers. */
+  pendingApprovals: PendingApproval[];
+  isRespondingToApproval: boolean;
   progressMessage: string | null;
   workspace: WorkspaceInfo | null;
   errorMessage: string | null;
@@ -53,6 +61,7 @@ interface AppState {
   selectWorkspace: () => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   cancelTask: () => Promise<void>;
+  respondToApproval: (choice: ApprovalChoice) => Promise<void>;
   setActiveView: (view: AppView) => void;
   clearError: () => void;
 }
@@ -80,6 +89,10 @@ function activityText(event: AgentEvent): string | null {
       return "요청을 멈췄어.";
     case "error":
       return "작업을 마치지 못했어.";
+    case "approvalRequired":
+      return event.canApprove
+        ? "포코가 다음 작업의 확인을 기다리고 있어."
+        : "안전한 확인 정보가 없어 요청을 거절했어.";
     case "output":
       return null;
   }
@@ -99,6 +112,8 @@ function eventCharacterState(event: AgentEvent): CharacterState {
       return "idle";
     case "error":
       return "error";
+    case "approvalRequired":
+      return event.canApprove ? "approval" : "working";
   }
 }
 
@@ -125,6 +140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   activities: [],
   tasks: [],
   activeTaskId: null,
+  pendingApprovals: [],
+  isRespondingToApproval: false,
   progressMessage: null,
   workspace: null,
   errorMessage: null,
@@ -141,10 +158,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         tasks: data.tasks.map((task) => ({
           id: task.id,
           title: task.title,
-          status:
-            task.status === "queued" || task.status === "waiting_approval"
-              ? "running"
-              : task.status,
+          // Startup recovery already closed interrupted tasks; anything else is treated as running.
+          status: task.status === "queued" ? "running" : task.status,
           createdAt: task.createdAt,
           completedAt: task.completedAt ?? undefined,
         })),
@@ -282,6 +297,51 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  respondToApproval: async (choice) => {
+    const approval = get().pendingApprovals[0];
+    if (!approval || get().isRespondingToApproval) return;
+    set({ isRespondingToApproval: true });
+    let accepted = false;
+    try {
+      accepted = await window.poko.approvals.respond(approval.taskId, approval.requestId, choice);
+    } catch {
+      accepted = false;
+    }
+    useAppStore.setState((state) => {
+      const pendingApprovals = state.pendingApprovals.filter(
+        (item) => item.taskId !== approval.taskId || item.requestId !== approval.requestId,
+      );
+      if (pendingApprovals.length === state.pendingApprovals.length) {
+        return { isRespondingToApproval: false };
+      }
+      const stillWaiting = pendingApprovals.some((item) => item.taskId === approval.taskId);
+      return {
+        isRespondingToApproval: false,
+        pendingApprovals,
+        characterState: stillWaiting ? "approval" : "working",
+        progressMessage: accepted
+          ? choice === "approve"
+            ? "확인한 작업을 한 번 진행하고 있어."
+            : "요청을 거절하고 이어서 살펴보고 있어."
+          : "이 확인 요청은 이미 끝났어.",
+        tasks: state.tasks.map((task) =>
+          task.id === approval.taskId && task.status === "waiting_approval" && !stillWaiting
+            ? { ...task, status: "running" as const }
+            : task,
+        ),
+        activities: addActivity(
+          state,
+          approval.taskId,
+          accepted
+            ? choice === "approve"
+              ? "확인했어. 이 요청을 한 번 진행할게."
+              : "요청을 거절했어."
+            : "확인 요청이 이미 끝나서 적용하지 않았어.",
+        ),
+      };
+    });
+  },
+
   setActiveView: (activeView) => set({ activeView }),
   clearError: () => set({ errorMessage: null, workspaceError: null }),
 }));
@@ -303,15 +363,29 @@ function applyTaskEvent(payload: TaskEventPayload): void {
             ]
           : state.messages;
 
+    const waitingForUser = event.type === "approvalRequired" && event.canApprove;
     const tasks = state.tasks.map((task) =>
-      task.id === taskId && status ? { ...task, status, completedAt: timestamp } : task,
+      task.id !== taskId
+        ? task
+        : status
+          ? { ...task, status, completedAt: timestamp }
+          : waitingForUser
+            ? { ...task, status: "waiting_approval" as const }
+            : task,
     );
+    const pendingApprovals = waitingForUser
+      ? [...state.pendingApprovals, { ...event, taskId }]
+      : status === null
+        ? state.pendingApprovals
+        : state.pendingApprovals.filter((item) => item.taskId !== taskId);
 
     return {
-      characterState: eventCharacterState(event),
+      characterState:
+        status === null && pendingApprovals.length > 0 ? "approval" : eventCharacterState(event),
       errorMessage: event.type === "error" ? event.error : null,
       isSending: status === null,
       activeTaskId: status === null ? state.activeTaskId : null,
+      pendingApprovals,
       progressMessage:
         event.type === "output"
           ? "프로젝트 내용을 정리하고 있어."
@@ -319,9 +393,11 @@ function applyTaskEvent(payload: TaskEventPayload): void {
             ? (event.message ?? "요청을 살펴보고 있어.")
             : event.type === "tool"
               ? (event.detail ?? "프로젝트를 살펴보고 있어.")
-              : status === null
-                ? state.progressMessage
-                : null,
+              : waitingForUser
+                ? "네 확인을 기다리고 있어."
+                : status === null
+                  ? state.progressMessage
+                  : null,
       messages,
       tasks,
       activities: message ? addActivity(state, taskId, message) : state.activities,

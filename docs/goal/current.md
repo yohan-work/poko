@@ -1,8 +1,8 @@
 # 현재 목표
 
 - 상태: 진행 중
-- 마지막 갱신: 2026-09-30 16:46 Asia/Seoul
-- 현재 작업 단위: Phase 04 approval gate 계획 및 provider transport 결정
+- 마지막 갱신: 2026-10-01 09:22 Asia/Seoul
+- 현재 작업 단위: Phase 04 App Server approval gate 구현
 
 ## 목표와 성공 기준
 
@@ -14,6 +14,7 @@
 - 포함: Phase 00–03 기반과 Phase 04의 in-app approval gate 설계 및 구현.
 - 제외: 자동 memory extraction, browser, scheduler, write/command approval enforcement (Phase 04+).
 - 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. Electron main/preload/renderer는 Electron Vite를 사용하며 renderer에는 좁은 IPC bridge만 노출한다. README는 현재 동작과 계획 기능을 구분한다.
+- 결정: 사용자 승인으로 Phase 04 Codex transport를 `codex exec --json`에서 stdio JSON-RPC `codex app-server`로 전환한다. App Server는 experimental이므로 capability를 좁게 유지하고 검증 전 write 실행은 fail-closed로 둔다.
 
 ## 현재 상태
 
@@ -31,15 +32,18 @@
 - 검증: Phase 03 `pnpm check` (typecheck, lint, 16 tests, build), `pnpm format:check`, `git diff --check`, continuity validator 통과.
 - 미검증: GUI restart와 packaged-app migration asset 검증은 packaging/GUI 환경이 없어 진행하지 않았다.
 - 완료: Phase 04 plan PR #8은 squash merge commit `140979e`로 원격 `main`에 반영됐다.
-- 진행 중: `codex exec --json`은 비대화형이므로, exact action approvals가 필요한 경우 Codex App Server stdio JSON-RPC로 Codex provider transport를 바꾸는 Phase 04 설계를 사용자 승인 대기 중이다.
+- 완료(미커밋): Phase 04 App Server provider, 승인 IPC/preload, renderer 승인 카드와 `waiting_approval` 상태, SQLite approval audit 및 단일 migration(`20261001001847_approvals`)이 `feat/phase-04-approval`에 있다.
+- 검증: `pnpm check`(typecheck, lint, 34 tests, build), `pnpm format:check` 통과.
+- 미검증: GUI 상호작용, 실제 Codex model 요청, OS별 sandbox enforcement. write mode는 여전히 비활성이다.
 
 ## 마지막 체크포인트
 
-- Handoff: [2026-09-30-1646-phase-04-decision](../handoff/2026-09-30-1646-phase-04-decision.md)
-- Socratic: [2026-09-30-1646-phase-04-decision](../socratic/2026-09-30-1646-phase-04-decision.md)
+- Handoff: [2026-10-01-0922-phase-04-approval-complete](../handoff/2026-10-01-0922-phase-04-approval-complete.md)
+- Socratic: [2026-10-01-0922-phase-04-approval-complete](../socratic/2026-10-01-0922-phase-04-approval-complete.md)
 
 ## 재개 지점
 
-1. `docs/phases/phase-04.md` 계획과 [PR #8](https://github.com/yohan-work/poko/pull/8)을 확인한다.
-2. 사용자가 App Server provider transport 전환을 승인하면 Phase 04 protocol/state-machine을 구현한다.
-3. Write mode는 supported OS의 Codex permission profile and pause-before-action을 검증한 뒤에만 enable한다.
+1. `git status --short --branch`로 `feat/phase-04-approval`의 미커밋 변경을 확인한다.
+2. 사용자 확인 후 커밋하고 PR을 올려 review → squash merge 흐름을 따른다.
+3. GUI가 가능한 환경에서 `pnpm dev`로 승인 카드 흐름을 확인한다. 실제 Codex 요청은 비용/데이터 전송에 대한 사용자 승인 후 진행한다.
+4. OS별 enforcement 검증 전까지 write mode는 켜지 않는다.

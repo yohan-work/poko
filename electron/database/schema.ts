@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
@@ -77,4 +77,28 @@ export const memories = sqliteTable(
   (table) => [index("memories_type_updated_idx").on(table.type, table.updatedAt)],
 );
 
-export const schema = { settings, conversations, messages, tasks, activities, memories };
+export const approvals = sqliteTable(
+  "approvals",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull(),
+    kind: text("kind", { enum: ["command", "file_change"] }).notNull(),
+    summary: text("summary").notNull(),
+    cwd: text("cwd"),
+    reason: text("reason"),
+    decision: text("decision", {
+      enum: ["pending", "approved", "denied", "expired", "cancelled"],
+    }).notNull(),
+    createdAt: text("created_at").notNull(),
+    resolvedAt: text("resolved_at"),
+  },
+  (table) => [
+    index("approvals_task_created_idx").on(table.taskId, table.createdAt),
+    uniqueIndex("approvals_task_request_unique_idx").on(table.taskId, table.requestId),
+  ],
+);
+
+export const schema = { settings, conversations, messages, tasks, activities, memories, approvals };

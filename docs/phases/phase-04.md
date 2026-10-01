@@ -36,6 +36,18 @@ The planned change replaces only the Codex provider transport with a per-task `c
 - Do not implement destructive or external actions, general shell access, automatic approval, session trust, browser control, or deployment.
 - If Codex cannot guarantee a pause before writes in the configured read-only baseline, keep write requests unsupported and ship only the approval request infrastructure.
 
+## Implementation notes
+
+- `CodexAppServerProvider` replaces `CodexProvider` in the main process. Protocol framing lives in `appServerProtocol.ts`, independent of Electron. The legacy `codex exec` provider remains in the tree, unused, until the App Server path is verified with a real Codex model.
+- Field names were checked against `codex app-server generate-json-schema` from `codex-cli 0.159.3`. Command approvals without `kind` default to `"command"`. A file-change `update` with a `move_path` outside the workspace is declined.
+- Command approvals that carry `networkApprovalContext`, `proposedNetworkPolicyAmendments`, or `proposedExecpolicyAmendment` are declined automatically, since approving them could broaden policy beyond one action.
+- An unanswered approval is cancelled after 5 minutes, and the task stops. When a task ends, its pending approval rows become `expired` (or `cancelled` on user cancel). On startup, pending rows become `expired`.
+- The main process writes the audit row before forwarding the decision to Codex. If the DB write fails, the request is declined.
+- Workspace containment resolves symlinks through the nearest existing ancestor, and a dangling link counts as outside the workspace.
+- Stopping a task signals the App Server's whole process group, so a command the user approved does not outlive the task.
+- An App Server `error` notification with `willRetry: true` is not treated as the end of the task.
+- Several approvals can be waiting at once. The UI answers them oldest first, and the task stays `waiting_approval` until none are left.
+
 ## Acceptance criteria
 
 - Existing read-only analysis still passes through the provider with Codex sandbox/network restrictions intact.
