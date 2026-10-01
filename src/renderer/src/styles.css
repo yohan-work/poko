@@ -745,6 +745,11 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+/* Standard Markdown: a single newline inside a paragraph flows as a space. */
+.markdown p {
+  white-space: normal;
+}
+
 .markdown > :first-child {
   margin-top: 0;
 }

@@ -22,6 +22,17 @@ describe("Markdown", () => {
     expect(html).not.toContain("<b>");
     expect(html).toContain("&lt;b&gt;bold&lt;/b&gt;");
     expect(render("<script>alert(1)</script>")).not.toContain("<script");
+    // Block-level HTML is escaped too, never turned into an element.
+    const block = render('<div onclick="alert(1)">block</div>');
+    expect(block).toContain("&lt;div onclick=");
+    expect(block).not.toContain("<div onclick");
+  });
+
+  it("labels footnotes in Korean without exposing internal anchors", () => {
+    const html = render("본문[^1]\n\n[^1]: 설명");
+    expect(html).toContain("각주");
+    expect(html).not.toContain("Footnotes");
+    expect(html).not.toContain('title="#');
   });
 
   it("does not make links navigable or load images", () => {

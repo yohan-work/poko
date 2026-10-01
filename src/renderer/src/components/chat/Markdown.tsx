@@ -42,11 +42,15 @@ function CodeBlock({ children }: { children?: ReactNode }) {
 const components: Components = {
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   // The renderer never navigates: links stay text, with the address in a tooltip.
-  a: ({ children, href }) => (
-    <span className="markdown__link" title={href}>
-      {children}
-    </span>
-  ),
+  a: ({ children, href }) =>
+    // In-page anchors (footnote references) are not addresses worth showing.
+    href?.startsWith("#") ? (
+      <span>{children}</span>
+    ) : (
+      <span className="markdown__link" title={href}>
+        {children}
+      </span>
+    ),
   // Remote images are never loaded; show the description instead.
   img: ({ alt }) => (
     <span className="markdown__image">{alt ? `[이미지: ${alt}]` : "[이미지]"}</span>
@@ -57,7 +61,11 @@ const components: Components = {
 export function Markdown({ children }: { children: string }) {
   return (
     <div className="markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        remarkRehypeOptions={{ footnoteLabel: "각주", footnoteBackLabel: "본문으로" }}
+        components={components}
+      >
         {children}
       </ReactMarkdown>
     </div>
