@@ -46,6 +46,7 @@ export interface TaskRecord {
 export interface ActivityRecord {
   id: string;
   taskId: string;
+  taskTitle: string;
   type: string;
   message: string;
   createdAt: string;
@@ -143,10 +144,20 @@ export class PokoDatabase {
         .orderBy(desc(tasks.createdAt))
         .limit(100)
         .all() as TaskRecord[],
+      // Join the task title so older activity stays labeled even when its task is not loaded.
       activities: this.db
-        .select()
+        .select({
+          id: activities.id,
+          taskId: activities.taskId,
+          taskTitle: tasks.title,
+          type: activities.type,
+          message: activities.message,
+          createdAt: activities.createdAt,
+        })
         .from(activities)
-        .orderBy(desc(activities.createdAt))
+        .innerJoin(tasks, eq(tasks.id, activities.taskId))
+        // rowid breaks same-millisecond ties so steps keep their insertion order.
+        .orderBy(desc(activities.createdAt), desc(sql`${activities}.rowid`))
         .limit(500)
         .all() as ActivityRecord[],
     };

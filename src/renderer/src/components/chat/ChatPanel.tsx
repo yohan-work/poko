@@ -3,6 +3,7 @@ import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
+import { useNow } from "../../lib/useNow";
 
 function greeting(date = new Date()): string {
   const hour = date.getHours();
@@ -114,6 +115,7 @@ export function ChatPanel() {
   const progressMessage = useAppStore((state) => state.progressMessage);
   const hasPendingApproval = useAppStore((state) => state.pendingApprovals.length > 0);
   const endRef = useRef<HTMLDivElement>(null);
+  const now = useNow();
   const isEmpty = messages.length === 0;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the log grows
@@ -127,7 +129,7 @@ export function ChatPanel() {
         <div className="welcome">
           <h1 className="welcome__title">
             <Character state={characterState} size={44} />
-            <span>{greeting()}</span>
+            <span>{greeting(now)}</span>
           </h1>
           <Composer autoFocus />
           <p className="welcome__hint">

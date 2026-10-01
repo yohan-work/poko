@@ -31,6 +31,19 @@ const paths = {
   chevron: <path d="M6 8l4 4 4-4" />,
   send: <path d="M10 15.5V4.5M5.5 9 10 4.5 14.5 9" />,
   stop: <rect x="6" y="6" width="8" height="8" rx="1.5" />,
+  search: (
+    <>
+      <circle cx="9" cy="9" r="5.25" />
+      <path d="m13 13 3.5 3.5" />
+    </>
+  ),
+  plus: <path d="M10 4.5v11M4.5 10h11" />,
+  trash: (
+    <>
+      <path d="M4.5 6h11M8 6V4.5h4V6" />
+      <path d="M6 6l.7 9.2c.06.73.67 1.3 1.4 1.3h3.8c.73 0 1.34-.57 1.4-1.3L14 6" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof paths;

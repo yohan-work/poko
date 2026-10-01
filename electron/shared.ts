@@ -91,6 +91,7 @@ export interface PersistedTask {
 export interface PersistedActivity {
   id: string;
   taskId: string;
+  taskTitle: string;
   type: string;
   message: string;
   createdAt: string;
