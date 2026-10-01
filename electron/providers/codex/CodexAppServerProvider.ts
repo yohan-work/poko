@@ -194,6 +194,24 @@ class AppServerConnection {
 interface PendingApproval {
   wireId: JsonRpcId;
   timer: NodeJS.Timeout;
+  /** The refusal the server offered for this request ("decline", or "cancel" when that is the only one). */
+  refusal: "decline" | "cancel";
+}
+
+/**
+ * Servers may list the decisions they accept for a request. When the list is present, only
+ * use what it offers; older servers omit it and accept all of them.
+ */
+function offeredDecisions(params: Record<string, unknown>): {
+  canAccept: boolean;
+  refusal: "decline" | "cancel";
+} {
+  const offered = params.availableDecisions;
+  if (!Array.isArray(offered)) return { canAccept: true, refusal: "decline" };
+  return {
+    canAccept: offered.includes("accept"),
+    refusal: offered.includes("decline") ? "decline" : "cancel",
+  };
 }
 
 interface TaskSession {
@@ -456,7 +474,7 @@ export class CodexAppServerProvider implements AgentProvider {
     try {
       // Only the single-request decisions are ever sent; session-wide trust is never granted.
       session.connection.respond(pending.wireId, {
-        decision: choice === "approve" ? "accept" : "decline",
+        decision: choice === "approve" ? "accept" : pending.refusal,
       });
       return true;
     } catch {
@@ -504,9 +522,11 @@ export class CodexAppServerProvider implements AgentProvider {
         ? this.describeCommandApproval(session, requestId, message.params)
         : this.describeFileChangeApproval(session, requestId, message.params);
 
+    const offered = offeredDecisions(message.params);
+    if (!offered.canAccept) event.canApprove = false;
     if (!event.canApprove) {
       try {
-        session.connection.respond(message.id, { decision: "decline" });
+        session.connection.respond(message.id, { decision: offered.refusal });
       } catch {
         throw new ProviderFailure("확인 요청을 안전하게 거절하지 못해 작업을 멈췄어.");
       }
@@ -524,7 +544,7 @@ export class CodexAppServerProvider implements AgentProvider {
       signalProcess(session.connection.child, "SIGTERM");
     }, this.approvalTimeoutMs);
     timer.unref?.();
-    session.pending.set(requestId, { wireId: message.id, timer });
+    session.pending.set(requestId, { wireId: message.id, timer, refusal: offered.refusal });
     return event;
   }
 
@@ -537,15 +557,16 @@ export class CodexAppServerProvider implements AgentProvider {
     const cwd = readString(params.cwd) ?? null;
     // Older servers omit `kind`; the protocol default is "command".
     const kind = params.kind ?? "command";
-    const broadensPolicy =
-      params.networkApprovalContext != null ||
-      params.proposedNetworkPolicyAmendments != null ||
-      params.proposedExecpolicyAmendment != null;
+    // Network access stays unavailable. An execpolicy amendment is only a proposal: it takes
+    // effect solely through "acceptWithExecpolicyAmendment", which Poko never sends, so its
+    // presence (Codex attaches one to most requests) does not broaden anything.
+    const needsNetwork =
+      params.networkApprovalContext != null || params.proposedNetworkPolicyAmendments != null;
     const canApprove =
       kind === "command" &&
       Boolean(command && command.length <= 8_000) &&
       Boolean(cwd && isInside(session.task.cwd, cwd)) &&
-      !broadensPolicy;
+      !needsNetwork;
     return {
       type: "approvalRequired",
       requestId,

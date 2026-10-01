@@ -40,7 +40,7 @@ The planned change replaces only the Codex provider transport with a per-task `c
 
 - `CodexAppServerProvider` replaces `CodexProvider` in the main process. Protocol framing lives in `appServerProtocol.ts`, independent of Electron. The legacy `codex exec` provider remains in the tree, unused, until the App Server path is verified with a real Codex model.
 - Field names were checked against `codex app-server generate-json-schema` from `codex-cli 0.159.3`. Command approvals without `kind` default to `"command"`. A file-change `update` with a `move_path` outside the workspace is declined.
-- Command approvals that carry `networkApprovalContext`, `proposedNetworkPolicyAmendments`, or `proposedExecpolicyAmendment` are declined automatically, since approving them could broaden policy beyond one action.
+- Command approvals that carry `networkApprovalContext` or `proposedNetworkPolicyAmendments` are declined automatically, since network access stays unavailable. A `proposedExecpolicyAmendment` alone does not block the request. Codex attaches one to most escalations, and it only takes effect through `acceptWithExecpolicyAmendment`, which Poko never sends. Poko replies only with `accept`, or with `decline` (`cancel` when the server's `availableDecisions` doesn't offer `decline`). An `availableDecisions` list without `accept` makes the request unapprovable. This was found with a real Codex 0.159.3 run: the earlier rule auto-declined every escalation.
 - An unanswered approval is cancelled after 5 minutes, and the task stops. When a task ends, its pending approval rows become `expired` (or `cancelled` on user cancel). On startup, pending rows become `expired`.
 - The main process writes the audit row before forwarding the decision to Codex. If the DB write fails, the request is declined.
 - Workspace containment resolves symlinks through the nearest existing ancestor, and a dangling link counts as outside the workspace.
@@ -57,3 +57,12 @@ The planned change replaces only the Codex provider transport with a per-task `c
 - Unknown request types, malformed JSON-RPC, missing command details, unsupported CLI/protocol, and persistence failures fail closed.
 - `pnpm check`, `pnpm format:check`, database migration tests, and provider protocol tests pass.
 - GUI testing on supported macOS, Windows, and Linux validates actual approval behavior before enabling write mode.
+
+## Real-environment verification (2026-10-01, macOS, codex-cli 0.159.3)
+
+Run against a scratch project through Agent Core, `CodexAppServerProvider`, and the SQLite layer, without the Electron UI:
+
+- Codex paused before a write and asked to run `printf 'hi' > hello.txt` outside the sandbox.
+- Approving ran exactly that command (`hello.txt` contained `hi`). The next write in the same task asked again, so the approval was one-shot.
+- Refusing left `bye.txt` uncreated. That request offered only `accept`, `acceptWithExecpolicyAmendment`, and `cancel`, so Poko replied `cancel` and the turn stopped.
+- Before this fix, every escalation was auto-declined because Codex attaches `proposedExecpolicyAmendment` to it.

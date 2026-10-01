@@ -185,7 +185,8 @@ describe("CodexAppServerProvider", () => {
     ["outside the workspace", { cwd: "/elsewhere" }],
     ["without a command", { command: null }],
     ["asking for network access", { networkApprovalContext: { host: "example.com" } }],
-    ["proposing a policy change", { proposedExecpolicyAmendment: ["pnpm"] }],
+    ["asking for a network policy change", { proposedNetworkPolicyAmendments: [{}] }],
+    ["the server won't accept", { availableDecisions: ["decline", "cancel"] }],
     ["of an unknown kind", { kind: "permissions" }],
   ])("declines a command %s without asking", async (_label, overrides) => {
     const server = new FakeAppServer();
@@ -379,5 +380,50 @@ describe("CodexAppServerProvider", () => {
     } finally {
       await rm(base, { recursive: true, force: true });
     }
+  });
+
+  it("still asks about a command that only proposes an execpolicy amendment, and accepts it once", async () => {
+    // Real Codex attaches a proposed amendment to most requests and lists its decisions.
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    const proposal = ["/bin/zsh", "-lc", "printf 'hi' > hello.txt"];
+    server.send(
+      commandApproval({
+        kind: "command",
+        proposedExecpolicyAmendment: proposal,
+        availableDecisions: [
+          "accept",
+          { acceptWithExecpolicyAmendment: { execpolicy_amendment: proposal } },
+          "cancel",
+        ],
+      }),
+    );
+
+    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: true });
+    expect(provider.respondToApproval("task-1", "7", "approve")).toBe(true);
+    // Only the one-shot decision is sent, never the amendment.
+    expect(await server.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "accept" },
+    });
+    server.kill();
+  });
+
+  it("refuses with cancel when the server does not offer decline", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    server.send(commandApproval({ availableDecisions: ["accept", "cancel"] }));
+
+    await stream.next("approvalRequired");
+    expect(provider.respondToApproval("task-1", "7", "decline")).toBe(true);
+    expect(await server.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "cancel" },
+    });
+    server.kill();
   });
 });
