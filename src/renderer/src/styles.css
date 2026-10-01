@@ -1329,6 +1329,24 @@ button:disabled {
   -webkit-line-clamp: 4;
 }
 
+.memory-card__content.is-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+
+.memory-card__more {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  color: var(--color-text-faint);
+  background: transparent;
+  font-size: 0.8rem;
+}
+
+.memory-card__more:hover {
+  color: var(--color-text);
+}
+
 .memory-card__footer {
   display: flex;
   align-items: center;

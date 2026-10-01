@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { PersistedMemory } from "../../../../../electron/shared";
 import type { MemoryInput } from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
 import { relativeTime } from "../../lib/time";
@@ -27,8 +28,8 @@ function NewMemoryForm({ onClose }: { onClose: () => void }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!content.trim()) return;
-    await saveMemory({ type, content, importance: 3 });
-    onClose();
+    // Keep the draft open when saving fails so nothing the user typed is lost.
+    if (await saveMemory({ type, content, importance: 3 })) onClose();
   }
 
   return (
@@ -120,27 +121,55 @@ export function MemoryPanel() {
       ) : (
         <ul className="card-grid" aria-label="저장된 기억">
           {memories.map((memory) => (
-            <li className="memory-card" key={memory.id}>
-              <span className="memory-card__type">
-                {memoryTypes.find((item) => item.value === memory.type)?.label}
-              </span>
-              <p className="memory-card__content">{memory.content}</p>
-              <div className="memory-card__footer">
-                <time dateTime={memory.updatedAt}>{relativeTime(memory.updatedAt)}</time>
-                <button
-                  className="icon-button memory-card__delete"
-                  type="button"
-                  onClick={() => void deleteMemory(memory.id)}
-                  aria-label="기억 삭제"
-                  title="기억 삭제"
-                >
-                  <Icon name="trash" />
-                </button>
-              </div>
-            </li>
+            <MemoryCard
+              key={memory.id}
+              memory={memory}
+              onDelete={() => void deleteMemory(memory.id)}
+            />
           ))}
         </ul>
       )}
     </Page>
+  );
+}
+
+/** Rough check for text that the 4-line clamp would hide. */
+function isLong(content: string): boolean {
+  return content.length > 120 || content.split("\n").length > 4;
+}
+
+function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <li className="memory-card">
+      <span className="memory-card__type">
+        {memoryTypes.find((item) => item.value === memory.type)?.label}
+      </span>
+      <div>
+        <p className={`memory-card__content${expanded ? " is-expanded" : ""}`}>{memory.content}</p>
+        {isLong(memory.content) && (
+          <button
+            className="memory-card__more"
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? "접기" : "더 보기"}
+          </button>
+        )}
+      </div>
+      <div className="memory-card__footer">
+        <time dateTime={memory.updatedAt}>{relativeTime(memory.updatedAt)}</time>
+        <button
+          className="icon-button memory-card__delete"
+          type="button"
+          onClick={onDelete}
+          aria-label="기억 삭제"
+          title="기억 삭제"
+        >
+          <Icon name="trash" />
+        </button>
+      </div>
+    </li>
   );
 }

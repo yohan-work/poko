@@ -54,9 +54,12 @@ interface AppState {
   workspaceError: string | null;
   memories: PersistedMemory[];
   memoryError: string | null;
+  /** The search text the memory list currently reflects. */
+  memoryQuery: string;
   initializeWorkspace: () => Promise<void>;
   loadMemories: (query?: string) => Promise<void>;
-  saveMemory: (input: MemoryInput) => Promise<void>;
+  /** Resolves false when the memory could not be saved. */
+  saveMemory: (input: MemoryInput) => Promise<boolean>;
   deleteMemory: (id: string) => Promise<void>;
   selectWorkspace: () => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
@@ -124,11 +127,14 @@ function sessionTaskStatus(event: AgentEvent): SessionTask["status"] | null {
   return null;
 }
 
+/** Matches the number of activities loaded at startup. */
+const MAX_ACTIVITIES = 500;
+
 function addActivity(state: AppState, taskId: string, message: string): ActivityEntry[] {
   return [
     ...state.activities,
     { id: crypto.randomUUID(), taskId, message, createdAt: new Date().toISOString() },
-  ].slice(-100);
+  ].slice(-MAX_ACTIVITIES);
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -148,6 +154,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   workspaceError: null,
   memories: [],
   memoryError: null,
+  memoryQuery: "",
 
   initializeWorkspace: async () => {
     try {
@@ -174,7 +181,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadMemories: async (query = "") => {
     try {
       const memories = await window.poko.memory.search(query);
-      set({ memories, memoryError: null });
+      set({ memories, memoryError: null, memoryQuery: query });
     } catch {
       set({ memoryError: "기억을 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
     }
@@ -183,16 +190,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveMemory: async (input) => {
     try {
       await window.poko.memory.save(input);
-      await get().loadMemories();
     } catch {
       set({ memoryError: "기억을 저장하지 못했어. 내용을 확인해 줘." });
+      return false;
     }
+    await get().loadMemories(get().memoryQuery);
+    return true;
   },
 
   deleteMemory: async (id) => {
     try {
       await window.poko.memory.delete(id);
-      await get().loadMemories();
+      await get().loadMemories(get().memoryQuery);
     } catch {
       set({ memoryError: "기억을 지우지 못했어. 다시 시도해 줘." });
     }
