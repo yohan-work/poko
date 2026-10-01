@@ -48,6 +48,9 @@ The planned change replaces only the Codex provider transport with a per-task `c
   - Every segment must start with an allowed program, given as a bare name: file and text tools; project scripts through npm, pnpm, yarn, or bun `run/test/build/lint/…`; test runners; `node`/`python` with a script file; `go`/`cargo` build and test; and local git subcommands without inline config, external-program options, or discard flags.
   - Path arguments, option values (including attached short options such as `-o/tmp/x`), and redirect targets must stay relative, with no leading `/` or `~` and no `..`. `/dev/null` is the one exception. Nothing under `.git` is touched, because git config and hooks run programs.
   - The wrapper shell must be a system shell (a bare name, `/bin/…`, or `/usr/bin/…`). Package managers must name their subcommand first. git takes no `-C` or inline config.
+  - git subcommands each have an exact flag allowlist, so bundled or abbreviated flags fail closed. `checkout` is offered only with `-b`, and branches are switched with `switch`.
+  - A command that writes a file and runs project code in the same line is declined (`printf … > a.js && node a.js`). A runner saving its own output is fine.
+  - The `.git` check is case-insensitive.
   - Known limit: allowed tools can still run project code (`pnpm test`, `make`, `node x.js`). That's why the card warns on every command, and Phase 06 should run approved commands inside a workspace-write sandbox.
 - An unanswered approval is cancelled after 5 minutes, and the task stops. When a task ends, its pending approval rows become `expired` (or `cancelled` on user cancel). On startup, pending rows become `expired`.
 - The main process writes the audit row before forwarding the decision to Codex. If the DB write fails, the request is declined.

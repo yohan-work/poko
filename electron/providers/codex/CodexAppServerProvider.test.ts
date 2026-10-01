@@ -426,4 +426,16 @@ describe("CodexAppServerProvider", () => {
     });
     server.kill();
   });
+
+  it("does not treat empty network fields as a network request", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    server.send(
+      commandApproval({ proposedNetworkPolicyAmendments: [], networkApprovalContext: null }),
+    );
+    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: true });
+    server.kill();
+  });
 });

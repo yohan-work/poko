@@ -555,10 +555,12 @@ export class CodexAppServerProvider implements AgentProvider {
     // Network access stays unavailable. An execpolicy amendment is only a proposal: it takes
     // effect solely through "acceptWithExecpolicyAmendment", which Poko never sends, so its
     // presence (Codex attaches one to most requests) does not broaden anything.
+    const present = (value: unknown) =>
+      Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined;
     const needsNetwork =
-      params.networkApprovalContext != null || params.proposedNetworkPolicyAmendments != null;
-    // An approved command runs outside the sandbox, so commands Phase 04 keeps unavailable
-    // (network, installs, deploys, remote or destructive git, sudo, recursive delete) are never offered.
+      present(params.networkApprovalContext) || present(params.proposedNetworkPolicyAmendments);
+    // An approved command runs outside the sandbox, so only the allowlist in commandPolicy.ts
+    // is offered. Allowed tools can still run project code; the approval card warns about it.
     // Length first: the screen is linear, but there is no reason to scan an oversized command.
     const denied = command && command.length <= 8_000 ? deniedCommandReason(command) : null;
     const canApprove =

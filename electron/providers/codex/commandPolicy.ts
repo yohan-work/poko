@@ -31,10 +31,12 @@ function pathLike(text: string): string | null {
   if (text === "/dev/null") return null;
   if (text.includes("://")) return "network";
   const parts = text.split("/");
+  const lower = parts.map((part) => part.toLowerCase());
   if (text.startsWith("/") || text.startsWith("~") || parts.includes(".."))
     return "path outside the workspace";
-  // Git config and hooks run programs, so nothing inside .git is touched.
-  if (parts.includes(".git")) return "git internals";
+  // Git config and hooks run programs, so nothing inside .git is touched. Case-insensitive,
+  // because the default macOS file system resolves `.GIT` to `.git`.
+  if (lower.includes(".git")) return "git internals";
   return null;
 }
 
@@ -55,9 +57,6 @@ function checkPaths(args: Token[]): string | null {
   }
   return null;
 }
-
-const positional = (args: Token[]) => args.filter((arg) => !arg.text.startsWith("-"));
-const has = (args: Token[], ...flags: string[]) => args.some((arg) => flags.includes(arg.text));
 
 const fileTool: Rule = checkPaths;
 
@@ -97,11 +96,40 @@ const subcommandOnly =
     return subcommand && allowed.includes(subcommand) ? checkPaths(args) : "not offered";
   };
 
-const GIT_SUBCOMMANDS = new Set(
-  "status diff log show add commit mv rm branch checkout switch stash tag blame rev-parse ls-files describe shortlog init".split(
-    " ",
-  ),
-);
+/**
+ * git subcommands Poko may offer, each with the only flags it accepts. Flags are matched
+ * exactly, so bundled or abbreviated spellings (`-Dq`, `--amen`) fail closed. Positional limits
+ * keep each command to its harmless form.
+ */
+const GIT_RULES: Record<string, { flags: string[]; maxPositional?: number; needsFlag?: string[] }> =
+  {
+    status: { flags: ["-s", "--short", "-b", "--branch", "--porcelain"] },
+    diff: {
+      flags: ["--stat", "--cached", "--staged", "--name-only", "--name-status", "--no-color"],
+    },
+    log: { flags: ["--oneline", "--stat", "--graph", "--no-color", "-p", "--patch"] },
+    show: { flags: ["--stat", "--name-only", "--no-color"] },
+    blame: { flags: [] },
+    shortlog: { flags: ["-s", "-n", "-sn"] },
+    "ls-files": { flags: [] },
+    "rev-parse": { flags: ["--abbrev-ref", "--show-toplevel", "--short"] },
+    add: { flags: ["-A", "--all", "-u", "--update", "-v", "--verbose", "-N"] },
+    commit: {
+      flags: ["-m", "--message", "-a", "--all", "-am", "-q", "--quiet", "-s", "--signoff"],
+    },
+    mv: { flags: ["-v"] },
+    rm: { flags: ["--cached", "-q", "--quiet"] },
+    // Listing or creating a branch; deleting, renaming, or forcing is not offered.
+    branch: { flags: ["-a", "--all", "-v", "--list", "--show-current"], maxPositional: 1 },
+    // Switching branches; `checkout` is offered only to create one, since it can't tell a
+    // branch name from a path that would be overwritten.
+    switch: { flags: ["-c", "--create"], maxPositional: 2 },
+    checkout: { flags: ["-b"], maxPositional: 2, needsFlag: ["-b"] },
+    stash: { flags: ["-m", "--message", "-u", "--include-untracked"], maxPositional: 1 },
+    tag: { flags: ["-a", "-m", "--message", "-l", "--list"], maxPositional: 1 },
+  };
+const STASH_SUBCOMMANDS = new Set(["push", "list", "show"]);
+
 const git: Rule = (args) => {
   const deny = "git remote or discard";
   let index = 0;
@@ -113,25 +141,25 @@ const git: Rule = (args) => {
     index += 1;
   }
   const subcommand = args[index]?.text;
+  const rule = subcommand && Object.hasOwn(GIT_RULES, subcommand) ? GIT_RULES[subcommand] : null;
+  if (!rule) return deny;
   const rest = args.slice(index + 1);
-  if (!subcommand || !GIT_SUBCOMMANDS.has(subcommand)) return deny;
-  const pos = positional(rest);
-  if (
-    (subcommand === "checkout" &&
-      (has(rest, ".", "--", "-f", "--force", "-p", "--patch") ||
-        pos.length > (has(rest, "-b", "-B") ? 2 : 1))) ||
-    (subcommand === "switch" && has(rest, "-f", "--force", "--discard-changes")) ||
-    (subcommand === "branch" && has(rest, "-d", "-D", "--delete", "-m", "-M", "-f", "--force")) ||
-    (subcommand === "stash" && has(rest, "drop", "clear", "pop")) ||
-    (subcommand === "commit" && has(rest, "--amend")) ||
-    (subcommand === "rm" &&
-      rest.some((arg) => /^-[a-z]*[rf]/i.test(arg.text) || arg.text === "--force")) ||
-    (subcommand === "tag" && has(rest, "-d", "--delete", "-f", "--force")) ||
-    // Options that hand output to an external program.
-    rest.some((arg) => /^(--ext-diff|--open-files-in-pager|-O|--exec|--upload-pack)/.test(arg.text))
-  )
+  const flags = rest.filter((arg) => !arg.quoted && arg.text.startsWith("-"));
+  // `-m` and `--message` take the next word as their value.
+  const values = new Set<Token>();
+  rest.forEach((arg, position) => {
+    if (["-m", "--message", "-am"].includes(arg.text) && rest[position + 1])
+      values.add(rest[position + 1]);
+  });
+  const positionals = rest.filter(
+    (arg) => !values.has(arg) && (arg.quoted || !arg.text.startsWith("-")),
+  );
+  if (flags.some((flag) => !rule.flags.includes(flag.text))) return deny;
+  if (rule.needsFlag && !flags.some((flag) => rule.needsFlag?.includes(flag.text))) return deny;
+  if (rule.maxPositional !== undefined && positionals.length > rule.maxPositional) return deny;
+  if (subcommand === "stash" && positionals[0] && !STASH_SUBCOMMANDS.has(positionals[0].text))
     return deny;
-  return checkPaths(args.slice(index));
+  return checkPaths(rest);
 };
 
 const PROGRAMS: Record<string, Rule> = {
@@ -255,16 +283,34 @@ function parse(line: string): Token[][] | string {
   return segments;
 }
 
-function checkSegment(tokens: Token[]): string | null {
+/** Programs that run project code or project configuration. */
+const RUNNERS = new Set(
+  "node python python3 npm pnpm yarn bun make go cargo tsc eslint prettier biome vitest jest mocha pytest".split(
+    " ",
+  ),
+);
+/** Programs that create or replace files. */
+const WRITERS = new Set(["cp", "mv", "touch"]);
+
+interface SegmentResult {
+  reason: string | null;
+  program?: string;
+  writes: boolean;
+}
+
+function checkSegment(tokens: Token[]): SegmentResult {
   // Redirection is allowed only as `> file` / `>> file` (optionally `2>`) into the workspace.
   const words: Token[] = [];
+  let writes = false;
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (!token.quoted && (token.text === ">" || token.text === ">>")) {
       const target = tokens[index + 1];
-      if (!target || target.text === ">" || target.text === ">>") return "shell syntax";
+      if (!target || target.text === ">" || target.text === ">>")
+        return { reason: "shell syntax", writes };
       const reason = pathLike(target.text);
-      if (reason) return reason;
+      if (reason) return { reason, writes };
+      if (target.text !== "/dev/null") writes = true;
       index += 1;
       continue;
     }
@@ -280,21 +326,34 @@ function checkSegment(tokens: Token[]): string | null {
     words.push(token);
   }
   const [program, ...args] = words;
-  if (!program || program.quoted) return "not offered";
+  if (!program || program.quoted) return { reason: "not offered", writes };
   // Program names are bare words: no paths and no assignments.
-  if (/[/=]/.test(program.text)) return "not offered";
+  if (/[/=]/.test(program.text)) return { reason: "not offered", writes };
   const rule = Object.hasOwn(PROGRAMS, program.text) ? PROGRAMS[program.text] : undefined;
-  return rule ? rule(args) : "not offered";
+  return {
+    reason: rule ? rule(args) : "not offered",
+    program: program.text,
+    writes: writes || WRITERS.has(program.text),
+  };
 }
 
 function checkLine(line: string): string | null {
   const segments = parse(line);
   if (typeof segments === "string") return segments;
   if (segments.length === 0) return "not offered";
-  for (const tokens of segments) {
-    const reason = checkSegment(tokens);
-    if (reason) return reason;
-  }
+  const results = segments.map(checkSegment);
+  const denied = results.find((result) => result.reason);
+  if (denied) return denied.reason;
+  // Writing a file and running project code in one command would let any code through the
+  // allowlist (`printf … > a.js && node a.js`), so that pairing is declined.
+  // A runner saving its own output (`pnpm test > out.txt`) is fine on its own.
+  const isRunner = (result: SegmentResult) =>
+    Boolean(result.program && RUNNERS.has(result.program));
+  const runners = results.filter(isRunner);
+  const otherWrites = results.some((result) => result.writes && !isRunner(result));
+  const runnerWrites = runners.some((result) => result.writes);
+  if (runners.length > 0 && (otherWrites || (runnerWrites && runners.length > 1)))
+    return "write and run";
   return null;
 }
 
