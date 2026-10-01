@@ -650,8 +650,9 @@ export function touchesGitDirectory(root: string, path: string): boolean {
   const realTarget = realPath(resolve(root, path));
   if (!realRoot || !realTarget) return true;
   const isGit = (part: string) => {
-    // NTFS stream names (`.git::$INDEX_ALLOCATION`) also reach the directory; refuse any `:`.
-    if (part.includes(":")) return true;
+    // On Windows, NTFS stream names (`.git::$INDEX_ALLOCATION`) also reach the directory, so
+    // any `:` is refused there. Elsewhere `:` is an ordinary file name character.
+    if (process.platform === "win32" && part.includes(":")) return true;
     const name = part.toLowerCase().replace(/[. ]+$/, "");
     return name === ".git" || /^git~\d+$/.test(name);
   };

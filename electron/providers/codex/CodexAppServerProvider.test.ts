@@ -438,7 +438,12 @@ describe("CodexAppServerProvider", () => {
       expect(touchesGitDirectory(workspace, "hooks/pre-commit")).toBe(true);
       expect(touchesGitDirectory(workspace, "GIT~1/config")).toBe(true);
       expect(touchesGitDirectory(workspace, ".git./config")).toBe(true);
-      expect(touchesGitDirectory(workspace, ".git::$INDEX_ALLOCATION/config")).toBe(true);
+      expect(touchesGitDirectory(workspace, ".git::$INDEX_ALLOCATION/config")).toBe(
+        process.platform === "win32",
+      );
+      expect(touchesGitDirectory(workspace, "notes/2026-10-01T10:00.md")).toBe(
+        process.platform === "win32",
+      );
       expect(touchesGitDirectory(workspace, "src/app.ts")).toBe(false);
       // An absolute path inside the workspace is judged only below the workspace.
       expect(touchesGitDirectory(workspace, join(workspace, "src", "app.ts"))).toBe(false);
