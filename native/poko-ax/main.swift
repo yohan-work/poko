@@ -134,11 +134,13 @@ func snapshot(windowId: Int) {
   }
 
   var elements: [[String: Any]] = []
+  // Breadth-first with a read index (removeFirst is O(n)) and a cap on queued elements.
   var queue: [(AXUIElement, [Int], Int)] = [(window, [], 0)]
-  var visited = 0
-  while !queue.isEmpty, elements.count < maxElements, visited < maxElements * 10 {
-    let (element, path, depth) = queue.removeFirst()
-    visited += 1
+  var next = 0
+  let maxVisited = maxElements * 10
+  while next < queue.count, elements.count < maxElements, next < maxVisited {
+    let (element, path, depth) = queue[next]
+    next += 1
     let role = text(element, kAXRoleAttribute) ?? ""
     let subrole = text(element, kAXSubroleAttribute)
     let label = text(element, kAXTitleAttribute) ?? text(element, kAXDescriptionAttribute)
@@ -160,14 +162,18 @@ func snapshot(windowId: Int) {
       if let url = copy(element, kAXURLAttribute) as? URL { entry["url"] = url.absoluteString }
       elements.append(entry)
     }
-    if depth < maxDepth, let children = copy(element, kAXChildrenAttribute) as? [AXUIElement] {
-      for (index, child) in children.enumerated() { queue.append((child, path + [index], depth + 1)) }
+    if depth < maxDepth, queue.count < maxVisited,
+      let children = copy(element, kAXChildrenAttribute) as? [AXUIElement]
+    {
+      for (index, child) in children.enumerated().prefix(maxVisited - queue.count) {
+        queue.append((child, path + [index], depth + 1))
+      }
     }
   }
 
   var windowOut = described
   windowOut["scale"] = scaleFor(target)
-  emit(["window": windowOut, "elements": elements, "truncated": !queue.isEmpty])
+  emit(["window": windowOut, "elements": elements, "truncated": next < queue.count])
 }
 
 let args = CommandLine.arguments

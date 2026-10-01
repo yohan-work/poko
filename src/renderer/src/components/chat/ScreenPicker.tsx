@@ -128,8 +128,10 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
                     className="screen-window"
                     type="button"
                     onClick={() => {
-                      onPicked();
-                      void lookAtWindow(window.id, question);
+                      // The question stays in the composer until the look really starts.
+                      void lookAtWindow(window.id, question).then((started) => {
+                        if (started) onPicked();
+                      });
                     }}
                   >
                     {window.thumbnail ? (

@@ -85,7 +85,8 @@ interface AppState {
   refreshScreen: () => Promise<void>;
   acceptScreenNotice: () => Promise<void>;
   openScreenSettings: (kind: "screen" | "accessibility") => void;
-  lookAtWindow: (windowId: number, question: string) => Promise<void>;
+  /** Resolves true when the look started, so the caller can clear the draft. */
+  lookAtWindow: (windowId: number, question: string) => Promise<boolean>;
   respondToApproval: (choice: ApprovalChoice) => Promise<void>;
   setActiveView: (view: AppView) => void;
   clearError: () => void;
@@ -311,7 +312,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   acceptScreenNotice: async () => {
-    await window.poko.screen.acceptNotice();
+    try {
+      await window.poko.screen.acceptNotice();
+    } catch {
+      set({ screen: { ...get().screen, error: "안내 확인을 저장하지 못했어. 다시 시도해 줘." } });
+      return;
+    }
     await get().refreshScreen();
   },
 
@@ -320,11 +326,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   lookAtWindow: async (windowId, question) => {
-    if (get().isSending) return;
+    if (get().isSending) return false;
     const picked = get().screen.windows.find((window) => window.id === windowId);
     const asked = question.trim() || "이 화면을 설명해 줘.";
     set({ screen: { ...get().screen, open: false } });
-    await runTask(
+    return runTask(
       `🖥️ ${picked?.app ?? "앱"} 화면 보기: ${asked}`,
       () => window.poko.screen.look(windowId, question),
       "화면을 가져오지 못했어. 권한을 확인하고 다시 시도해 줘.",
@@ -398,13 +404,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 /**
  * Shows the user's message, starts a task, and follows its events until it ends. `start`
- * returns the new task id, or an `error` to show instead.
+ * returns the new task id, or an `error` to show instead. Resolves true when the task started.
  */
 async function runTask(
   content: string,
   start: () => Promise<{ taskId: string } | { error: string }>,
   failure: string,
-): Promise<void> {
+): Promise<boolean> {
   const set = useAppStore.setState;
   const userMessage = createMessage("user", content);
   set((state) => ({
@@ -446,7 +452,7 @@ async function runTask(
     const response = await start();
     if ("error" in response) {
       fail(response.error);
-      return;
+      return false;
     }
     const startedTaskId = response.taskId;
     taskId = startedTaskId;
@@ -460,8 +466,10 @@ async function runTask(
     }));
     const queued = pendingEvents.splice(0);
     for (const payload of queued) onTaskEvent(payload);
+    return true;
   } catch {
     fail(failure);
+    return false;
   }
 }
 

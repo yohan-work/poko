@@ -178,7 +178,7 @@ function registerIpcHandlers(): void {
     if (
       !Number.isSafeInteger(request.windowId) ||
       typeof request.question !== "string" ||
-      request.question.length > 2000
+      request.question.length > 10_000
     )
       throw new TypeError("Invalid screen request.");
     if (!database.isScreenNoticeAccepted()) return { error: "먼저 화면 보기 안내를 확인해 줘." };
