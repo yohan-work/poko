@@ -411,7 +411,7 @@ describe("CodexAppServerProvider", () => {
     server.kill();
   });
 
-  it("refuses with cancel when the server does not offer decline", async () => {
+  it("refuses with decline even when the server's list omits it, so the task can continue", async () => {
     const server = new FakeAppServer();
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
@@ -422,7 +422,7 @@ describe("CodexAppServerProvider", () => {
     expect(provider.respondToApproval("task-1", "7", "decline")).toBe(true);
     expect(await server.waitFor((m) => m.id === 7)).toEqual({
       id: 7,
-      result: { decision: "cancel" },
+      result: { decision: "decline" },
     });
     server.kill();
   });

@@ -194,24 +194,16 @@ class AppServerConnection {
 interface PendingApproval {
   wireId: JsonRpcId;
   timer: NodeJS.Timeout;
-  /** The refusal the server offered for this request ("decline", or "cancel" when that is the only one). */
-  refusal: "decline" | "cancel";
 }
 
 /**
- * Servers may list the decisions they accept for a request. When the list is present, only
- * use what it offers; older servers omit it and accept all of them.
+ * Whether the server lets this request be accepted once. Servers may list their decisions;
+ * older ones omit the list. Refusals always use "decline", even when the list doesn't name it:
+ * codex-cli 0.159.3 accepts it and lets the turn continue, while "cancel" would end the task.
  */
-function offeredDecisions(params: Record<string, unknown>): {
-  canAccept: boolean;
-  refusal: "decline" | "cancel";
-} {
+function canAcceptOnce(params: Record<string, unknown>): boolean {
   const offered = params.availableDecisions;
-  if (!Array.isArray(offered)) return { canAccept: true, refusal: "decline" };
-  return {
-    canAccept: offered.includes("accept"),
-    refusal: offered.includes("decline") ? "decline" : "cancel",
-  };
+  return !Array.isArray(offered) || offered.includes("accept");
 }
 
 interface TaskSession {
@@ -474,7 +466,7 @@ export class CodexAppServerProvider implements AgentProvider {
     try {
       // Only the single-request decisions are ever sent; session-wide trust is never granted.
       session.connection.respond(pending.wireId, {
-        decision: choice === "approve" ? "accept" : pending.refusal,
+        decision: choice === "approve" ? "accept" : "decline",
       });
       return true;
     } catch {
@@ -522,11 +514,10 @@ export class CodexAppServerProvider implements AgentProvider {
         ? this.describeCommandApproval(session, requestId, message.params)
         : this.describeFileChangeApproval(session, requestId, message.params);
 
-    const offered = offeredDecisions(message.params);
-    if (!offered.canAccept) event.canApprove = false;
+    if (!canAcceptOnce(message.params)) event.canApprove = false;
     if (!event.canApprove) {
       try {
-        session.connection.respond(message.id, { decision: offered.refusal });
+        session.connection.respond(message.id, { decision: "decline" });
       } catch {
         throw new ProviderFailure("확인 요청을 안전하게 거절하지 못해 작업을 멈췄어.");
       }
@@ -544,7 +535,7 @@ export class CodexAppServerProvider implements AgentProvider {
       signalProcess(session.connection.child, "SIGTERM");
     }, this.approvalTimeoutMs);
     timer.unref?.();
-    session.pending.set(requestId, { wireId: message.id, timer, refusal: offered.refusal });
+    session.pending.set(requestId, { wireId: message.id, timer });
     return event;
   }
 
