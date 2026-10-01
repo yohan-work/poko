@@ -9,7 +9,7 @@ It runs on the user's existing Codex (ChatGPT) sign-in. No new API key is needed
 ## What the user experiences
 
 1. **Look.** "이 화면 보고 알려줘." The user picks a window. Poko captures it, explains what it sees, and the overlay character circles the elements it talks about.
-2. **Act, one step at a time.** "이 메일 답장 창 열어 줘." Poko proposes one action. The overlay character flies to the target, the satellite dot points at it, and a bubble says "'답장' 버튼을 누를게". The user approves in the app or with a shortcut, the step runs, Poko looks again, and it proposes the next step. A stop shortcut ends everything at once.
+2. **Act, one step at a time.** "이 메일 답장 창 열어 줘." Poko proposes one action. The overlay character flies to the target, the satellite dot points at it, and a bubble says "'답장' 버튼을 누를게". The user checks the crop of the target on the approval card in the app and approves there, the step runs, Poko looks again, and it proposes the next step. A stop shortcut ends everything at once.
 
 ## Feasibility (checked)
 
@@ -38,21 +38,18 @@ All privileged work stays in the Electron main process. The renderer only shows 
 - **Overlay character:** a transparent, always-on-top, click-through `BrowserWindow` per display. It renders the Poko orb: flying to an element's frame, the satellite pointing, a highlight ring, and a speech bubble. It follows reduced motion.
   - Window capture records only the picked window, so the overlay isn't in the image.
   - The overlay still hides while Poko captures or measures, so it never covers the target. `setContentProtection` is only an extra layer, because macOS doesn't always honor it.
-- **Stop:** a global shortcut stops the task immediately. The overlay and the main window show that Poko is in control.
+- **Stop:** a global shortcut, the only global shortcut, stops the task. After stop, no accessibility action runs: the executor checks the stop flag right before each helper call, and a stop that arrives later cancels the step before it is sent. The overlay and the main window show that Poko is in control.
+- **Approval only on the card:** an action can be approved only from the card in Poko's window, which shows the target crop. The overlay bubble is narration built from untrusted labels, so it is never an approval surface, and there is no approve shortcut.
 
 ## Safety (from Phase 04 lessons)
 
 - Every action needs its own approval in Phase 06. There's no auto-run and no session trust.
 - **Scope:** Poko acts only in the window the user picked. Accessibility actions don't need focus, so Poko's own windows may take focus while the user approves. **Right before an action**, the helper checks that the target still belongs to the picked window and app. If another app has taken over that window's space, or the window is gone, the task pauses.
-- **Blocked by capability, not by name:** an approved `type` or `click` must never be able to run code or weaken security, so Poko refuses to act in:
-  - terminals and shells
-  - code editors and IDEs, which have built-in terminals and run tasks (VS Code, Cursor, Xcode, JetBrains IDEs)
-  - script and automation tools (Script Editor, Automator, Shortcuts)
-  - browser developer tools (DevTools windows and panels)
-  - password managers and Keychain Access
-  - System Settings
+- **Act only in allowlisted apps (fail closed):** an approved action must never be able to run code or weaken security, and a list of what to block can't promise that. Finder, the Dock, Spotlight, and Installer can launch programs, and unknown terminals look like plain text areas to Accessibility. So actions are offered only in an allowlist of app bundle IDs:
+  - browsers (Safari, Chrome, Arc, Firefox, Edge), but never in their developer tools
+  - Notes, Reminders, Calendar, Mail, Messages, and Preview
 
-  The list is kept as bundle-ID categories, and an unknown developer tool is treated as blocked when its window exposes a terminal or console role.
+  Any other app, including Finder, launchers, editors, terminals, settings, and Poko itself, can be **looked at** but never acted in. Poko's own windows are left out of the window picker. The allowlist grows only by explicit review.
 - **Hard stops:** a secure text field (`AXSecureTextField`) ends the task, and Poko never types secrets.
 - **Untrusted labels:** element labels and on-screen text come from the app or web page and can lie, for example a "Send" button labeled "Cancel". The approval card therefore shows a **crop of the target from the screenshot** as its main evidence, with the label as secondary text. Labels that look like payment, purchase, delete, or send get a stronger warning, but that is only a hint, never a guarantee.
 - **Frame-to-pixel mapping:** accessibility frames are global screen points, while the capture is window-relative pixels at the display's scale. The crop is computed as `(elementFrame − windowFrame) × (imageWidth / windowFrame.width)`. The helper reports the window frame and scale with every snapshot. If the image's aspect ratio doesn't match the window frame (for example, a downscaled thumbnail), Poko recaptures at full size or refuses. This mapping has unit tests, because a wrong crop would show the user a different control than the one pressed.
@@ -68,7 +65,7 @@ Each milestone is its own PR with review.
 
 1. **Permissions and look.** Permission onboarding (check and explain Screen Recording and Accessibility), the window picker, capture, the Swift helper (window identity and snapshot), and a Codex turn with `localImage` and the element list. Poko describes the window, and no actions exist yet.
 2. **Overlay character.** The transparent overlay window. Poko flies to and circles elements referenced in the look answer. It hides while Poko captures or measures (content protection is only an extra layer) and respects reduced motion.
-3. **One approved step at a time.** The action schema and validation, the approval card with a target crop, approve and stop shortcuts, AX execution with re-check, the step loop, and the safety rules above.
+3. **One approved step at a time.** The action schema and validation, the approval card with a target crop, the stop shortcut, AX execution with re-check, the step loop, and the safety rules above.
 
 ## Explicitly deferred
 
@@ -82,7 +79,7 @@ Each milestone is its own PR with review.
 
 - With permissions granted, "이 화면 보고 알려줘" on a picked window gives an accurate description, and the overlay highlights the elements it mentions.
 - A proposed action shows the overlay pointing at the right element and a card naming it. Declining does nothing. Approving performs exactly that one action.
-- The stop shortcut halts within one step. Blocked app categories, secure fields, and the target no longer belonging to the picked window all stop or pause the task.
+- After the stop shortcut, no accessibility action runs. Non-allowlisted apps, secure fields, and the target no longer belonging to the picked window all stop or pause the task.
 - The approval crop matches the element that is pressed, which is covered by mapping tests.
 - Screenshots never reach SQLite, and temp files are removed.
 - `pnpm check` and `pnpm format:check` pass. Screen-agent logic (schema, validation, safety rules, loop) has unit tests with recorded snapshots.
