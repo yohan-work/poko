@@ -30,14 +30,20 @@ export function Character({ state, size = 72, showStatus = false }: CharacterPro
         viewBox="0 0 100 100"
         xmlns="http://www.w3.org/2000/svg"
       >
-        <circle className="character__ring" cx="50" cy="50" r="47" />
+        <ellipse className="character__ring" cx="50" cy="55" rx="46" ry="40" />
         <g className="character__body-group">
-          <circle className="character__body" cx="50" cy="50" r="40" />
+          <path className="character__sprout" d="M50 21C48 11 53 4 62 2C63 12 58 18 50 21Z" />
+          <path
+            className="character__body"
+            d="M50 20C74 20 88 39 88 61C88 79 72 87 50 87C28 87 12 79 12 61C12 39 26 20 50 20Z"
+          />
+          <ellipse className="character__cheek" cx="30" cy="66" rx="5.5" ry="3.2" />
+          <ellipse className="character__cheek" cx="70" cy="66" rx="5.5" ry="3.2" />
           <g className="character__eyes">
-            <path className="character__eye character__eye--left" d="M59.5 29l-2.5 9" />
-            <path className="character__eye character__eye--right" d="M73.5 31.5l-2.5 9" />
+            <ellipse className="character__eye" cx="41" cy="56" rx="4.3" ry="6.2" />
+            <ellipse className="character__eye" cx="59" cy="56" rx="4.3" ry="6.2" />
           </g>
-          <path className="character__happy" d="M53 37q4.5-6 9 0M67 39.5q4.5-6 9 0" />
+          <path className="character__happy" d="M36.5 57.5q4.5-6 9 0M54.5 57.5q4.5-6 9 0" />
         </g>
       </svg>
       {showStatus && (

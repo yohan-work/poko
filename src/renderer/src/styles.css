@@ -1,7 +1,7 @@
 /* Poko desktop UI
  * layout: left sidebar (navigation, recent tasks, workspace) + centered conversation column
  * tone: quiet, warm neutral surfaces; one coral accent; follows the system light/dark setting
- * character: a white ball with two slanted eyes; states are shown through the eyes and motion
+ * character: a white mochi with a coral sprout, oval eyes, and blush; states use eyes, sprout, and motion
  */
 
 :root {
@@ -418,7 +418,7 @@ button:disabled {
 
 .character__body-group {
   transform-box: view-box;
-  transform-origin: 50px 90px;
+  transform-origin: 50px 87px;
   animation: breathe 4.2s ease-in-out infinite;
 }
 
@@ -428,25 +428,34 @@ button:disabled {
   stroke-width: 1.5;
 }
 
+.character__sprout {
+  fill: var(--color-accent);
+  transform-box: view-box;
+  transform-origin: 50px 21px;
+  animation: sway 3.6s ease-in-out infinite;
+}
+
+.character__cheek {
+  fill: var(--color-accent);
+  opacity: 0.45;
+}
+
 .character__eyes {
   transform-box: view-box;
-  transform-origin: 65px 35px;
+  transform-origin: 50px 56px;
   transition: transform 300ms var(--ease);
   animation: blink 5.5s ease-in-out infinite;
 }
 
 .character__eye {
-  fill: none;
-  stroke: var(--color-character-eye);
-  stroke-linecap: round;
-  stroke-width: 10;
+  fill: var(--color-character-eye);
 }
 
 .character__happy {
   fill: none;
   stroke: var(--color-character-eye);
   stroke-linecap: round;
-  stroke-width: 5.5;
+  stroke-width: 4.5;
   opacity: 0;
 }
 
@@ -464,11 +473,15 @@ button:disabled {
 
 .character--listening .character__eyes {
   animation: none;
-  transform: translate(-6px, 4px);
+  transform: translate(0, -2px) scale(1.08);
 }
 
 .character--thinking .character__eyes {
   animation: look-around 2.4s ease-in-out infinite;
+}
+
+.character--thinking .character__sprout {
+  animation: sway 1.2s ease-in-out infinite;
 }
 
 .character--working .character__body-group {
@@ -477,10 +490,10 @@ button:disabled {
 
 .character--working .character__eyes {
   animation: none;
-  transform: translate(-4px, 10px);
+  transform: translate(0, 3px);
 }
 
-.character--success .character__eye {
+.character--success .character__eyes {
   opacity: 0;
 }
 
@@ -494,12 +507,17 @@ button:disabled {
 
 .character--error .character__eyes {
   animation: none;
-  transform: translate(-10px, 16px) rotate(30deg);
+  transform: translate(0, 4px) scaleY(0.45);
+}
+
+.character--error .character__sprout {
+  animation: none;
+  transform: rotate(-38deg);
 }
 
 .character--error .character__body-group {
   animation: none;
-  transform: rotate(-6deg);
+  transform: rotate(-5deg);
 }
 
 .character--approval .character__ring {
@@ -508,7 +526,22 @@ button:disabled {
 
 .character--approval .character__eyes {
   animation: none;
-  transform: translate(-12px, 6px);
+  transform: translate(0, -3px);
+}
+
+.character--approval .character__sprout {
+  animation: none;
+  transform: rotate(10deg);
+}
+
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
 }
 
 @keyframes breathe {
@@ -538,10 +571,10 @@ button:disabled {
     transform: translate(0, 0);
   }
   30% {
-    transform: translate(-14px, 2px);
+    transform: translate(-5px, -1px);
   }
-  60% {
-    transform: translate(-6px, -2px);
+  65% {
+    transform: translate(5px, -2px);
   }
 }
 
