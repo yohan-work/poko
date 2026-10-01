@@ -1,12 +1,17 @@
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { CodexAppServerProvider, getFileChanges, isInside } from "./CodexAppServerProvider";
+import {
+  CodexAppServerProvider,
+  getFileChanges,
+  isInside,
+  touchesGitDirectory,
+} from "./CodexAppServerProvider";
 
 type Message = Record<string, unknown> & { id?: unknown; method?: string };
 
@@ -130,6 +135,35 @@ const commandApproval = (overrides: Record<string, unknown> = {}) => ({
   },
 });
 
+/** Starts a file-change item and asks to approve it, the way Codex does. */
+function sendFileChange(
+  server: FakeAppServer,
+  { id = 7 as string | number, path = "src/a.ts", params = {} as Record<string, unknown> } = {},
+) {
+  server.send({
+    method: "item/started",
+    params: {
+      item: {
+        type: "fileChange",
+        id: "patch-1",
+        status: "inProgress",
+        changes: [{ path, kind: { type: "update" }, diff: "-a\n+b" }],
+      },
+    },
+  });
+  server.send({
+    id,
+    method: "item/fileChange/requestApproval",
+    params: {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "patch-1",
+      startedAtMs: 1,
+      ...params,
+    },
+  });
+}
+
 describe("CodexAppServerProvider", () => {
   it("streams a read-only turn to completion", async () => {
     const server = new FakeAppServer();
@@ -157,15 +191,11 @@ describe("CodexAppServerProvider", () => {
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
-    // Older servers omit `kind`; it defaults to "command".
-    server.send(commandApproval());
+    sendFileChange(server);
 
-    const event = await stream.next("approvalRequired");
-    expect(event).toMatchObject({
+    expect(await stream.next("approvalRequired")).toMatchObject({
       requestId: "7",
-      kind: "command",
-      summary: "pnpm test",
-      cwd: "/workspace",
+      kind: "file_change",
       canApprove: true,
     });
     expect(provider.hasPendingApproval("other-task", "7")).toBe(false);
@@ -182,24 +212,49 @@ describe("CodexAppServerProvider", () => {
   });
 
   it.each([
-    ["outside the workspace", { cwd: "/elsewhere" }],
-    ["without a command", { command: null }],
+    ["a plain command", {}],
+    // The real shape: an execpolicy proposal and a decision list.
+    [
+      "with an execpolicy proposal",
+      {
+        command: "/bin/zsh -lc \"printf 'hi' > hello.txt\"",
+        proposedExecpolicyAmendment: ["/bin/zsh", "-lc", "printf 'hi' > hello.txt"],
+        availableDecisions: ["accept", "cancel"],
+      },
+    ],
     ["asking for network access", { networkApprovalContext: { host: "example.com" } }],
-    ["proposing a policy change", { proposedExecpolicyAmendment: ["pnpm"] }],
-    ["of an unknown kind", { kind: "permissions" }],
-  ])("declines a command %s without asking", async (_label, overrides) => {
+  ])("declines every command approval (%s) without asking", async (_label, overrides) => {
     const server = new FakeAppServer();
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
     server.send(commandApproval(overrides));
 
-    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: false });
+    expect(await stream.next("approvalRequired")).toMatchObject({
+      kind: "command",
+      canApprove: false,
+      reason: expect.stringContaining("지원하지 않아"),
+    });
     expect(await server.waitFor((m) => m.id === 7)).toEqual({
       id: 7,
       result: { decision: "decline" },
     });
     expect(provider.hasPendingApproval("task-1", "7")).toBe(false);
+    server.kill();
+  });
+
+  it("declines a file change the server won't let us accept once", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    sendFileChange(server, { params: { availableDecisions: ["acceptForSession", "cancel"] } });
+
+    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: false });
+    expect(await server.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "decline" },
+    });
     server.kill();
   });
 
@@ -250,6 +305,31 @@ describe("CodexAppServerProvider", () => {
     ).toBeNull();
     expect(getFileChanges(change({ type: "rename" }), "/workspace")).toBeNull();
     expect(getFileChanges({ changes: [] }, "/workspace")).toBeNull();
+    // A patch that lays out a bare repository (HEAD or config beside objects/ or refs/).
+    const many = (...paths: string[]) => ({
+      changes: paths.map((path) => ({ path, kind: { type: "add" }, diff: "" })),
+    });
+    expect(
+      getFileChanges(many("tools/HEAD", "tools/objects/x", "tools/refs/x"), "/workspace"),
+    ).toBeNull();
+    // Without a HEAD file git sees no repository, so config beside objects/ and refs/ is fine.
+    expect(
+      getFileChanges(
+        many("tools/config", "tools/objects/x", "tools/refs/heads/main"),
+        "/workspace",
+      ),
+    ).toHaveLength(3);
+    for (const name of ["HEAD", "head.", "commondir", "gitdir", "packed-refs"]) {
+      expect(getFileChanges(many(`a/${name}`), "/workspace")).toBeNull();
+    }
+    expect(getFileChanges(many("src/config", "src/app.ts"), "/workspace")).toHaveLength(2);
+    expect(getFileChanges(change({ type: "update" }, ".git/config"), "/workspace")).toBeNull();
+    expect(
+      getFileChanges(change({ type: "add" }, ".GIT/hooks/pre-commit"), "/workspace"),
+    ).toBeNull();
+    expect(
+      getFileChanges(change({ type: "update", move_path: ".git/config" }), "/workspace"),
+    ).toBeNull();
   });
 
   it("fails closed on unsupported server requests", async () => {
@@ -274,7 +354,7 @@ describe("CodexAppServerProvider", () => {
     const controller = new AbortController();
     const stream = consume(provider.runTask(task, { signal: controller.signal }));
     await turnStarted(server);
-    server.send(commandApproval());
+    sendFileChange(server);
     await stream.next("approvalRequired");
 
     controller.abort();
@@ -291,7 +371,7 @@ describe("CodexAppServerProvider", () => {
     const provider = providerFor(server, { approvalTimeoutMs: 20 });
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
-    server.send(commandApproval());
+    sendFileChange(server);
     await stream.next("approvalRequired");
 
     expect(await server.waitFor((m) => m.id === 7)).toEqual({
@@ -370,12 +450,129 @@ describe("CodexAppServerProvider", () => {
       expect(isInside(workspace, join(workspace, "src", "new.ts"))).toBe(true);
       expect(isInside(workspace, join(workspace, "linked", "config"))).toBe(false);
       expect(isInside(workspace, join(workspace, "dangling"))).toBe(false);
+      // A symlink into .git is still .git.
+      await mkdir(join(workspace, ".git", "hooks"), { recursive: true });
+      await symlink(join(workspace, ".git", "hooks"), join(workspace, "hooks"));
+      expect(touchesGitDirectory(workspace, "hooks/pre-commit")).toBe(true);
+      expect(touchesGitDirectory(workspace, "GIT~1/config")).toBe(true);
+      expect(touchesGitDirectory(workspace, ".git./config")).toBe(true);
+      expect(touchesGitDirectory(workspace, ".git::$INDEX_ALLOCATION/config")).toBe(
+        process.platform === "win32",
+      );
+      expect(touchesGitDirectory(workspace, "notes/2026-10-01T10:00.md")).toBe(
+        process.platform === "win32",
+      );
+      expect(touchesGitDirectory(workspace, "src/app.ts")).toBe(false);
+      // A bare-repository layout split across patches, in other letter case, or via a symlink.
+      await mkdir(join(workspace, "x"));
+      await writeFile(join(workspace, "x", "HEAD"), "ref: refs/heads/main");
+      const add = (...paths: string[]) => ({
+        changes: paths.map((path) => ({ path, kind: { type: "add" }, diff: "" })),
+      });
+      expect(getFileChanges(add("x/objects/a", "x/refs/a"), workspace)).toBeNull();
+      expect(getFileChanges(add("y/HEAD", "y/Objects/a", "y/Refs/a"), workspace)).toBeNull();
+      expect(getFileChanges(add("z/HEAD.", "z/objects/a", "z/refs./a"), workspace)).toBeNull();
+      await mkdir(join(workspace, "sub"));
+      await symlink(join(workspace, "sub"), join(workspace, "link"));
+      expect(getFileChanges(add("X/HEAD", "x/objects/o", "x/refs/r"), workspace)).toBeNull();
+      // Writing into a folder that already holds HEAD, even through a symlink or another case.
+      await symlink(join(workspace, "x"), join(workspace, "xlink"));
+      expect(getFileChanges(add("xlink/config"), workspace)).toBeNull();
+      // Ordinary config/ and objects/ folders are not a repository.
+      await mkdir(join(workspace, "app", "config"), { recursive: true });
+      await mkdir(join(workspace, "app", "objects"));
+      await mkdir(join(workspace, "app", "refs"));
+      expect(getFileChanges(add("app/main.ts"), workspace)).toHaveLength(1);
+      expect(getFileChanges(add("src/config", "src/app.ts"), workspace)).toHaveLength(2);
+      // An absolute path inside the workspace is judged only below the workspace.
+      expect(touchesGitDirectory(workspace, join(workspace, "src", "app.ts"))).toBe(false);
+      expect(touchesGitDirectory(workspace, join(workspace, ".git", "config"))).toBe(true);
+      expect(
+        getFileChanges(
+          { changes: [{ path: "hooks/pre-commit", kind: { type: "add" }, diff: "" }] },
+          workspace,
+        ),
+      ).toBeNull();
       expect(
         getFileChanges(
           { changes: [{ path: "linked/config", kind: { type: "add" }, diff: "" }] },
           workspace,
         ),
       ).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a file change once, never for the session", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    sendFileChange(server, {
+      params: { availableDecisions: ["accept", "acceptForSession", "cancel"] },
+    });
+
+    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: true });
+    expect(provider.respondToApproval("task-1", "7", "approve")).toBe(true);
+    expect(await server.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "accept" },
+    });
+    server.kill();
+  });
+
+  it("refuses with decline even when the server's list omits it, so the task can continue", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    sendFileChange(server, { params: { availableDecisions: ["accept", "cancel"] } });
+
+    await stream.next("approvalRequired");
+    expect(provider.respondToApproval("task-1", "7", "decline")).toBe(true);
+    expect(await server.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "decline" },
+    });
+    server.kill();
+  });
+
+  it("re-checks a pending file change before it is approved", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "poko-recheck-")));
+    try {
+      const server = new FakeAppServer();
+      const provider = providerFor(server);
+      const stream = consume(provider.runTask({ ...task, cwd: base }));
+      await turnStarted(server);
+      server.send({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "patch-1",
+            status: "inProgress",
+            changes: [{ path: "t/objects/x", kind: { type: "add" }, diff: "" }],
+          },
+        },
+      });
+      server.send({
+        id: "a",
+        method: "item/fileChange/requestApproval",
+        params: { threadId: "thread-1", turnId: "turn-1", itemId: "patch-1", startedAtMs: 1 },
+      });
+      await stream.next("approvalRequired");
+      expect(provider.canStillApprove("task-1", '"a"')).toBe(true);
+      // Meanwhile the folder gains HEAD and refs/ on disk.
+      await mkdir(join(base, "t", "refs"), { recursive: true });
+      await writeFile(join(base, "t", "HEAD"), "ref: refs/heads/main");
+      expect(provider.canStillApprove("task-1", '"a"')).toBe(false);
+      // A folder swapped for a symlink to .git after the offer is caught too.
+      await rm(join(base, "t"), { recursive: true, force: true });
+      await mkdir(join(base, ".git"));
+      await symlink(join(base, ".git"), join(base, "t"));
+      expect(provider.canStillApprove("task-1", '"a"')).toBe(false);
+      server.kill();
     } finally {
       await rm(base, { recursive: true, force: true });
     }

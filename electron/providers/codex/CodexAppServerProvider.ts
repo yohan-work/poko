@@ -3,7 +3,7 @@ import {
   type ChildProcessWithoutNullStreams,
   type SpawnOptions,
 } from "node:child_process";
-import { lstatSync, realpathSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
@@ -194,6 +194,18 @@ class AppServerConnection {
 interface PendingApproval {
   wireId: JsonRpcId;
   timer: NodeJS.Timeout;
+  /** The file-change item, fully re-validated right before approval. */
+  fileChange?: Record<string, unknown>;
+}
+
+/**
+ * Whether the server lets this request be accepted once. Servers may list their decisions;
+ * older ones omit the list. Refusals always use "decline", even when the list doesn't name it:
+ * codex-cli 0.159.3 accepts it and lets the turn continue, while "cancel" would end the task.
+ */
+function canAcceptOnce(params: Record<string, unknown>): boolean {
+  const offered = params.availableDecisions;
+  return !Array.isArray(offered) || offered.includes("accept");
 }
 
 interface TaskSession {
@@ -446,6 +458,18 @@ export class CodexAppServerProvider implements AgentProvider {
     return this.sessions.get(taskId)?.pending.has(requestId) ?? false;
   }
 
+  /**
+   * Re-checks a pending file change right before approval: the disk may have changed since it
+   * was offered.
+   */
+  canStillApprove(taskId: string, requestId: string): boolean {
+    const session = this.sessions.get(taskId);
+    const pending = session?.pending.get(requestId);
+    if (!session || !pending) return false;
+    // Every path check (workspace, .git, repository files) runs again on the current disk.
+    return !pending.fileChange || getFileChanges(pending.fileChange, session.task.cwd) !== null;
+  }
+
   respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
     const session = this.sessions.get(taskId);
     const pending = session?.pending.get(requestId);
@@ -504,6 +528,10 @@ export class CodexAppServerProvider implements AgentProvider {
         ? this.describeCommandApproval(session, requestId, message.params)
         : this.describeFileChangeApproval(session, requestId, message.params);
 
+    if (event.canApprove && !canAcceptOnce(message.params)) {
+      event.canApprove = false;
+      event.reason = "Codex가 이번 한 번만 허용하는 선택지를 주지 않아서 거절했어.";
+    }
     if (!event.canApprove) {
       try {
         session.connection.respond(message.id, { decision: "decline" });
@@ -524,36 +552,34 @@ export class CodexAppServerProvider implements AgentProvider {
       signalProcess(session.connection.child, "SIGTERM");
     }, this.approvalTimeoutMs);
     timer.unref?.();
-    session.pending.set(requestId, { wireId: message.id, timer });
+    const itemId = readString(message.params.itemId);
+    const item = itemId ? session.fileChanges.get(itemId) : undefined;
+    session.pending.set(requestId, {
+      wireId: message.id,
+      timer,
+      ...(message.method === "item/fileChange/requestApproval" && item ? { fileChange: item } : {}),
+    });
     return event;
   }
 
   private describeCommandApproval(
-    session: TaskSession,
+    _session: TaskSession,
     requestId: string,
     params: Record<string, unknown>,
   ): ApprovalEvent {
+    // An approved command would run outside the read-only sandbox, and a text screen can't make
+    // that safe, so v0.1 never offers command approvals. File changes are offered instead, as a
+    // diff limited to the workspace. Sandboxed command approval is planned for Phase 06.
     const command = readString(params.command)?.trim();
-    const cwd = readString(params.cwd) ?? null;
-    // Older servers omit `kind`; the protocol default is "command".
-    const kind = params.kind ?? "command";
-    const broadensPolicy =
-      params.networkApprovalContext != null ||
-      params.proposedNetworkPolicyAmendments != null ||
-      params.proposedExecpolicyAmendment != null;
-    const canApprove =
-      kind === "command" &&
-      Boolean(command && command.length <= 8_000) &&
-      Boolean(cwd && isInside(session.task.cwd, cwd)) &&
-      !broadensPolicy;
     return {
       type: "approvalRequired",
       requestId,
       kind: "command",
       summary: command || "명령 내용을 확인할 수 없어.",
-      cwd,
-      reason: readString(params.reason) ?? null,
-      canApprove,
+      cwd: readString(params.cwd) ?? null,
+      reason:
+        "명령 실행 승인은 아직 지원하지 않아서 거절했어. 파일 변경은 확인을 받아 진행할 수 있어.",
+      canApprove: false,
     };
   }
 
@@ -620,7 +646,10 @@ export function getFileChanges(
     const kind = readString(value.kind.type);
     if (!kind || !["add", "update", "delete"].includes(kind)) return null;
     if (!isInside(root, resolve(root, value.path))) return null;
+    // Git config and hooks run programs, so a patch never touches .git.
+    if (touchesGitDirectory(root, value.path)) return null;
     const movePath = value.kind.move_path;
+    if (typeof movePath === "string" && touchesGitDirectory(root, movePath)) return null;
     if (
       movePath != null &&
       (typeof movePath !== "string" || !isInside(root, resolve(root, movePath)))
@@ -628,7 +657,80 @@ export function getFileChanges(
       return null;
     changes.push({ path: value.path, change: `${kind}:\n${value.diff}` });
   }
+  if (buildsRepository(root, changeTargets(item))) return null;
   return changes;
+}
+
+/** Every path a file-change item writes, including move destinations. */
+function changeTargets(item: Record<string, unknown>): string[] {
+  if (!Array.isArray(item.changes)) return [];
+  return item.changes.flatMap((value) => {
+    if (!isRecord(value)) return [];
+    const move = isRecord(value.kind) ? value.kind.move_path : undefined;
+    return [value.path, move].filter((path): path is string => typeof path === "string");
+  });
+}
+
+/** File name as git and the file system will see it: lower case, no trailing dots or spaces. */
+function normalizedName(name: string): string {
+  return name.toLowerCase().replace(/[. ]+$/, "");
+}
+
+/** Files that make a folder a git repository (or point git at one). */
+const REPOSITORY_FILES = new Set(["head", "commondir", "gitdir", "packed-refs"]);
+
+/**
+ * Whether a patch could make or extend a git repository outside `.git`. Git only treats a folder
+ * as a repository when it has a `HEAD` file, so a patch may not write `HEAD` (or the files that
+ * redirect git: `commondir`, `gitdir`, `packed-refs`) anywhere, and may not write into a folder
+ * that already holds a `HEAD` file. Names ignore case and trailing dots; folders are checked on
+ * disk through real paths.
+ */
+function buildsRepository(root: string, paths: string[]): boolean {
+  const realRoot = realPath(resolve(root));
+  if (!realRoot) return true;
+  for (const path of paths) {
+    if (REPOSITORY_FILES.has(normalizedName(basename(path)))) return true;
+    const real = realPath(resolve(root, path));
+    if (!real) return true;
+    for (let folder = dirname(real); ; folder = dirname(folder)) {
+      if (!folder.startsWith(realRoot)) break;
+      try {
+        const hasHead = readdirSync(folder, { withFileTypes: true }).some(
+          (entry) => !entry.isDirectory() && normalizedName(entry.name) === "head",
+        );
+        if (hasHead) return true;
+      } catch {
+        /* the folder doesn't exist yet */
+      }
+      if (folder === realRoot) break;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a path reaches the workspace's `.git` directory. The check runs on the real path
+ * (after symlinks), case-insensitively for macOS, and treats Windows aliases (`GIT~1`,
+ * `.git.`, NTFS streams) as `.git`.
+ */
+export function touchesGitDirectory(root: string, path: string): boolean {
+  const realRoot = realPath(resolve(root));
+  const realTarget = realPath(resolve(root, path));
+  if (!realRoot || !realTarget) return true;
+  const isGit = (part: string) => {
+    // On Windows, NTFS stream names (`.git::$INDEX_ALLOCATION`) also reach the directory, so
+    // any `:` is refused there. Elsewhere `:` is an ordinary file name character.
+    if (process.platform === "win32" && part.includes(":")) return true;
+    const name = part.toLowerCase().replace(/[. ]+$/, "");
+    return name === ".git" || /^git~\d+$/.test(name);
+  };
+  // Only the part below the workspace is checked, so folders above it (or a Windows drive
+  // like `C:`) never count; both the written and the symlink-resolved paths are checked.
+  const lexical = relative(resolve(root), resolve(root, path));
+  return [lexical, relative(realRoot, realTarget)].some((candidate) =>
+    candidate.split(/[\\/]/).some(isGit),
+  );
 }
 
 export function isInside(root: string, target: string): boolean {
