@@ -8,7 +8,7 @@ interface CharacterProps {
   showStatus?: boolean;
 }
 
-const stateLabels: Record<CharacterState, string> = {
+export const stateLabels: Record<CharacterState, string> = {
   idle: "여기 있어",
   listening: "듣고 있어",
   thinking: "생각하고 있어",

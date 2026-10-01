@@ -5,7 +5,7 @@ import { ChatPanel } from "./components/chat/ChatPanel";
 import { ActivityPanel } from "./components/activity/ActivityPanel";
 import { TasksPanel } from "./components/activity/TasksPanel";
 import { MemoryPanel } from "./components/activity/MemoryPanel";
-import { Character } from "./components/character/Character";
+import { Character, stateLabels } from "./components/character/Character";
 import { Icon, type IconName } from "./components/Icon";
 
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
@@ -132,6 +132,7 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
 
 export function App() {
   const activeView = useAppStore((state) => state.activeView);
+  const characterState = useAppStore((state) => state.characterState);
   const initializeWorkspace = useAppStore((state) => state.initializeWorkspace);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
@@ -141,6 +142,10 @@ export function App() {
 
   return (
     <div className="app-shell" data-sidebar={isSidebarOpen ? "open" : "closed"}>
+      {/* One live region announces Poko's state; the drawn characters stay silent. */}
+      <p className="sr-only" aria-live="polite">
+        포코: {stateLabels[characterState]}
+      </p>
       {isSidebarOpen && <Sidebar onCollapse={() => setSidebarOpen(false)} />}
 
       <main className="main-content">
