@@ -171,4 +171,3 @@ Phase 06 adds privileged main-process capabilities, all behind narrow IPC:
 - a global stop shortcut
 
 The renderer never captures, reads, or acts on other apps. Each action is approved individually, re-verified right before it runs, and limited to the picked app. Command and file-change requests from Codex during a screen task are declined. Browser automation (Playwright) remains out of scope.
-
