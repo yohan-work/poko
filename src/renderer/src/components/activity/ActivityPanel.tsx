@@ -9,9 +9,12 @@ export function ActivityPanel() {
 
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase();
+    // The store keeps entries oldest first; reversing keeps same-millisecond steps in order.
     const sorted = activities
-      .filter((entry) => entry.message.toLowerCase().includes(needle))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      .filter((entry) =>
+        `${entry.message}\n${entry.taskTitle ?? ""}`.toLowerCase().includes(needle),
+      )
+      .reverse();
     // Group by calendar day, not by label, so equal labels from different years stay apart.
     const byDay = new Map<string, { label: string; entries: ActivityEntry[] }>();
     for (const entry of sorted) {
