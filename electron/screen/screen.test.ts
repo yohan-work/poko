@@ -127,7 +127,8 @@ describe("listed elements", () => {
       ],
     });
     expect(listedElements(snapshot).map((element) => element.id)).toEqual([0]);
-    expect(buildLookPrompt("", snapshot)).toContain("hidden or scrolled-away elements left out");
+    expect(buildLookPrompt("", snapshot)).not.toContain("list truncated");
+    expect(buildLookPrompt("", { ...snapshot, truncated: true })).toContain("list truncated");
   });
 });
 

@@ -100,6 +100,17 @@ func scaleFor(_ frame: [String: Double]) -> Double {
   return Double(best?.backingScaleFactor ?? 2)
 }
 
+let minVisible = 4.0
+
+/** The smaller side of the part of `frame` inside `bounds`, or 0 when they don't overlap. */
+func visibleSize(_ frame: [String: Double], _ bounds: [String: Double]) -> Double {
+  let width = min(frame["x"]! + frame["width"]!, bounds["x"]! + bounds["width"]!)
+    - max(frame["x"]!, bounds["x"]!)
+  let height = min(frame["y"]! + frame["height"]!, bounds["y"]! + bounds["height"]!)
+    - max(frame["y"]!, bounds["y"]!)
+  return max(0, min(width, height))
+}
+
 let interestingRoles: Set<String> = [
   "AXButton", "AXLink", "AXTextField", "AXTextArea", "AXSearchField", "AXCheckBox",
   "AXRadioButton", "AXPopUpButton", "AXComboBox", "AXMenuItem", "AXMenuButton", "AXTab",
@@ -146,7 +157,12 @@ func snapshot(windowId: Int) {
     let label = text(element, kAXTitleAttribute) ?? text(element, kAXDescriptionAttribute)
       ?? text(element, kAXPlaceholderValueAttribute)
     let value = text(element, kAXValueAttribute)
-    if !path.isEmpty, interestingRoles.contains(role) || label != nil {
+    let frame = frameOf(element)
+    // Pages report scrolled-away content too. Only elements visibly inside the window take one
+    // of the limited slots, so a long scrolled page still yields what is on screen.
+    if !path.isEmpty, let frame, visibleSize(frame, target) >= minVisible,
+      interestingRoles.contains(role) || label != nil
+    {
       var settable: DarwinBoolean = false
       AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
       var entry: [String: Any] = [
@@ -158,11 +174,14 @@ func snapshot(windowId: Int) {
       if let subrole { entry["subrole"] = subrole }
       if let label { entry["label"] = label }
       if let value, subrole != "AXSecureTextField" { entry["value"] = value }
-      if let frame = frameOf(element) { entry["frame"] = frame }
+      entry["frame"] = frame
       if let url = copy(element, kAXURLAttribute) as? URL { entry["url"] = url.absoluteString }
       elements.append(entry)
     }
-    if depth < maxDepth, queue.count < maxVisited,
+    // A subtree whose own frame lies wholly outside the window is skipped. Elements without a
+    // frame, or with an empty one, are still walked: they may hold visible children.
+    let offscreen = frame.map { $0["width"]! > 0 && $0["height"]! > 0 && visibleSize($0, target) <= 0 } ?? false
+    if !offscreen, depth < maxDepth, queue.count < maxVisited,
       let children = copy(element, kAXChildrenAttribute) as? [AXUIElement]
     {
       for (index, child) in children.enumerated().prefix(maxVisited - queue.count) {
