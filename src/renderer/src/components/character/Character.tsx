@@ -30,20 +30,18 @@ export function Character({ state, size = 72, showStatus = false }: CharacterPro
         viewBox="0 0 100 100"
         xmlns="http://www.w3.org/2000/svg"
       >
-        <ellipse className="character__ring" cx="50" cy="55" rx="46" ry="40" />
+        <circle className="character__ring" cx="46" cy="55" r="42" />
         <g className="character__body-group">
-          <path className="character__sprout" d="M50 21C48 11 53 4 62 2C63 12 58 18 50 21Z" />
-          <path
-            className="character__body"
-            d="M50 20C74 20 88 39 88 61C88 79 72 87 50 87C28 87 12 79 12 61C12 39 26 20 50 20Z"
-          />
-          <ellipse className="character__cheek" cx="30" cy="66" rx="5.5" ry="3.2" />
-          <ellipse className="character__cheek" cx="70" cy="66" rx="5.5" ry="3.2" />
+          <circle className="character__body" cx="46" cy="55" r="35" />
           <g className="character__eyes">
-            <ellipse className="character__eye" cx="41" cy="56" rx="4.3" ry="6.2" />
-            <ellipse className="character__eye" cx="59" cy="56" rx="4.3" ry="6.2" />
+            <rect className="character__eye" x="34" y="44" width="7.5" height="15" rx="3.75" />
+            <rect className="character__eye" x="48" y="44" width="7.5" height="15" rx="3.75" />
           </g>
-          <path className="character__happy" d="M36.5 57.5q4.5-6 9 0M54.5 57.5q4.5-6 9 0" />
+          <path className="character__happy" d="M34 54q3.75-6 7.5 0M48 54q3.75-6 7.5 0" />
+        </g>
+        {/* Poko's companion dot: orbits while thinking, blinks for approval, falls on error. */}
+        <g className="character__orbit">
+          <circle className="character__satellite" cx="81" cy="21" r="7.5" />
         </g>
       </svg>
       {showStatus && (

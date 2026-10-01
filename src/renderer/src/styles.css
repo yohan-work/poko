@@ -1,7 +1,7 @@
 /* Poko desktop UI
  * layout: left sidebar (navigation, recent tasks, workspace) + centered conversation column
  * tone: quiet, warm neutral surfaces; one coral accent; follows the system light/dark setting
- * character: a white mochi with a coral sprout, oval eyes, and blush; states use eyes, sprout, and motion
+ * character: a white orb with pill eyes and a coral companion dot; states use the eyes, the dot, and motion
  */
 
 :root {
@@ -418,7 +418,7 @@ button:disabled {
 
 .character__body-group {
   transform-box: view-box;
-  transform-origin: 50px 87px;
+  transform-origin: 46px 90px;
   animation: breathe 4.2s ease-in-out infinite;
 }
 
@@ -428,21 +428,9 @@ button:disabled {
   stroke-width: 1.5;
 }
 
-.character__sprout {
-  fill: var(--color-accent);
-  transform-box: view-box;
-  transform-origin: 50px 21px;
-  animation: sway 3.6s ease-in-out infinite;
-}
-
-.character__cheek {
-  fill: var(--color-accent);
-  opacity: 0.45;
-}
-
 .character__eyes {
   transform-box: view-box;
-  transform-origin: 50px 56px;
+  transform-origin: 45px 51px;
   transition: transform 300ms var(--ease);
   animation: blink 5.5s ease-in-out infinite;
 }
@@ -459,10 +447,25 @@ button:disabled {
   opacity: 0;
 }
 
+.character__orbit {
+  transform-box: view-box;
+  transform-origin: 46px 55px;
+}
+
+.character__satellite {
+  fill: var(--color-accent);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 400ms var(--ease),
+    fill 300ms ease;
+  animation: float 3.2s ease-in-out infinite;
+}
+
 .character__ring {
   fill: none;
   stroke: var(--color-accent);
-  stroke-width: 3;
+  stroke-width: 2;
   opacity: 0;
 }
 
@@ -480,8 +483,8 @@ button:disabled {
   animation: look-around 2.4s ease-in-out infinite;
 }
 
-.character--thinking .character__sprout {
-  animation: sway 1.2s ease-in-out infinite;
+.character--thinking .character__orbit {
+  animation: orbit 2.4s linear infinite;
 }
 
 .character--working .character__body-group {
@@ -491,6 +494,10 @@ button:disabled {
 .character--working .character__eyes {
   animation: none;
   transform: translate(0, 3px);
+}
+
+.character--working .character__orbit {
+  animation: orbit 1.3s linear infinite;
 }
 
 .character--success .character__eyes {
@@ -505,19 +512,24 @@ button:disabled {
   animation: hop 520ms var(--ease) 1;
 }
 
+.character--success .character__satellite {
+  animation: pop 520ms var(--ease) 1;
+}
+
 .character--error .character__eyes {
   animation: none;
   transform: translate(0, 4px) scaleY(0.45);
 }
 
-.character--error .character__sprout {
-  animation: none;
-  transform: rotate(40deg);
-}
-
 .character--error .character__body-group {
   animation: none;
   transform: rotate(-5deg);
+}
+
+.character--error .character__satellite {
+  animation: none;
+  fill: var(--color-text-faint);
+  transform: translate(-2px, 62px) scale(0.8);
 }
 
 .character--approval .character__ring {
@@ -526,21 +538,32 @@ button:disabled {
 
 .character--approval .character__eyes {
   animation: none;
-  transform: translate(0, -3px);
+  transform: translate(3px, -3px);
 }
 
-.character--approval .character__sprout {
-  animation: none;
-  transform: rotate(10deg);
+.character--approval .character__satellite {
+  animation: ring 1.8s ease-in-out infinite;
 }
 
-@keyframes sway {
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes float {
   0%,
   100% {
-    transform: rotate(-6deg);
+    transform: translate(0, 0);
   }
   50% {
-    transform: rotate(8deg);
+    transform: translate(1px, -2px);
+  }
+}
+
+@keyframes pop {
+  40% {
+    transform: scale(1.35);
   }
 }
 
