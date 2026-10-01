@@ -86,6 +86,25 @@ Each milestone is its own PR with review.
 - Poko starts at the window's corner, flies to each point, rings it, and says `여기야: <name>`. The overlay hides on its own after about 3 seconds per point, right before every capture, and when the main window closes. Reduced motion turns the flight into a jump.
 - Streaming text may show `[12]` briefly; the final answer replaces it.
 
+### Milestone 3a notes (implemented): checking and acting
+
+Real-browser results on a local test page (`127.0.0.1`, Safari 26 and Chrome) with a plain input, a React-controlled input, a `contenteditable` editor, links, a modal over a control, and a password field:
+
+| | Safari | Chrome |
+| --- | --- | --- |
+| `AXPress` on a web button | Works | Not listed; calling it reports success and **does nothing** |
+| Setting `AXValue` (plain, React, contenteditable) | Works after focusing the field (`AXFocused`) | Works; React state updates |
+| Covered by an in-page modal or another app's window | Refused | Refused |
+| `.dmg` link, `mailto:` link, password field, address bar, back button | Refused | Refused |
+
+Decisions:
+- `poko-ax act <windowId>` reads its request on stdin, so the text to type never appears in the process list. `check` runs every test without acting. `press`, `type`, and `reveal` run the same tests again and then act.
+- An element is pressed only if it lists `AXPress`; Chrome's web buttons don't, so **clicking is Safari-only for now** (decided with the user). In Chrome, Poko can type but not click until a safe way to click is found. A click is never sent as a synthetic mouse event.
+- Typing focuses the field first and reads the value back (polling up to 0.5 s); `valueMatches: false` means the page didn't take the text and is reported, not assumed.
+- Window matching accepts an AX title that starts with the capture title plus `" - "`, because browsers append their name and profile. This fixed a picked Chrome window that shared its frame with another one.
+- The pixel check measured: an unchanged control scores 0, the same field after typing 0.034, and a different field of the same size 0.043. A mean difference can't tell look-alike controls apart, and the accessibility re-check is what proves identity. So any difference above 0.01 shows the new crop and asks again.
+- Open question resolved: the hit test uses the target app's own `AXUIElementCopyElementAtPosition` (which sees in-page modals and sticky headers) plus the window stacking order with Poko's process ignored (which sees other apps).
+
 ## Open questions to settle in implementation
 
 These come from plan review. Each milestone PR must answer them with real-browser evidence.

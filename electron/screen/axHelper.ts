@@ -119,9 +119,14 @@ export function parseSnapshot(value: unknown): WindowSnapshot {
 }
 
 /** Runs the read-only helper and returns its parsed JSON. */
-export function runHelper(executable: string, args: string[], timeoutMs = 8000): Promise<unknown> {
+export function runHelper(
+  executable: string,
+  args: string[],
+  timeoutMs = 8000,
+  input?: string,
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       executable,
       args,
       { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
@@ -139,5 +144,49 @@ export function runHelper(executable: string, args: string[], timeoutMs = 8000):
         }
       },
     );
+    // Requests (including text to type) go on stdin, never in the process list.
+    child.stdin?.end(input ?? "");
   });
+}
+
+export type ActKind = "check" | "press" | "type" | "reveal";
+
+/** What the helper needs to find the same element again and act on it. */
+export interface ActRequest {
+  kind: ActKind;
+  /** For `check`: the action that will be offered. */
+  intent?: Exclude<ActKind, "check">;
+  path: number[];
+  role: string;
+  label: string | null;
+  frame: Frame;
+  text?: string;
+  /** Poko's own process, so its windows don't count as covering the target. */
+  ignorePid?: number;
+}
+
+export function actRequest(
+  element: AxElement,
+  kind: ActKind,
+  options: { intent?: ActRequest["intent"]; text?: string; ignorePid?: number } = {},
+): ActRequest {
+  if (!element.frame) throw new HelperError("not_visible", "The element has no frame.");
+  return {
+    kind,
+    path: element.path,
+    role: element.role,
+    label: element.label,
+    frame: element.frame,
+    ...options,
+  };
+}
+
+/** `ok` with the element's current frame; `valueMatches` only after typing. */
+export function parseActResult(value: unknown): { frame: Frame | null; valueMatches?: boolean } {
+  const data = checkError(value);
+  if (data.ok !== true) throw new HelperError("malformed", "The helper didn't confirm the action.");
+  return {
+    frame: parseFrame(data.frame),
+    ...(typeof data.valueMatches === "boolean" ? { valueMatches: data.valueMatches } : {}),
+  };
 }
