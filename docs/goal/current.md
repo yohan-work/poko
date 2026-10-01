@@ -2,7 +2,7 @@
 
 - 상태: 진행 중
 - 마지막 갱신: 2026-10-01 Asia/Seoul
-- 현재 작업 단위: Phase 04 마무리 및 다음 Phase 결정
+- 현재 작업 단위: Phase 05 대화 품질 (기억·대화 맥락, Markdown, 스트리밍)
 
 ## 목표와 성공 기준
 
@@ -11,7 +11,7 @@
 
 ## 범위와 확정된 결정
 
-- 포함: Phase 00–03 기반과 Phase 04의 in-app approval gate 설계 및 구현.
+- 포함: Phase 00–04 기반, Claude 스타일 UI 개편, Phase 05 대화 품질.
 - 제외: 자동 memory extraction, browser, scheduler, write/command approval enforcement (Phase 04+).
 - 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. Electron main/preload/renderer는 Electron Vite를 사용하며 renderer에는 좁은 IPC bridge만 노출한다. README는 현재 동작과 계획 기능을 구분한다.
 - 결정: 사용자 승인으로 Phase 04 Codex transport를 `codex exec --json`에서 stdio JSON-RPC `codex app-server`로 전환한다. App Server는 experimental이므로 capability를 좁게 유지하고 검증 전 write 실행은 fail-closed로 둔다.
@@ -35,6 +35,9 @@
 - 완료: Phase 04 PR #10은 리뷰(4건 수정: process group 종료, `willRetry`, symlink 경계, 복수 승인 대기열) 후 squash merge commit `1526608`로 원격 `main`에 반영됐다.
 - 검증: `pnpm check`(typecheck, lint, 37 tests, build), `pnpm format:check`, `git diff --check` 통과.
 - 미검증: GUI 상호작용, 실제 Codex model 요청, OS별 sandbox enforcement. write mode는 비활성이다.
+- 완료: UI 개편 PR #12(사이드바·대화 화면), #13(검정 구 + 코랄 위성 캐릭터), #14(작업·기억·활동 탭)가 리뷰 후 squash merge됐다. 최신 `main`은 `76948f6`이다.
+- 결정: 작업 완료 후 PR → 리뷰 → 지적 반영 → squash merge까지 사용자 확인 없이 진행한다(사용자 지시, 2026-10-01).
+- 결정: 다음 순서는 Phase 05 대화 품질 → 실제 환경 승인 검증(사용자 참여) → Phase 06 승인 기반 쓰기 모드 → Phase 07 여러 대화. 계획은 [phase-05](../phases/phase-05.md).
 
 ## 마지막 체크포인트
 
@@ -43,6 +46,6 @@
 
 ## 재개 지점
 
-1. 원격 `main`(`1526608` 이후)에서 시작한다. 로컬 `main`은 사전 divergence가 있으므로 checkout/reset하지 않는다.
-2. 실제 Codex 요청에 대한 사용자 승인 후 `pnpm dev`로 승인 카드 흐름과 pause-before-action을 확인한다.
-3. 다음 Phase 범위(write mode 활성화 여부 등)를 사용자와 정하고 plan PR부터 시작한다.
+1. 원격 `main`에서 시작한다. 로컬 `main`은 사전 divergence가 있으므로 checkout/reset하지 않는다.
+2. Phase 05 마일스톤을 순서대로 각각 PR로 진행한다: 1) 기억·대화 맥락, 2) Markdown, 3) 스트리밍.
+3. 실제 Codex 요청 검증은 비용/데이터 전송이 있으므로 사용자 참여로 진행한다. write mode는 검증 전까지 비활성이다.
