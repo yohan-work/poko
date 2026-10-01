@@ -251,6 +251,99 @@ func topWindow(at point: CGPoint, ignoring ignoredPid: Int?) -> Int? {
   return nil
 }
 
+/// Whether the app's own hit test at `point` lands on `element` or one of its descendants.
+func hits(_ app: AXUIElement, _ element: AXUIElement, at point: CGPoint) -> Bool {
+  var hit: AXUIElement?
+  guard AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit) == .success,
+    var probe = hit
+  else { return false }
+  for _ in 0..<64 {
+    if CFEqual(probe, element) { return true }
+    guard let parent = copy(probe, kAXParentAttribute) else { return false }
+    probe = parent as! AXUIElement
+  }
+  return false
+}
+
+let innerControls: Set<String> = [
+  "AXButton", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXTextField",
+  "AXTextArea", "AXSearchField", "AXComboBox", "AXSlider", "AXMenuItem", "AXTab", "AXSwitch",
+]
+
+func linkIsSafe(_ link: AXUIElement) -> Bool {
+  guard let url = copy(link, kAXURLAttribute) as? URL, isWeb(url) else { return false }
+  return !riskyExtensions.contains(url.pathExtension.lowercased())
+}
+
+/// Where a real click at `point` would land. It must be the target or something inside it,
+/// and nothing between (a control of its own, or a link that isn't a safe web page) may take
+/// the click instead. Returns an error code, or nil when the click lands safely.
+func clickRefusal(_ app: AXUIElement, _ element: AXUIElement, at point: CGPoint) -> String? {
+  var hit: AXUIElement?
+  guard AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit) == .success,
+    var probe = hit
+  else { return "covered" }
+  for _ in 0..<64 {
+    if CFEqual(probe, element) { return nil }
+    let role = text(probe, kAXRoleAttribute) ?? ""
+    if role == "AXLink", !linkIsSafe(probe) { return "unsafe_link" }
+    if innerControls.contains(role) { return "inner_control" }
+    guard let parent = copy(probe, kAXParentAttribute) else { return "covered" }
+    probe = parent as! AXUIElement
+  }
+  return "covered"
+}
+
+let refusalMessages = [
+  "covered": "Something covers the element.",
+  "unsafe_link": "The click would follow a link that isn't a safe web page.",
+  "inner_control": "Another control sits where Poko would click.",
+]
+
+/// One left click at `point`, only after the window is in front and the point still lands on
+/// the element with no window (Poko's included) above it. The point is checked again after
+/// the pointer moves there, since pages show controls on hover. The cursor goes back where it
+/// was, and Poko comes back to the front, also when the click is refused.
+func mouseClick(
+  at point: CGPoint, app: AXUIElement, window: AXUIElement, element: AXUIElement, pid: Int32,
+  windowId: Int, returnTo pokoPid: Int?
+) {
+  let original = CGEvent(source: nil)?.location ?? point
+  let source = CGEventSource(stateID: .hidSystemState)
+  func post(_ type: CGEventType, _ at: CGPoint) {
+    CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: at, mouseButton: .left)?
+      .post(tap: .cghidEventTap)
+  }
+  func finish() {
+    if let pokoPid { NSRunningApplication(processIdentifier: Int32(pokoPid))?.activate() }
+  }
+  func check() {
+    if topWindow(at: point, ignoring: nil) != windowId {
+      finish()
+      fail("covered", "Another window covers the element.")
+    }
+    if let code = clickRefusal(app, element, at: point) {
+      post(.mouseMoved, original)
+      finish()
+      fail(code, refusalMessages[code] ?? code)
+    }
+  }
+
+  NSRunningApplication(processIdentifier: pid)?.activate()
+  AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+  usleep(300_000)
+  check()
+  post(.mouseMoved, point)
+  usleep(250_000)
+  check()
+  post(.leftMouseDown, point)
+  usleep(40_000)
+  post(.leftMouseUp, point)
+  usleep(40_000)
+  post(.mouseMoved, original)
+  finish()
+}
+
 func act(windowId: Int) {
   let input = FileHandle.standardInput.readDataToEndOfFile()
   guard let request = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any],
@@ -323,29 +416,20 @@ func act(windowId: Int) {
     fail("not_visible", "The element isn't fully on screen.")
   }
   let center = CGPoint(x: found["x"]! + found["width"]! / 2, y: found["y"]! + found["height"]! / 2)
-  var hit: AXUIElement?
-  guard AXUIElementCopyElementAtPosition(app, Float(center.x), Float(center.y), &hit) == .success,
-    var probe = hit
-  else { fail("covered", "Something covers the element.") }
-  var onTarget = false
-  for _ in 0..<64 {
-    if CFEqual(probe, element) { onTarget = true; break }
-    guard let parent = copy(probe, kAXParentAttribute) else { break }
-    probe = parent as! AXUIElement
-  }
-  guard onTarget else { fail("covered", "Something covers the element.") }
+  guard hits(app, element, at: center) else { fail("covered", "Something covers the element.") }
   guard topWindow(at: center, ignoring: ignoredPid) == windowId else {
     fail("covered", "Another window covers the element.")
   }
 
-  if kind == "press" || kind == "check" && request["intent"] as? String == "press" {
-    // Chrome's web buttons don't list AXPress, and pressing them reports success while nothing
-    // happens. Only an element that says it can be pressed is offered.
-    var names: CFArray?
-    AXUIElementCopyActionNames(element, &names)
-    guard ((names as? [String]) ?? []).contains(kAXPressAction as String) else {
-      fail("not_pressable", "This browser doesn't let Poko press this element.")
-    }
+  // Chrome's web buttons and script-driven rows (a Gmail message) don't list AXPress, and
+  // pressing them reports success while nothing happens. Those get a real mouse click at the
+  // checked point instead, after the window is brought forward and the point checked again.
+  var names: CFArray?
+  AXUIElementCopyActionNames(element, &names)
+  let pressable = ((names as? [String]) ?? []).contains(kAXPressAction as String)
+  let pressing = kind == "press" || kind == "check" && request["intent"] as? String == "press"
+  if pressing, !pressable, let code = clickRefusal(app, element, at: center) {
+    fail(code, refusalMessages[code] ?? code)
   }
   if kind == "type" || kind == "check" && request["intent"] as? String == "type" {
     var settable: DarwinBoolean = false
@@ -355,13 +439,20 @@ func act(windowId: Int) {
     }
   }
   if kind == "check" {
-    emit(["ok": true, "frame": found])
+    emit(["ok": true, "frame": found, "method": pressable ? "ax" : "mouse"])
     return
   }
 
   let result: AXError
   switch kind {
-  case "press": result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+  case "press" where pressable:
+    result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+  case "press":
+    let pid = Int32(described["pid"] as! Int)
+    mouseClick(
+      at: center, app: app, window: window, element: element, pid: pid, windowId: windowId,
+      returnTo: ignoredPid)
+    result = .success
   default:
     // Safari ignores a new value unless the field has focus inside the page first.
     AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -370,6 +461,7 @@ func act(windowId: Int) {
   }
   guard result == .success else { fail("action_failed", "The app didn't accept the action.") }
   var out: [String: Any] = ["ok": true]
+  if kind == "press" { out["method"] = pressable ? "ax" : "mouse" }
   // Read the value back so a field that didn't take the text is reported, not assumed.
   if kind == "type" {
     // Pages update the field asynchronously; give it a moment before reading back.
