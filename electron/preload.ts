@@ -37,7 +37,10 @@ function isTaskEventPayload(value: unknown): value is TaskEventPayload {
         (event.detail === undefined || typeof event.detail === "string")
       );
     case "output":
-      return typeof event.content === "string";
+      return (
+        typeof event.content === "string" &&
+        (event.itemId === undefined || typeof event.itemId === "string")
+      );
     case "completed":
       return typeof event.result === "string";
     case "error":

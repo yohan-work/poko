@@ -115,6 +115,7 @@ export function ChatPanel() {
   const isSending = useAppStore((state) => state.isSending);
   const progressMessage = useAppStore((state) => state.progressMessage);
   const hasPendingApproval = useAppStore((state) => state.pendingApprovals.length > 0);
+  const streamingText = useAppStore((state) => state.streaming?.text ?? "");
   const endRef = useRef<HTMLDivElement>(null);
   const now = useNow();
   const isEmpty = messages.length === 0;
@@ -122,7 +123,7 @@ export function ChatPanel() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the log grows
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, isSending, hasPendingApproval]);
+  }, [messages.length, isSending, hasPendingApproval, streamingText]);
 
   if (isEmpty) {
     return (
@@ -158,8 +159,14 @@ export function ChatPanel() {
               </li>
             ),
           )}
+          {isSending && streamingText && (
+            <li className="message message--assistant message--streaming" aria-busy="true">
+              <Character state={characterState} size={26} />
+              <Markdown>{streamingText}</Markdown>
+            </li>
+          )}
           <ApprovalCard />
-          {isSending && !hasPendingApproval && (
+          {isSending && !hasPendingApproval && !streamingText && (
             <li className="message message--assistant message--loading">
               <Character state={characterState} size={26} />
               <p className="message__progress">{progressMessage ?? "프로젝트를 살펴보고 있어."}</p>
