@@ -289,10 +289,18 @@ function registerIpcHandlers(): void {
     const service = screenService;
     const provider = screenProvider;
     const agent = new ScreenAgent({
-      capture: (id) => service.capture(id),
+      // Each look brings the browser forward: another app's window must not cover the page.
+      capture: async (id) => {
+        await service.raise(id);
+        return service.capture(id);
+      },
       ask: (prompt, capture, signal) => askCodex(provider, taskId, prompt, capture, signal),
       act: (id, actRequest) => service.act(id, actRequest),
-      emit: (agentEvent) => deliverTaskEvent({ taskId, event: agentEvent }),
+      emit: (agentEvent) => {
+        deliverTaskEvent({ taskId, event: agentEvent });
+        // The card is the only place to approve, so Poko comes forward to show it.
+        if (agentEvent.type === "approvalRequired") showMainWindow();
+      },
       point: (snapshot, element, say) => void pointAtElement(snapshot, element, say),
       hideOverlay: async () => {
         await screenOverlay?.hide();
@@ -381,6 +389,13 @@ async function askCodex(
     if (event.type === "cancelled") throw new Error("cancelled");
   }
   throw new Error("Codex ended without an answer.");
+}
+
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  app.focus({ steal: true });
 }
 
 async function pointAtElement(

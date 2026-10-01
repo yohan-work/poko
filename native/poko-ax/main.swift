@@ -3,6 +3,7 @@
 //   poko-ax permissions          -> {"accessibility": Bool, "screen": Bool}
 //   poko-ax windows              -> {"windows": [{id, pid, owner, bundleId, title, frame}]}
 //   poko-ax snapshot <windowId>  -> {"window": {...}, "elements": [...]} or {"error": ...}
+//   poko-ax raise <windowId>     -> brings the window to the front
 //   poko-ax act <windowId>       -> reads {kind, path, role, label, frame, text?, intent?,
 //                                   ignorePid?} from stdin; kind "check" only validates (for
 //                                   the action named by `intent`).
@@ -265,6 +266,29 @@ func hits(_ app: AXUIElement, _ element: AXUIElement, at point: CGPoint) -> Bool
   return false
 }
 
+/// Points inside `frame` where the page's hit test lands on the target, best first.
+func targetPoints(_ app: AXUIElement, _ element: AXUIElement, _ frame: [String: Double]) -> [CGPoint] {
+  let point = { (f: [String: Double]) in
+    CGPoint(x: f["x"]! + f["width"]! / 2, y: f["y"]! + f["height"]! / 2)
+  }
+  var candidates = [point(frame)]
+  for child in (copy(element, kAXChildrenAttribute) as? [AXUIElement] ?? []).prefix(8) {
+    if let childFrame = frameOf(child), childFrame["width"]! >= 4, childFrame["height"]! >= 4,
+      inside(childFrame, frame)
+    {
+      candidates.append(point(childFrame))
+    }
+  }
+  for row in [0.25, 0.5, 0.75] {
+    for column in [0.2, 0.4, 0.6, 0.8] {
+      candidates.append(
+        CGPoint(
+          x: frame["x"]! + frame["width"]! * column, y: frame["y"]! + frame["height"]! * row))
+    }
+  }
+  return candidates.filter { hits(app, element, at: $0) }
+}
+
 let innerControls: Set<String> = [
   "AXButton", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXTextField",
   "AXTextArea", "AXSearchField", "AXComboBox", "AXSlider", "AXMenuItem", "AXTab", "AXSwitch",
@@ -415,21 +439,24 @@ func act(windowId: Int) {
   guard inside(found, windowFrame), inside(found, webFrame) else {
     fail("not_visible", "The element isn't fully on screen.")
   }
-  let center = CGPoint(x: found["x"]! + found["width"]! / 2, y: found["y"]! + found["height"]! / 2)
-  guard hits(app, element, at: center) else { fail("covered", "Something covers the element.") }
+  // A multi-line link's box can be empty in the middle, so the point is the first of: the
+  // center, the centers of its children, then a spread of points that lands on the target.
+  // Presses are real mouse clicks (AXPress succeeds on Google's suggestions and Gmail rows
+  // without acting), so for a press the point must also be one where nothing inside the target
+  // (a star, a checkbox, an unsafe link) would take the click.
+  let pressing = kind == "press" || kind == "check" && request["intent"] as? String == "press"
+  let points = targetPoints(app, element, found)
+  guard let first = points.first else { fail("covered", "Something covers the element.") }
+  var center = first
+  if pressing {
+    guard let safe = points.first(where: { clickRefusal(app, element, at: $0) == nil }) else {
+      let code = clickRefusal(app, element, at: first) ?? "covered"
+      fail(code, refusalMessages[code] ?? code)
+    }
+    center = safe
+  }
   guard topWindow(at: center, ignoring: ignoredPid) == windowId else {
     fail("covered", "Another window covers the element.")
-  }
-
-  // Chrome's web buttons and script-driven rows (a Gmail message) don't list AXPress, and
-  // pressing them reports success while nothing happens. Those get a real mouse click at the
-  // checked point instead, after the window is brought forward and the point checked again.
-  var names: CFArray?
-  AXUIElementCopyActionNames(element, &names)
-  let pressable = ((names as? [String]) ?? []).contains(kAXPressAction as String)
-  let pressing = kind == "press" || kind == "check" && request["intent"] as? String == "press"
-  if pressing, !pressable, let code = clickRefusal(app, element, at: center) {
-    fail(code, refusalMessages[code] ?? code)
   }
   if kind == "type" || kind == "check" && request["intent"] as? String == "type" {
     var settable: DarwinBoolean = false
@@ -439,14 +466,12 @@ func act(windowId: Int) {
     }
   }
   if kind == "check" {
-    emit(["ok": true, "frame": found, "method": pressable ? "ax" : "mouse"])
+    emit(["ok": true, "frame": found])
     return
   }
 
   let result: AXError
   switch kind {
-  case "press" where pressable:
-    result = AXUIElementPerformAction(element, kAXPressAction as CFString)
   case "press":
     let pid = Int32(described["pid"] as! Int)
     mouseClick(
@@ -461,7 +486,6 @@ func act(windowId: Int) {
   }
   guard result == .success else { fail("action_failed", "The app didn't accept the action.") }
   var out: [String: Any] = ["ok": true]
-  if kind == "press" { out["method"] = pressable ? "ax" : "mouse" }
   // Read the value back so a field that didn't take the text is reported, not assumed.
   if kind == "type" {
     // Pages update the field asynchronously; give it a moment before reading back.
@@ -485,6 +509,15 @@ case "snapshot":
   guard args.count > 2, let id = Int(args[2]) else { fail("usage", "snapshot <windowId>") }
   guard AXIsProcessTrusted() else { fail("no_accessibility", "Accessibility permission is missing.") }
   snapshot(windowId: id)
+case "raise":
+  // Brings the picked window in front so nothing covers what Poko is about to look at.
+  guard args.count > 2, let id = Int(args[2]) else { fail("usage", "raise <windowId>") }
+  guard AXIsProcessTrusted() else { fail("no_accessibility", "Accessibility permission is missing.") }
+  let (described, _, window) = matchWindow(id)
+  NSRunningApplication(processIdentifier: Int32(described["pid"] as! Int))?.activate()
+  AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+  usleep(300_000)
+  emit(["ok": true])
 case "act":
   guard args.count > 2, let id = Int(args[2]) else { fail("usage", "act <windowId>") }
   guard AXIsProcessTrusted() else { fail("no_accessibility", "Accessibility permission is missing.") }
