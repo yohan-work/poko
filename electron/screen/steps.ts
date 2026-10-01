@@ -64,22 +64,32 @@ export function cropRect(
   return fits ? rect : null;
 }
 
-/**
- * Above this, the fresh crop is shown and the user is asked again; Poko never acts silently on
- * a changed crop. Measured in Safari: an unchanged control scores 0, the same field after typing
- * 0.034, and a different field of the same size 0.043. Mean difference can't tell similar
- * controls apart (the accessibility re-check does that), so any visible change is re-asked.
- */
-export const MAX_SILENT_DIFFERENCE = 0.01;
+/** A channel difference above this counts the pixel as changed (ignores capture noise). */
+const PIXEL_TOLERANCE = 24;
 
-/** Mean absolute difference of two same-size BGRA bitmaps, from 0 (identical) to 1. */
-export function bitmapDifference(a: Uint8Array, b: Uint8Array): number {
+/**
+ * Above this share of changed pixels, the fresh crop is shown and the user is asked again;
+ * Poko never acts silently on a changed crop. A mean difference was measured in Safari and
+ * dilutes small changes (one changed letter in a 120×36 crop scores far below any useful
+ * limit), so the share of changed pixels is used instead. About 9 pixels of a 120×36 crop:
+ * a caret or one letter re-asks, while capture noise doesn't. The accessibility re-check, not
+ * pixels, proves the element is the same one.
+ */
+export const MAX_SILENT_CHANGE = 0.002;
+
+/** Share of pixels (0 to 1) that differ between two same-size BGRA bitmaps; 1 if sizes differ. */
+export function changedPixelShare(a: Uint8Array, b: Uint8Array): number {
   if (a.length !== b.length || a.length === 0 || a.length % 4 !== 0) return 1;
-  let total = 0;
+  let changed = 0;
   for (let i = 0; i < a.length; i += 4) {
-    total += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+    if (
+      Math.abs(a[i] - b[i]) > PIXEL_TOLERANCE ||
+      Math.abs(a[i + 1] - b[i + 1]) > PIXEL_TOLERANCE ||
+      Math.abs(a[i + 2] - b[i + 2]) > PIXEL_TOLERANCE
+    )
+      changed += 1;
   }
-  return total / ((a.length / 4) * 3 * 255);
+  return changed / (a.length / 4);
 }
 
 export function elementById(snapshot: WindowSnapshot, id: number): AxElement | undefined {

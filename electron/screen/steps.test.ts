@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { actRequest, HelperError, parseActResult, parseSnapshot } from "./axHelper";
-import { bitmapDifference, cropRect, MAX_SILENT_DIFFERENCE, parseStep } from "./steps";
+import { changedPixelShare, cropRect, MAX_SILENT_CHANGE, parseStep } from "./steps";
 
 const snapshot = parseSnapshot({
   window: {
@@ -84,17 +84,20 @@ describe("crops", () => {
     expect(cropRect({ x: -900, y: 40, width: 0, height: 10 }, window, image)).toBeNull();
   });
 
-  it("scores bitmap differences from 0 to 1", () => {
+  it("counts changed pixels, so one changed letter in a normal crop re-asks", () => {
     const black = new Uint8Array(16);
     const white = new Uint8Array(16).fill(255);
-    expect(bitmapDifference(black, black)).toBe(0);
-    expect(bitmapDifference(black, white)).toBe(1);
-    expect(bitmapDifference(black, new Uint8Array(8))).toBe(1);
-    // One changed pixel of 100 (a caret) is still over the silent limit, so Poko asks again.
-    const a = new Uint8Array(400);
-    const b = a.slice();
-    b.set([255, 255, 255], 0);
-    expect(bitmapDifference(a, b)).toBeGreaterThan(MAX_SILENT_DIFFERENCE / 2);
+    expect(changedPixelShare(black, black)).toBe(0);
+    expect(changedPixelShare(black, white)).toBe(1);
+    expect(changedPixelShare(black, new Uint8Array(8))).toBe(1);
+    // A 120×36 crop where one letter (about 30 pixels) changed.
+    const crop = new Uint8Array(120 * 36 * 4);
+    const letter = crop.slice();
+    for (let p = 0; p < 30; p += 1) letter.set([255, 255, 255], p * 4 * 7);
+    expect(changedPixelShare(crop, letter)).toBeGreaterThan(MAX_SILENT_CHANGE);
+    // Capture noise of a few levels per channel is not a change.
+    const noisy = crop.map((value, index) => (index % 4 === 3 ? value : value + 10));
+    expect(changedPixelShare(crop, noisy)).toBe(0);
   });
 });
 

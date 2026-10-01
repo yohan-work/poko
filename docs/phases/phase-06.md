@@ -98,11 +98,12 @@ Real-browser results on a local test page (`127.0.0.1`, Safari 26 and Chrome) wi
 | `.dmg` link, `mailto:` link, password field, address bar, back button | Refused | Refused |
 
 Decisions:
+- `reveal` (scroll into view) skips the visible-and-on-top tests, because a partly hidden element is exactly what it is for. Every link on the path to the target is checked, since pressing text or an image inside a link follows it.
 - `poko-ax act <windowId>` reads its request on stdin, so the text to type never appears in the process list. `check` runs every test without acting. `press`, `type`, and `reveal` run the same tests again and then act.
 - An element is pressed only if it lists `AXPress`; Chrome's web buttons don't, so **clicking is Safari-only for now** (decided with the user). In Chrome, Poko can type but not click until a safe way to click is found. A click is never sent as a synthetic mouse event.
 - Typing focuses the field first and reads the value back (polling up to 0.5 s); `valueMatches: false` means the page didn't take the text and is reported, not assumed.
 - Window matching accepts an AX title that starts with the capture title plus `" - "`, because browsers append their name and profile. This fixed a picked Chrome window that shared its frame with another one.
-- The pixel check measured: an unchanged control scores 0, the same field after typing 0.034, and a different field of the same size 0.043. A mean difference can't tell look-alike controls apart, and the accessibility re-check is what proves identity. So any difference above 0.01 shows the new crop and asks again.
+- The pixel check: a mean difference measured an unchanged control at 0, the same field after typing at 0.034, and a different field of the same size at 0.043. It can't tell look-alike controls apart, and it dilutes small changes such as one letter. The accessibility re-check is what proves identity. The pixel check instead counts pixels that changed by more than 24 levels in any channel. Above 0.2% of the crop (about 9 pixels of a 120×36 button), Poko shows the new crop and asks again.
 - Open question resolved: the hit test uses the target app's own `AXUIElementCopyElementAtPosition` (which sees in-page modals and sticky headers) plus the window stacking order with Poko's process ignored (which sees other apps).
 
 ## Open questions to settle in implementation

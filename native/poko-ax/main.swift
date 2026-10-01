@@ -274,10 +274,13 @@ func act(windowId: Int) {
   // the same element (role, label, frame), and a web area with an http(s) page must lie on it.
   var element = window
   var webArea: AXUIElement?
+  var links: [AXUIElement] = []
   for index in path {
     guard let children = copy(element, kAXChildrenAttribute) as? [AXUIElement], index < children.count
     else { fail("target_gone", "The element is no longer there.") }
-    if text(element, kAXRoleAttribute) == "AXWebArea" { webArea = element }
+    let ancestorRole = text(element, kAXRoleAttribute)
+    if ancestorRole == "AXWebArea" { webArea = element; links = [] }
+    if ancestorRole == "AXLink", webArea != nil { links.append(element) }
     element = children[index]
   }
   guard let found = frameOf(element), (text(element, kAXRoleAttribute) ?? "") == role,
@@ -288,13 +291,30 @@ func act(windowId: Int) {
   guard let webArea, isWeb(copy(webArea, kAXURLAttribute) as? URL),
     let webFrame = frameOf(webArea)
   else { fail("not_web_content", "Poko only acts inside http(s) web pages.") }
-  if role == "AXLink" {
-    guard let url = copy(element, kAXURLAttribute) as? URL, isWeb(url) else {
+  // Pressing text or an image inside a link follows that link, so every link on the way to the
+  // target is checked, not only a target that is itself a link.
+  if role == "AXLink" { links.append(element) }
+  for link in links {
+    guard let url = copy(link, kAXURLAttribute) as? URL, isWeb(url) else {
       fail("unsafe_link", "This link doesn't go to a web page.")
     }
     if riskyExtensions.contains(url.pathExtension.lowercased()) {
       fail("unsafe_link", "This link may download a program or archive.")
     }
+  }
+
+  // Scrolling an element into view is harmless and is how a partly hidden element becomes
+  // visible, so `reveal` skips the visibility tests below; press and type need them.
+  if kind == "reveal" || kind == "check" && request["intent"] as? String == "reveal" {
+    if kind == "check" {
+      emit(["ok": true, "frame": found])
+      return
+    }
+    guard AXUIElementPerformAction(element, "AXScrollToVisible" as CFString) == .success else {
+      fail("action_failed", "The app didn't accept the action.")
+    }
+    emit(["ok": true])
+    return
   }
 
   // Visible and on top: fully inside the window and page, the page's own hit test lands on the
@@ -342,7 +362,6 @@ func act(windowId: Int) {
   let result: AXError
   switch kind {
   case "press": result = AXUIElementPerformAction(element, kAXPressAction as CFString)
-  case "reveal": result = AXUIElementPerformAction(element, "AXScrollToVisible" as CFString)
   default:
     // Safari ignores a new value unless the field has focus inside the page first.
     AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)

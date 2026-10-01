@@ -145,6 +145,8 @@ export function runHelper(
       },
     );
     // Requests (including text to type) go on stdin, never in the process list.
+    // If the helper is gone before reading, the write fails; the callback above reports it.
+    child.stdin?.on("error", () => undefined);
     child.stdin?.end(input ?? "");
   });
 }
