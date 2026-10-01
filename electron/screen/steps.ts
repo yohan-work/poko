@@ -149,7 +149,7 @@ export function buildStepPrompt(goal: string, history: StepRecord[], snapshot: W
       ...listed,
       "SCREEN DATA>>>",
     ].join("\n"),
-    'Reply with exactly one JSON object and nothing else: {"say": "<one short sentence in the user\'s language saying what you will do; for done, the result or answer>", "action": {"kind": "click" | "type" | "reveal" | "done", "elementId": <number, not for done>, "text": "<only for type>"}}. Use reveal to scroll a partly hidden element into view.',
+    'Reply with exactly one JSON object and nothing else: {"say": "<one short sentence in the user\'s language in the same language as the goal, saying what you will do; for done, the result or answer>", "action": {"kind": "click" | "type" | "reveal" | "done", "elementId": <number, not for done>, "text": "<only for type>"}}. Use reveal to scroll a partly hidden element into view.',
   ].join("\n\n");
 }
 
