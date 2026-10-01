@@ -1,4 +1,4 @@
-import { isValidElement, useState, type ReactNode } from "react";
+import { isValidElement, useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -12,13 +12,18 @@ function textOf(node: ReactNode): string {
 
 function CodeBlock({ children }: { children?: ReactNode }) {
   const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<number | undefined>(undefined);
   const code = textOf(children).replace(/\n$/, "");
+
+  useEffect(() => () => window.clearTimeout(resetTimer.current), []);
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      // A repeat click restarts the timer instead of letting the earlier one reset the label.
+      window.clearTimeout(resetTimer.current);
+      resetTimer.current = window.setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
