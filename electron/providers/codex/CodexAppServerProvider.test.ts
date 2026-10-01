@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -454,6 +454,19 @@ describe("CodexAppServerProvider", () => {
         process.platform === "win32",
       );
       expect(touchesGitDirectory(workspace, "src/app.ts")).toBe(false);
+      // A bare-repository layout split across patches, in other letter case, or via a symlink.
+      await mkdir(join(workspace, "x"));
+      await writeFile(join(workspace, "x", "HEAD"), "ref: refs/heads/main");
+      const add = (...paths: string[]) => ({
+        changes: paths.map((path) => ({ path, kind: { type: "add" }, diff: "" })),
+      });
+      expect(getFileChanges(add("x/objects/a", "x/refs/a"), workspace)).toBeNull();
+      expect(getFileChanges(add("y/HEAD", "y/Objects/a"), workspace)).toBeNull();
+      expect(getFileChanges(add("z/HEAD.", "z/refs./a"), workspace)).toBeNull();
+      await mkdir(join(workspace, "sub"));
+      await symlink(join(workspace, "sub"), join(workspace, "link"));
+      expect(getFileChanges(add("link/config", "sub/refs/a"), workspace)).toBeNull();
+      expect(getFileChanges(add("src/config", "src/app.ts"), workspace)).toHaveLength(2);
       // An absolute path inside the workspace is judged only below the workspace.
       expect(touchesGitDirectory(workspace, join(workspace, "src", "app.ts"))).toBe(false);
       expect(touchesGitDirectory(workspace, join(workspace, ".git", "config"))).toBe(true);

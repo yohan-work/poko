@@ -3,7 +3,7 @@ import {
   type ChildProcessWithoutNullStreams,
   type SpawnOptions,
 } from "node:child_process";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
@@ -646,22 +646,47 @@ export function getFileChanges(
   return changes;
 }
 
+/** File name as git and the file system will see it: lower case, no trailing dots or spaces. */
+function normalizedName(name: string): string {
+  return name.toLowerCase().replace(/[. ]+$/, "");
+}
+
 /**
- * Whether the patch writes `HEAD` or `config` into a folder that has, or gets, `objects/` or
- * `refs/`. Git treats such a folder as a bare repository, and its config can run programs.
+ * Whether the patch would leave any folder in the workspace looking like a bare repository:
+ * `HEAD` or `config` together with `objects` or `refs`. Git would treat that folder as a
+ * repository, and its config can run programs. The check looks at the folder's contents on
+ * disk plus everything this patch writes, through real paths, ignoring case and trailing
+ * dots, so a layout split across patches or hidden behind a symlink is still caught.
  */
 function buildsRepository(root: string, paths: string[]): boolean {
-  const written = paths.map((path) => resolve(root, path));
-  return written.some((target) => {
-    const name = basename(target).toLowerCase();
-    if (name !== "head" && name !== "config") return false;
-    const folder = dirname(target);
-    return ["objects", "refs"].some(
-      (part) =>
-        existsSync(join(folder, part)) ||
-        written.some((other) => other.startsWith(join(folder, part) + sep)),
-    );
-  });
+  const realRoot = realPath(resolve(root));
+  if (!realRoot) return true;
+  const written = paths.map((path) => realPath(resolve(root, path)));
+  if (written.some((path) => path === null)) return true;
+  const folders = new Set<string>();
+  for (const path of written as string[]) {
+    for (let folder = dirname(path); folder.startsWith(realRoot); folder = dirname(folder)) {
+      folders.add(folder);
+      if (folder === realRoot) break;
+    }
+  }
+  for (const folder of folders) {
+    const names = new Set<string>();
+    try {
+      for (const entry of readdirSync(folder)) names.add(normalizedName(entry));
+    } catch {
+      /* the folder doesn't exist yet */
+    }
+    for (const path of written as string[]) {
+      const below = relative(folder, path);
+      if (below && !below.startsWith("..") && !isAbsolute(below))
+        names.add(normalizedName(below.split(sep)[0]));
+    }
+    const hasRepoFile = names.has("head") || names.has("config");
+    const hasRepoFolder = names.has("objects") || names.has("refs");
+    if (hasRepoFile && hasRepoFolder) return true;
+  }
+  return false;
 }
 
 /**
