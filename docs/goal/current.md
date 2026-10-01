@@ -40,7 +40,6 @@
 - 결정: 다음 순서는 Phase 06 화면 동반자(사용자의 'wow point' 요청) → Phase 07 여러 대화 → 이후 workspace-write 샌드박스 기반 쓰기 모드. 계획은 [phase-06](../phases/phase-06.md).
 - 완료: Phase 05 대화 품질. PR #15(계획), #17(기억·대화 맥락, `tasks.conversation_id`/`result` migration), #19(Markdown), #20(스트리밍)이 리뷰 후 squash merge됐다. 최신 `main`은 `4c24790`이다.
 - 검증: `pnpm check`(typecheck, lint, 60 tests, build), `pnpm format:check`, `git diff --check` 통과. 화면은 stub preload로 렌더링해 확인했다.
-- 미검증: 실제 Codex 요청으로 기억 반영, 후속 질문, 스트리밍을 확인하지 않았다(비용/데이터 전송).
 - 완료: PR #22로 실제 Codex 검증에서 찾은 승인 버그(실행 정책 제안 때문에 모든 승인 자동 거절)를 고쳤다. 승인된 셸 명령은 샌드박스 밖에서 실행되므로 v0.1에서는 명령 승인을 거절하고 파일 변경 승인만 유지한다(사용자 결정). v0.1은 실질적으로 읽기 전용이다. `main`은 `78bc860`.
 - 확인됨: 실제 Codex(0.159.3)로 기억 반영, 후속 질문, 스트리밍, 명령 승인 거절을 확인했다.
 - 확인됨: Codex App Server는 `localImage` 입력을 지원해 기존 구독으로 화면 이해가 가능하다.

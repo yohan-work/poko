@@ -30,8 +30,8 @@ All privileged work stays in the Electron main process. The renderer only shows 
 - **Screen agent** (`electron/agent/screen/`): runs the loop of snapshot, Codex turn, proposed action, approval, execute, and snapshot again.
   - It uses one App Server thread per screen task, so later steps keep context.
   - The thread runs in the read-only sandbox, with its working directory set to an empty per-task temp folder rather than a project. Every command and file-change request from Codex in a screen task is declined.
-  - The prompt marks the screenshot and element list as untrusted data: text on screen is never treated as instructions from the user. A step reply is JSON validated against a schema: `{ say, action: { kind: "click" | "type" | "scroll" | "done", elementId?, text?, direction? } }`. Invalid replies end the task.
-- **Actions:** semantic actions only, through Accessibility: `AXPress` for click, setting `AXValue` for type, and `AXScrollToVisible` for scroll, the same way the Orca computer-use tool works.
+  - The prompt marks the screenshot and element list as untrusted data: text on screen is never treated as instructions from the user. A step reply is JSON validated against a schema: `{ say, action: { kind: "click" | "type" | "reveal" | "scroll" | "done", elementId?, text?, direction? } }`. Invalid replies end the task.
+- **Actions:** semantic actions only, through Accessibility: `AXPress` for click, setting `AXValue` for type, `AXScrollToVisible` for reveal (bring an element into view), and `AXIncrement`/`AXDecrement` on a scroll area's scroll bar for directional scroll. This is the same approach as the Orca computer-use tool. None of these need the target app to be in front.
   - Synthetic keystrokes are never used. They go to whatever app is in front, so typing is offered only for elements whose value can be set.
   - **Right before acting**, the helper reads the target again and checks that its role, label, and frame still match what the card showed and that its window is still the picked one. If anything changed, it stops instead of acting.
   - After each action, the tree is read again to check the result.
@@ -43,10 +43,19 @@ All privileged work stays in the Electron main process. The renderer only shows 
 ## Safety (from Phase 04 lessons)
 
 - Every action needs its own approval in Phase 06. There's no auto-run and no session trust.
-- **Scope:** Poko acts only in the app of the window the user picked for the task. If focus moves to another app, the task pauses.
-- **Blocked apps:** terminals, password managers, Keychain Access, and System Settings privacy panes. Typing into a terminal would be general shell access.
+- **Scope:** Poko acts only in the window the user picked. Accessibility actions don't need focus, so Poko's own windows may take focus while the user approves. **Right before an action**, the helper checks that the target still belongs to the picked window and app. If another app has taken over that window's space, or the window is gone, the task pauses.
+- **Blocked by capability, not by name:** an approved `type` or `click` must never be able to run code or weaken security, so Poko refuses to act in:
+  - terminals and shells
+  - code editors and IDEs, which have built-in terminals and run tasks (VS Code, Cursor, Xcode, JetBrains IDEs)
+  - script and automation tools (Script Editor, Automator, Shortcuts)
+  - browser developer tools (DevTools windows and panels)
+  - password managers and Keychain Access
+  - System Settings
+
+  The list is kept as bundle-ID categories, and an unknown developer tool is treated as blocked when its window exposes a terminal or console role.
 - **Hard stops:** a secure text field (`AXSecureTextField`) ends the task, and Poko never types secrets.
 - **Untrusted labels:** element labels and on-screen text come from the app or web page and can lie, for example a "Send" button labeled "Cancel". The approval card therefore shows a **crop of the target from the screenshot** as its main evidence, with the label as secondary text. Labels that look like payment, purchase, delete, or send get a stronger warning, but that is only a hint, never a guarantee.
+- **Frame-to-pixel mapping:** accessibility frames are global screen points, while the capture is window-relative pixels at the display's scale. The crop is computed as `(elementFrame − windowFrame) × (imageWidth / windowFrame.width)`. The helper reports the window frame and scale with every snapshot. If the image's aspect ratio doesn't match the window frame (for example, a downscaled thumbnail), Poko recaptures at full size or refuses. This mapping has unit tests, because a wrong crop would show the user a different control than the one pressed.
 - **Step limits:** a maximum number of steps per task, and a timeout per approval, as in Phase 04.
 - **Transparency:** before the first screen task, Poko explains what happens and what it needs.
   - Screenshots and element labels of the chosen window are sent to Codex (OpenAI).
@@ -58,7 +67,7 @@ All privileged work stays in the Electron main process. The renderer only shows 
 Each milestone is its own PR with review.
 
 1. **Permissions and look.** Permission onboarding (check and explain Screen Recording and Accessibility), the window picker, capture, the Swift helper (window identity and snapshot), and a Codex turn with `localImage` and the element list. Poko describes the window, and no actions exist yet.
-2. **Overlay character.** The transparent overlay window. Poko flies to and circles elements referenced in the look answer. It is excluded from capture and respects reduced motion.
+2. **Overlay character.** The transparent overlay window. Poko flies to and circles elements referenced in the look answer. It hides while Poko captures or measures (content protection is only an extra layer) and respects reduced motion.
 3. **One approved step at a time.** The action schema and validation, the approval card with a target crop, approve and stop shortcuts, AX execution with re-check, the step loop, and the safety rules above.
 
 ## Explicitly deferred
@@ -73,6 +82,7 @@ Each milestone is its own PR with review.
 
 - With permissions granted, "이 화면 보고 알려줘" on a picked window gives an accurate description, and the overlay highlights the elements it mentions.
 - A proposed action shows the overlay pointing at the right element and a card naming it. Declining does nothing. Approving performs exactly that one action.
-- The stop shortcut halts within one step. Blocked apps, secure fields, and focus leaving the picked app all stop or pause the task.
+- The stop shortcut halts within one step. Blocked app categories, secure fields, and the target no longer belonging to the picked window all stop or pause the task.
+- The approval crop matches the element that is pressed, which is covered by mapping tests.
 - Screenshots never reach SQLite, and temp files are removed.
 - `pnpm check` and `pnpm format:check` pass. Screen-agent logic (schema, validation, safety rules, loop) has unit tests with recorded snapshots.
