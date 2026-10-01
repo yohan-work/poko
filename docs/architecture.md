@@ -152,6 +152,7 @@ Add foreign keys and indexes with the first migration. Import the existing works
 
 - `src/providers/claude`: future provider, no implementation in v0.1.
 - `src/tools/browser`: future Playwright integration, no browser automation in v0.1.
+- `electron/agent/screen`: Phase 06 screen companion. Main-process window capture, a Swift accessibility helper, one-approved-step actions, and the overlay window. See [Phase 06](phases/phase-06.md).
 - `src/agent/scheduler`: future routines and scheduling, no scheduler in v0.1.
 - `skills/`: prompt guidance loaded by the Agent Core; begin with the coding skill when Codex integration lands.
 
@@ -160,3 +161,13 @@ These are documented seams, not empty packages to scaffold in advance.
 ## Phase 01 implementation
 
 The app uses Electron Vite's main, preload, and renderer processes. Phase 03 imports a previous workspace path from the legacy JSON settings file if the SQLite setting is empty; new preference writes go directly to SQLite. The preload exposes persistence through narrow typed methods. Automatic memory extraction, browser automation, scheduling, and approval-gated writes remain out of scope until their planned phases.
+
+## Screen companion (Phase 06)
+
+Phase 06 adds privileged main-process capabilities, all behind narrow IPC:
+- capturing a window the user picks (`desktopCapturer`)
+- reading and acting on its accessibility elements through a bundled Swift helper (window identity by CGWindowID, pid, and frame; semantic `AXPress` and `AXValue` actions only)
+- a transparent, click-through overlay `BrowserWindow` for the character
+- a global stop shortcut
+
+The renderer never captures, reads, or acts on other apps. Each action is approved individually, re-verified right before it runs, and limited to the picked app. During a screen task, Codex is meant to run with a permission profile that reads only an empty temp folder, and its command and file-change requests are declined. That profile must pass a real-run check in milestone 1 before screen tasks ship. Actions are limited to the web content of `http`/`https` pages in browsers. Browser automation (Playwright) remains out of scope.
