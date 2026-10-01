@@ -163,7 +163,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           createdAt: task.createdAt,
           completedAt: task.completedAt ?? undefined,
         })),
-        activities: data.activities,
+        // Storage returns newest first; the store appends new entries, so keep it oldest first.
+        activities: [...data.activities].reverse(),
       });
     } catch {
       set({ workspaceError: "저장된 대화와 폴더를 불러오지 못했어. 앱을 다시 시작해 줘." });
