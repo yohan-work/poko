@@ -24,6 +24,12 @@ export function ApprovalCard() {
       ) : (
         <p className="approval-card__summary">{approval.summary}</p>
       )}
+      {isCommand && (
+        <p className="approval-card__warning">
+          허용하면 이 명령은 샌드박스 밖에서 그대로 실행돼서, 선택한 폴더 밖의 파일이나 네트워크에도
+          닿을 수 있어. 명령 내용을 꼭 확인해 줘.
+        </p>
+      )}
       <dl className="approval-card__details">
         {approval.cwd && (
           <>

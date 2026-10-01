@@ -9,6 +9,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
 import type { AgentProvider } from "../../agent/AgentProvider";
 import { signalProcess } from "./CodexProvider";
+import { deniedCommandReason } from "./commandPolicy";
 import {
   encodeRequestId,
   isRecord,
@@ -553,18 +554,24 @@ export class CodexAppServerProvider implements AgentProvider {
     // presence (Codex attaches one to most requests) does not broaden anything.
     const needsNetwork =
       params.networkApprovalContext != null || params.proposedNetworkPolicyAmendments != null;
+    // An approved command runs outside the sandbox, so commands Phase 04 keeps unavailable
+    // (network, installs, deploys, remote or destructive git, sudo, recursive delete) are never offered.
+    const denied = command ? deniedCommandReason(command) : null;
     const canApprove =
       kind === "command" &&
       Boolean(command && command.length <= 8_000) &&
       Boolean(cwd && isInside(session.task.cwd, cwd)) &&
-      !needsNetwork;
+      !needsNetwork &&
+      !denied;
     return {
       type: "approvalRequired",
       requestId,
       kind: "command",
       summary: command || "명령 내용을 확인할 수 없어.",
       cwd,
-      reason: readString(params.reason) ?? null,
+      reason: denied
+        ? `포코가 허용하지 않는 종류의 명령이라 거절했어 (${denied}).`
+        : (readString(params.reason) ?? null),
       canApprove,
     };
   }
