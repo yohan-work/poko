@@ -3,6 +3,7 @@ import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
+import { Markdown } from "./Markdown";
 import { useNow } from "../../lib/useNow";
 
 function greeting(date = new Date()): string {
@@ -153,7 +154,7 @@ export function ChatPanel() {
             ) : (
               <li className="message message--assistant" key={message.id}>
                 <Character state="idle" size={26} />
-                <p>{message.content}</p>
+                <Markdown>{message.content}</Markdown>
               </li>
             ),
           )}
