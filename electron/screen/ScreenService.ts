@@ -143,7 +143,9 @@ export class ScreenService {
       workDir,
       tempDir,
       imageSize,
-      fingerprint: new Uint8Array(image.resize({ width: 96, height: 96 }).toBitmap()),
+      // Aspect-preserving, so the comparison isn't distorted; the area around the target is
+      // compared at full size separately.
+      fingerprint: new Uint8Array(image.resize({ width: 320 }).toBitmap()),
       app: window.owner || window.bundleId || "앱",
       crop: (rect) => {
         const part = image.crop(rect);

@@ -266,7 +266,8 @@ func hits(_ app: AXUIElement, _ element: AXUIElement, at point: CGPoint) -> Bool
   return false
 }
 
-func targetPoint(_ app: AXUIElement, _ element: AXUIElement, _ frame: [String: Double]) -> CGPoint? {
+/// Points inside `frame` where the page's hit test lands on the target, best first.
+func targetPoints(_ app: AXUIElement, _ element: AXUIElement, _ frame: [String: Double]) -> [CGPoint] {
   let point = { (f: [String: Double]) in
     CGPoint(x: f["x"]! + f["width"]! / 2, y: f["y"]! + f["height"]! / 2)
   }
@@ -285,7 +286,7 @@ func targetPoint(_ app: AXUIElement, _ element: AXUIElement, _ frame: [String: D
           x: frame["x"]! + frame["width"]! * column, y: frame["y"]! + frame["height"]! * row))
     }
   }
-  return candidates.first { hits(app, element, at: $0) }
+  return candidates.filter { hits(app, element, at: $0) }
 }
 
 let innerControls: Set<String> = [
@@ -440,19 +441,22 @@ func act(windowId: Int) {
   }
   // A multi-line link's box can be empty in the middle, so the point is the first of: the
   // center, the centers of its children, then a spread of points that lands on the target.
-  guard let center = targetPoint(app, element, found) else {
-    fail("covered", "Something covers the element.")
+  // Presses are real mouse clicks (AXPress succeeds on Google's suggestions and Gmail rows
+  // without acting), so for a press the point must also be one where nothing inside the target
+  // (a star, a checkbox, an unsafe link) would take the click.
+  let pressing = kind == "press" || kind == "check" && request["intent"] as? String == "press"
+  let points = targetPoints(app, element, found)
+  guard let first = points.first else { fail("covered", "Something covers the element.") }
+  var center = first
+  if pressing {
+    guard let safe = points.first(where: { clickRefusal(app, element, at: $0) == nil }) else {
+      let code = clickRefusal(app, element, at: first) ?? "covered"
+      fail(code, refusalMessages[code] ?? code)
+    }
+    center = safe
   }
   guard topWindow(at: center, ignoring: ignoredPid) == windowId else {
     fail("covered", "Another window covers the element.")
-  }
-
-  // Presses are real mouse clicks at the checked point. AXPress was tried first, but pages that
-  // listen for mouse events (Google's suggestions, Gmail rows, Chrome's tree right after it is
-  // enabled) report success while nothing happens, so it can't be trusted to have acted.
-  let pressing = kind == "press" || kind == "check" && request["intent"] as? String == "press"
-  if pressing, let code = clickRefusal(app, element, at: center) {
-    fail(code, refusalMessages[code] ?? code)
   }
   if kind == "type" || kind == "check" && request["intent"] as? String == "type" {
     var settable: DarwinBoolean = false

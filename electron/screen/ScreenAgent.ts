@@ -24,6 +24,8 @@ import {
 export const MAX_STEPS = 10;
 /** Time for the page to react before Poko checks whether anything changed. */
 const SETTLE_MS = 1200;
+/** Points around the target that count as "near" when checking for a change. */
+const AROUND = 60;
 const MAX_REFUSALS = 3;
 const MAX_REASKS = 2;
 const APPROVAL_TIMEOUT_MS = 5 * 60_000;
@@ -52,6 +54,8 @@ export interface ScreenAgentDeps {
   point(snapshot: WindowSnapshot, element: AxElement, say: string): void;
   hideOverlay(): Promise<void>;
   ownPid: number;
+  /** How long the page gets to react before Poko compares (default 1.2 s). */
+  settleMs?: number;
 }
 
 const intentFor: Record<"click" | "type" | "reveal", Exclude<ActKind, "check">> = {
@@ -235,7 +239,22 @@ export class ScreenAgent {
     if (!rect) return { text: "refused: it isn't fully in the picture", refused: true };
 
     let shown = capture.crop(rect);
-    let before = capture.fingerprint;
+    // The area around the target, to notice small changes (a checkbox, a count) that a
+    // whole-window comparison misses.
+    const frame = element.frame;
+    const around =
+      cropRect(
+        {
+          x: frame.x - AROUND,
+          y: frame.y - AROUND,
+          width: frame.width + AROUND * 2,
+          height: frame.height + AROUND * 2,
+        },
+        capture.snapshot.window.frame,
+        capture.imageSize,
+        { visiblePart: true },
+      ) ?? rect;
+    let before = { whole: capture.fingerprint, local: capture.crop(around).bitmap };
     for (let asks = 0; ; asks += 1) {
       const choice = await this.askUser(
         step.say,
@@ -252,7 +271,7 @@ export class ScreenAgent {
       const fresh = await deps.capture(windowId);
       try {
         const now = fresh.crop(rect);
-        before = fresh.fingerprint;
+        before = { whole: fresh.fingerprint, local: fresh.crop(around).bitmap };
         if (changedPixelShare(shown.bitmap, now.bitmap) <= MAX_SILENT_CHANGE) break;
         // The page changed since the user looked: show what is there now and ask again.
         if (asks + 1 >= MAX_REASKS)
@@ -284,17 +303,32 @@ export class ScreenAgent {
     }
     // Pages can accept an action and ignore it. Codex is told when nothing visibly changed, so
     // it tries another way instead of repeating the same step.
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    await new Promise((resolve) => setTimeout(resolve, deps.settleMs ?? SETTLE_MS));
     this.throwIfStopped();
-    const after = await deps.capture(windowId);
-    const changed = changedPixelShare(before, after.fingerprint) > MAX_SILENT_CHANGE;
-    await after.release();
+    // The action already ran: a failed look afterwards (the window closed or resized) must not
+    // turn it into a failure. The next step's look decides what happens then.
+    let changed: boolean | null = null;
+    try {
+      const after = await deps.capture(windowId);
+      try {
+        changed =
+          changedPixelShare(before.whole, after.fingerprint) > MAX_SILENT_CHANGE ||
+          changedPixelShare(before.local, after.crop(around).bitmap) > MAX_SILENT_CHANGE;
+      } finally {
+        await after.release();
+      }
+    } catch {
+      changed = null;
+    }
 
     const name = elementName(element);
-    const typedButIgnored = action.kind === "type" && !result.valueMatches;
+    const typed = action.kind === "type";
+    const typedButIgnored = typed && !result.valueMatches;
+    // A field that holds the text is proof enough; typing rarely changes much on screen.
+    const noEffect = !typed && changed === false;
     const done = typedButIgnored
       ? `‘${name}’에 입력했지만 페이지가 값을 받지 않았어.`
-      : !changed
+      : noEffect
         ? `‘${name}’에 동작했지만 화면이 바뀌지 않았어.`
         : action.kind === "type"
           ? `‘${name}’에 입력했어.`
@@ -305,9 +339,11 @@ export class ScreenAgent {
     return {
       text: typedButIgnored
         ? "done, but the field did not take the text"
-        : changed
-          ? "done; the page changed"
-          : "done, but nothing on the page visibly changed; try a different element or approach",
+        : noEffect
+          ? "done, but nothing on the page visibly changed; try a different element or approach"
+          : changed === null
+            ? "done; the window could not be checked afterwards"
+            : "done",
       refused: false,
     };
   }

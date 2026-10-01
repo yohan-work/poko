@@ -43,6 +43,8 @@ function setup(
     page?: () => number;
     act?: ScreenAgentDeps["act"];
     snapshot?: typeof snapshot;
+    /** Makes the capture after the given number of captures fail. */
+    failCaptureAfter?: number;
   } = {},
 ) {
   const events: AgentEvent[] = [];
@@ -51,6 +53,8 @@ function setup(
   let released = 0;
   const capture = async (): Promise<Capture> => {
     captures += 1;
+    if (options.failCaptureAfter !== undefined && captures > options.failCaptureAfter)
+      throw new HelperError("window_not_found", "gone");
     const value = options.pixels?.() ?? 0;
     return {
       snapshot: options.snapshot ?? snapshot,
@@ -88,6 +92,7 @@ function setup(
     point: () => undefined,
     hideOverlay: async () => undefined,
     ownPid: 42,
+    settleMs: 0,
   });
   return {
     agent,
@@ -267,6 +272,34 @@ describe("ScreenAgent", () => {
     await world.agent.run(9, "add one");
     expect(world.events.find((event) => event.type === "tool")).toMatchObject({
       detail: "‘Add one’을(를) 눌렀어.",
+    });
+  });
+
+  it("counts typing as done when the field holds the text, even if little changed", async () => {
+    const world = setup([
+      '{"say":"쓸게","action":{"kind":"type","elementId":5,"text":"poko"}}',
+      done,
+    ]);
+    world.whenAsked((id) => world.agent.respond(id, "approve"));
+    await world.agent.run(9, "type");
+    expect(world.events.find((event) => event.type === "tool")).toMatchObject({
+      detail: "‘Search’에 입력했어.",
+    });
+  });
+
+  it("keeps an action that ran when the look afterwards fails", async () => {
+    // Captures: the step's look (1) and the check after approval (2); the third fails.
+    const world = setup([click], { failCaptureAfter: 2 });
+    world.whenAsked((id) => world.agent.respond(id, "approve"));
+    await world.agent.run(9, "add one");
+    expect(world.acts.map((request) => request.kind)).toEqual(["check", "press"]);
+    expect(world.events.find((event) => event.type === "tool")).toMatchObject({
+      detail: "‘Add one’을(를) 눌렀어.",
+    });
+    // The next step's look finds the window gone and ends the task plainly.
+    expect(world.events.at(-1)).toEqual({
+      type: "error",
+      error: "고른 창이 닫히거나 사라져서 멈췄어.",
     });
   });
 });
