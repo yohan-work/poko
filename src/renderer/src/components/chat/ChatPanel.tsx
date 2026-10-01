@@ -120,10 +120,21 @@ export function ChatPanel() {
   const now = useNow();
   const isEmpty = messages.length === 0;
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followRef = useRef(true);
+
+  // New messages, approvals, and the start or end of a task always bring the log to the bottom.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the log grows
   useEffect(() => {
+    followRef.current = true;
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, isSending, hasPendingApproval, streamingText]);
+  }, [messages.length, isSending, hasPendingApproval]);
+
+  // A streaming answer is followed only while the reader is at the bottom.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follow each streamed frame
+  useEffect(() => {
+    if (followRef.current) endRef.current?.scrollIntoView({ block: "end" });
+  }, [streamingText]);
 
   if (isEmpty) {
     return (
@@ -145,7 +156,17 @@ export function ChatPanel() {
 
   return (
     <section className="chat-panel" aria-label="Poko와 대화">
-      <div className="chat-panel__scroll" role="log" aria-live="polite">
+      <div
+        ref={scrollRef}
+        className="chat-panel__scroll"
+        role="log"
+        aria-live="polite"
+        onScroll={() => {
+          const element = scrollRef.current;
+          if (!element) return;
+          followRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+        }}
+      >
         <ol className="message-list" aria-label="대화 기록">
           {messages.map((message) =>
             message.role === "user" ? (

@@ -369,6 +369,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 /** Progress text while Codex is writing the answer itself. */
 export const OUTPUT_PROGRESS = "답변을 쓰고 있어.";
+const PAUSED_PROGRESS = "이어서 살펴보고 있어.";
+/** Without new text for this long, Codex is likely doing other work (reasoning, file changes). */
+const OUTPUT_PAUSE_MS = 1500;
+let outputPauseTimer: number | undefined;
 
 // Deltas arrive per token; render them at most once per frame.
 const deltaBuffer = createDeltaBuffer((deltas) =>
@@ -383,8 +387,16 @@ function applyTaskEvent(payload: TaskEventPayload): void {
     if (state.pendingApprovals.length === 0 && state.progressMessage !== OUTPUT_PROGRESS) {
       useAppStore.setState({ characterState: "working", progressMessage: OUTPUT_PROGRESS });
     }
+    window.clearTimeout(outputPauseTimer);
+    outputPauseTimer = window.setTimeout(() => {
+      const current = useAppStore.getState();
+      if (current.isSending && current.progressMessage === OUTPUT_PROGRESS) {
+        useAppStore.setState({ progressMessage: PAUSED_PROGRESS });
+      }
+    }, OUTPUT_PAUSE_MS);
     return;
   }
+  window.clearTimeout(outputPauseTimer);
   const message = activityText(event);
   const status = sessionTaskStatus(event);
   const timestamp = new Date().toISOString();
