@@ -15,8 +15,11 @@ Today every request starts from scratch. `AgentCore.buildPrompt` sends only the 
 - The main process assembles context from SQLite. The renderer does not send history or memories with a task request.
 - Agent Core receives a typed `TaskContext { memories, history }` from main and formats the prompt. That keeps formatting provider-independent and unit-testable. A future Claude provider gets the same context.
 - **Memories:** include saved memories ordered by importance, then most recently updated. Cap at 40 entries and about 6,000 characters total, and truncate each entry to 1,000 characters. Label the section as user-written preferences and facts that never override the safety rules.
-- **History:** include the most recent completed exchanges from the conversation, as the user request plus Poko's final answer, oldest first. Cap at 5 exchanges and about 8,000 characters, truncating each side to 2,000 characters. Failed and cancelled tasks are left out so error text doesn't become context.
-- To get clean exchanges, add a nullable `result` column to `tasks` and set it when a task completes. Don't infer exchanges from the `messages` table, which also holds failure and cancellation messages.
+- **History:** include the most recent completed exchanges from the current conversation, as the user request plus Poko's final answer. Cap at 5 exchanges and about 8,000 characters, truncating each side to 2,000 characters. Select newest first until a cap is reached, then reverse into chronological order. That way the cap drops the oldest exchange, never the one a follow-up refers to. Failed and cancelled tasks are left out so error text doesn't become context.
+- To get clean, conversation-scoped exchanges, one migration adds two nullable columns to `tasks`:
+  - `result`, set when a task completes. Don't infer exchanges from the `messages` table, which also holds failure and cancellation messages.
+  - `conversation_id`, a foreign key to `conversations`, set when a task is created. History is filtered by it, so Phase 07's multiple conversations don't leak into each other.
+- The migration backfills both columns. Existing tasks get the single existing conversation. Completed tasks get their result from the assistant message written in the same transaction, which has exactly the same timestamp as `completed_at`. Rows that still have no result are skipped, not sent as empty answers.
 - Prompt order: role, safety rules, project guidance, saved memories, recent conversation, current request.
 - Keep prompt-based context instead of resuming Codex threads (`thread/resume`). Threads would tie conversation state to one provider and replay tool output. This decision can be revisited when multiple conversations arrive.
 - **Transparency:** saved memories and recent exchanges are now sent to the configured provider with each request. Say so in the Memory page description and in the README security section.
@@ -38,7 +41,7 @@ Today every request starts from scratch. `AgentCore.buildPrompt` sends only the 
 
 Each milestone is its own PR with review.
 
-1. **Context:** `tasks.result` migration, a context query in `PokoDatabase`, `TaskContext` in Agent Core with prompt formatting, and the transparency copy. Tests cover caps, ordering, exclusion of failed tasks, and prompt layout.
+1. **Context:** one migration that adds and backfills `tasks.result` and `tasks.conversation_id`, a context query in `PokoDatabase`, `TaskContext` in Agent Core with prompt formatting, and the transparency copy. Tests cover caps and newest-first selection, exclusion of failed tasks, the backfill, history staying within one conversation, and prompt layout.
 2. **Markdown:** assistant message rendering, safe link and image handling, and code block copy. Tests cover HTML escaping and the link and image overrides.
 3. **Streaming:** item ids on `output` events through provider, preload validation, and renderer, plus streaming display and batching. Tests cover delta grouping by item and the cancel and error cleanup.
 

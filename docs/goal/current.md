@@ -12,7 +12,7 @@
 ## 범위와 확정된 결정
 
 - 포함: Phase 00–04 기반, Claude 스타일 UI 개편, Phase 05 대화 품질.
-- 제외: 자동 memory extraction, browser, scheduler, write/command approval enforcement (Phase 04+).
+- 제외: 자동 memory extraction, browser, scheduler. 승인 기반 쓰기 모드는 실제 환경 검증 후 Phase 06에서 진행한다.
 - 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. Electron main/preload/renderer는 Electron Vite를 사용하며 renderer에는 좁은 IPC bridge만 노출한다. README는 현재 동작과 계획 기능을 구분한다.
 - 결정: 사용자 승인으로 Phase 04 Codex transport를 `codex exec --json`에서 stdio JSON-RPC `codex app-server`로 전환한다. App Server는 experimental이므로 capability를 좁게 유지하고 검증 전 write 실행은 fail-closed로 둔다.
 
