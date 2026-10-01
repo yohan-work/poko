@@ -156,7 +156,8 @@ export class PokoDatabase {
         })
         .from(activities)
         .innerJoin(tasks, eq(tasks.id, activities.taskId))
-        .orderBy(desc(activities.createdAt))
+        // rowid breaks same-millisecond ties so steps keep their insertion order.
+        .orderBy(desc(activities.createdAt), desc(sql`${activities}.rowid`))
         .limit(500)
         .all() as ActivityRecord[],
     };

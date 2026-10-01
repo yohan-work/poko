@@ -43,7 +43,10 @@ function NewMemoryForm({ onClose }: { onClose: () => void }) {
         value={content}
         onChange={(event) => setContent(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
+          // Escape cancels an IME composition first, and never discards a draft.
+          if (event.key === "Escape" && !event.nativeEvent.isComposing && !content.trim()) {
+            onClose();
+          }
         }}
         maxLength={4000}
         rows={3}
