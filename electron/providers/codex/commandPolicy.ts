@@ -1,87 +1,180 @@
 /**
- * Best-effort screen for commands Poko never offers for approval: network and remote-service
- * access, package installs and publishing, deployment, git operations that reach a remote or
- * discard work, privilege escalation, recursive deletion, and disk tools. Phase 04 keeps these
- * unavailable.
+ * Which escalated commands Poko may offer for one-time approval.
  *
- * This is defense in depth, not containment. A shell can hide intent (variables, eval of built
- * strings, aliases, scripts written then run), so an approved command still runs outside the
- * sandbox and the approval card says so.
+ * An approved command runs outside the read-only sandbox, so this is an allowlist that fails
+ * closed. Phase 04 keeps general shell access unavailable: only a small set of local file,
+ * build, test, and git commands is ever offered, and everything else is declined without asking.
  *
- * How it reads a command:
- * - A small quote-aware tokenizer joins adjacent fragments the way the shell does (`r"m"` is
- *   `rm`) and keeps a quoted argument as one token, so a commit message is not read as commands.
- * - Anything it can't follow is declined (fail closed): command substitution, eval, source,
- *   exec, and any shell other than the single outermost `<shell> -c '<command>'` wrapper Codex
- *   uses, whose command is screened in turn.
- * - git uses an allowlist of local subcommands, so remote-reaching commands fail closed.
- * - Only tokens the shell would run as programs are judged: the start of each segment (after
- *   variable assignments and keywords like `then`), `python -m <module>`, and every non-option
- *   word after a program-running prefix (`xargs`, `env`, `find -exec`). Their directories are
- *   stripped (`bin/rm` is `rm`), so plain arguments like `mkdir docker` are not misread.
- * A false positive only means a request is declined instead of offered.
+ * What is offered:
+ * - The single `<shell> -c '<command>'` wrapper Codex uses is unwrapped once.
+ * - Shell syntax is limited to plain words, quotes, `&&`, `||`, `;`, `|`, and `>`/`>>` into
+ *   the workspace. Anything that expands or builds commands is declined: `$`, backticks,
+ *   braces, globs, parentheses, backslashes outside quotes, `!`, `~`, and line breaks.
+ * - Each segment must start with an allowed program, as a bare name, and pass its argument rules.
+ * - Path arguments and redirect targets must stay relative: no leading `/` or `~`, no `..`.
+ *   `/dev/null` is the one exception.
+ *
+ * This still isn't containment: allowed tools can run project code (`pnpm test`, `node x.js`),
+ * so the approval card warns that the command runs outside the sandbox.
  */
 
-const NETWORK = new Set(
-  "curl wget ssh scp sftp rsync nc ncat netcat telnet ftp socat http https httpie aria2c gh glab hub".split(
-    " ",
-  ),
-);
-const PRIVILEGE = new Set("sudo su doas chown".split(" "));
-const DISK = new Set("mkfs dd diskutil shutdown reboot halt launchctl".split(" "));
-const DEPLOY = new Set(
-  "vercel netlify firebase flyctl fly heroku kubectl terraform helm aws gcloud az docker podman".split(
-    " ",
-  ),
-);
-/** Tools that fetch and run packages whatever the arguments. */
-const ALWAYS_INSTALL = new Set(
-  "npx bunx pnpx uv uvx pipx brew apt apt-get yum dnf corepack".split(" "),
-);
-const JS_PACKAGE_MANAGERS = new Set("npm pnpm yarn bun".split(" "));
-const JS_INSTALL_WORDS = new Set(
-  "install i ci add publish unpublish deprecate dist-tag owner login adduser token update upgrade up dlx exec x create init link remove rm uninstall".split(
-    " ",
-  ),
-);
-/** Script runners: arguments after these belong to the project's script, not the manager. */
-const JS_SCRIPT_RUNNERS = new Set("run run-script test start".split(" "));
-const OTHER_PACKAGE_MANAGERS = new Set(
-  "pip gem cargo go poetry pdm pipenv bundle bundler composer conda mamba hatch rye".split(" "),
-);
-const OTHER_INSTALL_WORDS = new Set(
-  "install download add publish get sync lock update upgrade uninstall remove".split(" "),
-);
-/**
- * git subcommands that stay local and keep work. Everything else (remotes, LFS, email, history
- * rewrites, config, hooks) is declined, so new remote-reaching commands fail closed.
- */
-const GIT_ALLOWED_SUBCOMMANDS = new Set(
-  "status diff log show add commit mv rm branch checkout switch stash tag blame grep rev-parse ls-files describe shortlog init apply".split(
-    " ",
-  ),
-);
-/** git options that take a separate value, so the value is not mistaken for the subcommand. */
-const GIT_OPTIONS_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
-const SHELLS = new Set("sh bash zsh dash ksh fish".split(" "));
+const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 
 interface Token {
   text: string;
   quoted: boolean;
 }
 
+type Rule = (args: Token[]) => string | null;
+
+function pathLike(text: string): string | null {
+  if (text === "/dev/null") return null;
+  if (text.includes("://")) return "network";
+  if (text.startsWith("/") || text.startsWith("~") || text.split("/").includes(".."))
+    return "path outside the workspace";
+  return null;
+}
+
+/** Every argument (and every `--option=value` value) must stay inside the workspace. */
+function checkPaths(args: Token[]): string | null {
+  for (const arg of args) {
+    const value = arg.text.startsWith("-") ? arg.text.split("=").slice(1).join("=") : arg.text;
+    const reason = value ? pathLike(value) : null;
+    if (reason) return reason;
+  }
+  return null;
+}
+
+const positional = (args: Token[]) => args.filter((arg) => !arg.text.startsWith("-"));
+const has = (args: Token[], ...flags: string[]) => args.some((arg) => flags.includes(arg.text));
+
+const fileTool: Rule = checkPaths;
+
+const rm: Rule = (args) =>
+  args.some((arg) => /^-[a-z]*r/i.test(arg.text) || arg.text === "--recursive")
+    ? "recursive delete"
+    : checkPaths(args);
+
+/** `node file.js` or `python3 script.py`; inline code (`-e`, `-c`, `-m`) is not offered. */
+const scriptRunner: Rule = (args) =>
+  args[0] && !args[0].text.startsWith("-") ? checkPaths(args) : "inline code";
+
+const JS_SUBCOMMANDS = new Set([
+  "run",
+  "test",
+  "start",
+  "build",
+  "lint",
+  "typecheck",
+  "format",
+  "check",
+]);
+/** Project scripts only: installs, publishing, and package downloads are not offered. */
+const jsPackageManager: Rule = (args) => {
+  const subcommand = positional(args)[0]?.text;
+  if (!subcommand || !JS_SUBCOMMANDS.has(subcommand)) return "install or publish";
+  return checkPaths(args);
+};
+
+const subcommandOnly =
+  (allowed: string[]): Rule =>
+  (args) => {
+    const subcommand = positional(args)[0]?.text;
+    return subcommand && allowed.includes(subcommand) ? checkPaths(args) : "not offered";
+  };
+
+const GIT_SUBCOMMANDS = new Set(
+  "status diff log show add commit mv rm branch checkout switch stash tag blame rev-parse ls-files describe shortlog init".split(
+    " ",
+  ),
+);
+const git: Rule = (args) => {
+  const deny = "git remote or discard";
+  let index = 0;
+  // Global options only change the directory or output; inline config could run programs.
+  while (index < args.length && args[index].text.startsWith("-")) {
+    const text = args[index].text;
+    if (text !== "--no-pager" && text !== "-C" && text !== "--no-optional-locks") return deny;
+    index += text === "-C" ? 2 : 1;
+  }
+  const subcommand = args[index]?.text;
+  const rest = args.slice(index + 1);
+  if (!subcommand || !GIT_SUBCOMMANDS.has(subcommand)) return deny;
+  const pos = positional(rest);
+  if (
+    (subcommand === "checkout" &&
+      (has(rest, ".", "--", "-f", "--force", "-p", "--patch") ||
+        pos.length > (has(rest, "-b", "-B") ? 2 : 1))) ||
+    (subcommand === "switch" && has(rest, "-f", "--force", "--discard-changes")) ||
+    (subcommand === "branch" && has(rest, "-d", "-D", "--delete", "-m", "-M", "-f", "--force")) ||
+    (subcommand === "stash" && has(rest, "drop", "clear", "pop")) ||
+    (subcommand === "commit" && has(rest, "--amend")) ||
+    (subcommand === "rm" &&
+      rest.some((arg) => /^-[a-z]*[rf]/i.test(arg.text) || arg.text === "--force")) ||
+    (subcommand === "tag" && has(rest, "-d", "--delete", "-f", "--force")) ||
+    // Options that hand output to an external program.
+    rest.some((arg) => /^(--ext-diff|--open-files-in-pager|-O|--exec|--upload-pack)/.test(arg.text))
+  )
+    return deny;
+  return checkPaths(args.slice(index));
+};
+
+const PROGRAMS: Record<string, Rule> = {
+  // Files and text inside the workspace.
+  printf: fileTool,
+  echo: fileTool,
+  cat: fileTool,
+  ls: fileTool,
+  mkdir: fileTool,
+  touch: fileTool,
+  cp: fileTool,
+  mv: fileTool,
+  head: fileTool,
+  tail: fileTool,
+  wc: fileTool,
+  sort: fileTool,
+  uniq: fileTool,
+  diff: fileTool,
+  cmp: fileTool,
+  grep: fileTool,
+  pwd: fileTool,
+  true: fileTool,
+  false: fileTool,
+  test: fileTool,
+  rm,
+  // Running and checking the project.
+  node: scriptRunner,
+  python: scriptRunner,
+  python3: scriptRunner,
+  npm: jsPackageManager,
+  pnpm: jsPackageManager,
+  yarn: jsPackageManager,
+  bun: jsPackageManager,
+  tsc: fileTool,
+  eslint: fileTool,
+  prettier: fileTool,
+  biome: fileTool,
+  vitest: fileTool,
+  jest: fileTool,
+  mocha: fileTool,
+  pytest: fileTool,
+  make: fileTool,
+  go: subcommandOnly(["test", "build", "vet", "fmt"]),
+  cargo: subcommandOnly(["test", "build", "check", "fmt", "clippy"]),
+  git,
+};
+
 /**
- * Splits a command into segments of tokens, honoring quotes and backslash escapes. Command
- * substitution never reaches here: `screen` declines it first.
+ * Splits a line into segments of tokens. Returns a reason instead when the line uses shell
+ * syntax outside the small allowed set.
  */
-function tokenize(command: string): Token[][] {
+function parse(line: string): Token[][] | string {
   const segments: Token[][] = [];
   let segment: Token[] = [];
   let text = "";
   let quoted = false;
   let started = false;
   let quote: '"' | "'" | null = null;
-
   const endToken = () => {
     if (started) segment.push({ text, quoted });
     text = "";
@@ -90,224 +183,115 @@ function tokenize(command: string): Token[][] {
   };
   const endSegment = () => {
     endToken();
-    if (segment.length > 0) segments.push(segment);
+    if (segment.length === 0) return false;
+    segments.push(segment);
     segment = [];
+    return true;
   };
 
-  for (let index = 0; index < command.length; index += 1) {
-    const char = command[index];
-    const next = command[index + 1];
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
     if (quote === "'") {
       if (char === "'") quote = null;
       else text += char;
       continue;
     }
-    if (char === "\\" && next !== undefined) {
-      text += next;
-      started = true;
-      index += 1;
-      continue;
-    }
     if (quote === '"') {
       if (char === '"') quote = null;
+      else if (char === "\\" && '$`"\\'.includes(line[index + 1] ?? "")) {
+        // POSIX: inside double quotes a backslash escapes only these characters.
+        text += line[index + 1];
+        index += 1;
+      } else if (char === "$" || char === "`") return "shell syntax";
       else text += char;
       continue;
     }
-    if (char === '"' || char === "'") {
+    if (char === "'" || char === '"') {
       quote = char;
       quoted = true;
       started = true;
       continue;
     }
-    if (
-      char === "\n" ||
-      char === ";" ||
-      char === "&" ||
-      char === "|" ||
-      char === "(" ||
-      char === ")"
-    ) {
-      endSegment();
-      continue;
-    }
-    if (/\s/.test(char)) {
+    if (char === " " || char === "\t") {
       endToken();
       continue;
     }
+    if (char === ";" || char === "|" || char === "&") {
+      // `&&`, `||`, `|`, and `;` separate commands; a lone `&` (background) is not offered.
+      const pair = line[index + 1] === char && char !== ";";
+      if (char === "&" && !pair) return "shell syntax";
+      if (!endSegment()) return "shell syntax";
+      if (pair) index += 1;
+      continue;
+    }
+    if (char === ">") {
+      endToken();
+      const append = line[index + 1] === ">";
+      segment.push({ text: append ? ">>" : ">", quoted: false });
+      if (append) index += 1;
+      continue;
+    }
+    if (/[$`{}*?[\]()\\!~<\n\r#=]/.test(char) && !(char === "=" && started)) return "shell syntax";
     text += char;
     started = true;
   }
+  if (quote) return "shell syntax";
   endSegment();
   return segments;
 }
 
-/** A quoted argument containing spaces, such as a commit message. Single words still count. */
-function isPhrase(token: Token): boolean {
-  return token.quoted && /\s/.test(token.text);
-}
-
-function words(tokens: Token[]): string[] {
-  return tokens.filter((token) => !isPhrase(token)).map((token) => token.text.toLowerCase());
-}
-
-function gitReason(rest: Token[]): string | null {
-  let index = 0;
-  while (index < rest.length) {
-    const text = rest[index].text;
-    // Inline config (`-c core.pager=…`, `--config-env`) can run any program, so it is declined.
-    if (text === "-c" || text.startsWith("--config-env")) return "git remote or discard";
-    if (GIT_OPTIONS_WITH_VALUE.has(text)) index += 2;
-    else if (text.startsWith("-")) index += 1;
-    else break;
-  }
-  const subcommand = rest[index]?.text.toLowerCase();
-  if (!subcommand) return null;
-  const after = words(rest.slice(index + 1));
-  const has = (...flags: string[]) => after.some((arg) => flags.includes(arg));
-  const positional = after.filter((arg) => !arg.startsWith("-"));
-  const deny = "git remote or discard";
-  if (!GIT_ALLOWED_SUBCOMMANDS.has(subcommand)) return deny;
-  // checkout only switches branches here (`checkout main`, `checkout -b new [start]`); paths or
-  // force would overwrite uncommitted work.
-  if (subcommand === "checkout") {
-    if (has(".", "--", "-f", "--force", "-p", "--patch")) return deny;
-    if (has("-b", "-B") ? positional.length > 2 : positional.length > 1) return deny;
-  }
-  if (subcommand === "switch" && has("-f", "--force", "--discard-changes")) return deny;
-  if (subcommand === "branch" && has("-d", "--delete", "-m", "-f", "--force")) return deny;
-  if (subcommand === "stash" && has("drop", "clear", "pop")) return deny;
-  if (subcommand === "commit" && has("--amend")) return deny;
-  if (subcommand === "rm" && after.some((arg) => /^-[a-z]*[rf]/.test(arg) || arg === "--force"))
-    return deny;
-  if (subcommand === "tag" && has("-d", "--delete", "-f", "--force")) return deny;
-  return null;
-}
-
-function packageReason(name: string, rest: Token[]): string | null {
-  const args = words(rest);
-  if (JS_PACKAGE_MANAGERS.has(name)) {
-    // A bare `yarn` installs dependencies.
-    if (name === "yarn" && !args.some((arg) => !arg.startsWith("-"))) return "install or publish";
-    // Options with values (`--filter web`) can precede the subcommand, so look at every word
-    // until a script runner hands the rest to the project's own script.
-    for (const arg of args) {
-      if (arg === "--" || JS_SCRIPT_RUNNERS.has(arg)) break;
-      if (JS_INSTALL_WORDS.has(arg)) return "install or publish";
-    }
-  }
-  if (OTHER_PACKAGE_MANAGERS.has(name) && args.some((arg) => OTHER_INSTALL_WORDS.has(arg)))
-    return "install or publish";
-  return null;
-}
-
-function reasonAt(name: string, rest: Token[]): string | null {
-  if (NETWORK.has(name)) return "network";
-  if (PRIVILEGE.has(name)) return "privilege";
-  if (DISK.has(name) || name.startsWith("mkfs")) return "disk";
-  if (DEPLOY.has(name)) return "deployment";
-  if (ALWAYS_INSTALL.has(name)) return "install or publish";
-  const packages = packageReason(name, rest);
-  if (packages) return packages;
-  if (name === "git") return gitReason(rest);
-  const args = words(rest);
-  if (name === "rm" && args.some((arg) => /^-[a-z]*r/.test(arg) || arg === "--recursive"))
-    return "recursive delete";
-  if (
-    name === "find" &&
-    (args.includes("-delete") ||
-      (args.some((arg) => ["-exec", "-execdir", "-ok", "-okdir"].includes(arg)) &&
-        args.some((arg) => (arg.split("/").pop() ?? arg) === "rm")))
-  )
-    return "recursive delete";
-  return null;
-}
-
-/**
- * Programs that run another program given later in their arguments (`xargs rm`, `env X=1 git`,
- * `find … -exec rm`). Every non-option word after one of these is treated as a command.
- */
-const COMMAND_PREFIXES = new Set(
-  "xargs env command nice nohup time timeout stdbuf caffeinate -exec -execdir -ok -okdir".split(
-    " ",
-  ),
-);
-/** Shell keywords after which a command starts. */
-const KEYWORDS = new Set(
-  "if then else elif fi do done while until for case esac ! { } time".split(" "),
-);
-const INDIRECTION = new Set(["eval", "source", ".", "exec"]);
-
-/** Directory-stripped program name for a token in command position (`bin/rm` is `rm`). */
-function commandName(token: Token): string {
-  const name = (token.text.split("/").pop() ?? token.text).toLowerCase();
-  return /^pip\d[\d.]*$/.test(name) ? "pip" : name;
-}
-
-/** Indexes of tokens that the shell would run as programs. */
-function commandPositions(tokens: Token[]): number[] {
-  const positions: number[] = [];
-  let expectCommand = true;
-  let afterPrefix = false;
+function checkSegment(tokens: Token[]): string | null {
+  // Redirection is allowed only as `> file` / `>> file` (optionally `2>`) into the workspace.
+  const words: Token[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (isPhrase(token)) {
-      expectCommand = false;
+    if (!token.quoted && (token.text === ">" || token.text === ">>")) {
+      const target = tokens[index + 1];
+      if (!target || target.text === ">" || target.text === ">>") return "shell syntax";
+      const reason = pathLike(target.text);
+      if (reason) return reason;
+      index += 1;
       continue;
     }
-    const text = token.text;
-    if (KEYWORDS.has(text)) {
-      expectCommand = true;
+    const next = tokens[index + 1];
+    if (
+      !token.quoted &&
+      /^\d$/.test(token.text) &&
+      next &&
+      !next.quoted &&
+      next.text.startsWith(">")
+    )
       continue;
-    }
-    // Variable assignments before a command (`X=1 rm …`) don't take its place.
-    if ((expectCommand || afterPrefix) && /^[A-Za-z_][A-Za-z0-9_]*=/.test(text)) continue;
-    if (afterPrefix) {
-      if (!text.startsWith("-")) positions.push(index);
-    } else if (expectCommand) {
-      positions.push(index);
-      expectCommand = false;
-    }
-    const name = commandName(token);
-    if (COMMAND_PREFIXES.has(name) || COMMAND_PREFIXES.has(text)) afterPrefix = true;
-    // `python -m pip install …` runs the module as a program.
-    if (/^python[\d.]*$/.test(name) && tokens[index + 1]?.text === "-m" && tokens[index + 2])
-      positions.push(index + 2);
+    words.push(token);
   }
-  return positions;
+  const [program, ...args] = words;
+  if (!program || program.quoted) return "not offered";
+  // Program names are bare words: no paths and no assignments.
+  if (/[/=]/.test(program.text)) return "not offered";
+  const rule = Object.hasOwn(PROGRAMS, program.text) ? PROGRAMS[program.text] : undefined;
+  return rule ? rule(args) : "not offered";
 }
 
-/**
- * Screens one shell command line. Anything the screen cannot follow is declined outright
- * (fail closed): command substitution, eval/source/exec, and any shell that isn't the single
- * outermost `<shell> -c '<command>'` wrapper Codex uses.
- */
-function screen(command: string, depth: number): string | null {
-  if (command.includes("`") || command.includes("$(")) return "shell indirection";
-  const segments = tokenize(command);
+function checkLine(line: string): string | null {
+  const segments = parse(line);
+  if (typeof segments === "string") return segments;
+  if (segments.length === 0) return "not offered";
   for (const tokens of segments) {
-    const first = tokens[0];
-    // The one wrapper we follow: `/bin/zsh -lc "<command>"` as the entire top-level command.
-    if (
-      depth === 0 &&
-      segments.length === 1 &&
-      SHELLS.has(commandName(first)) &&
-      tokens.length === 3 &&
-      /^-[a-z]*c[a-z]*$/.test(tokens[1].text)
-    ) {
-      return screen(tokens[2].text, depth + 1);
-    }
-    for (const index of commandPositions(tokens)) {
-      const name = commandName(tokens[index]);
-      if (SHELLS.has(name) || INDIRECTION.has(name)) return "shell indirection";
-      const reason = reasonAt(name, tokens.slice(index + 1));
-      if (reason) return reason;
-    }
+    const reason = checkSegment(tokens);
+    if (reason) return reason;
   }
   return null;
 }
 
-/** The reason a command is never offered for approval, or null when it may be shown. */
+/** The reason a command is not offered for approval, or null when it may be shown. */
 export function deniedCommandReason(command: string): string | null {
-  if (/[a-z][a-z0-9+.-]*:\/\//i.test(command)) return "network";
-  return screen(command, 0);
+  // Unwrap the single `<shell> -c '<command>'` wrapper Codex uses, once.
+  const outer = parse(command);
+  if (typeof outer !== "string" && outer.length === 1 && outer[0].length === 3) {
+    const [shell, flag, inner] = outer[0];
+    const shellName = shell.text.split("/").pop() ?? "";
+    if (!shell.quoted && SHELLS.has(shellName) && /^-[a-z]*c[a-z]*$/.test(flag.text))
+      return checkLine(inner.text);
+  }
+  return checkLine(command);
 }
