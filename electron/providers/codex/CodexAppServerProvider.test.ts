@@ -136,14 +136,18 @@ describe("CodexAppServerProvider", () => {
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
-    server.send({ method: "item/agentMessage/delta", params: { delta: "All " } });
-    server.send({ method: "item/agentMessage/delta", params: { delta: "good." } });
+    server.send({ method: "item/agentMessage/delta", params: { itemId: "m1", delta: "All " } });
+    server.send({ method: "item/agentMessage/delta", params: { itemId: "m1", delta: "good." } });
     server.send({ method: "turn/completed", params: { turn: { status: "completed" } } });
 
     expect(await stream.next("completed")).toEqual({
       type: "completed",
       result: "All good.",
     });
+    expect(stream.events.filter((event) => event.type === "output")).toEqual([
+      { type: "output", content: "All ", itemId: "m1" },
+      { type: "output", content: "good.", itemId: "m1" },
+    ]);
     const thread = await server.waitFor((m) => m.method === "thread/start");
     expect(thread.params).toMatchObject({ sandbox: "read-only", approvalPolicy: "on-request" });
   });

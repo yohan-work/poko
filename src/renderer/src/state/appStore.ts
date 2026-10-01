@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { applyDeltas, createDeltaBuffer, type StreamingAnswer } from "../lib/streaming";
 import type {
   AgentEvent,
   ApprovalChoice,
@@ -46,6 +47,8 @@ interface AppState {
   activities: ActivityEntry[];
   tasks: SessionTask[];
   activeTaskId: string | null;
+  /** The answer being written for the active task; replaced by the saved result when it completes. */
+  streaming: StreamingAnswer | null;
   /** Oldest first; Codex may ask again before the user answers. */
   pendingApprovals: PendingApproval[];
   isRespondingToApproval: boolean;
@@ -153,6 +156,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activities: [],
   tasks: [],
   activeTaskId: null,
+  streaming: null,
   pendingApprovals: [],
   isRespondingToApproval: false,
   progressMessage: null,
@@ -363,11 +367,41 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearError: () => set({ errorMessage: null, workspaceError: null }),
 }));
 
+/** Progress text while Codex is writing the answer itself. */
+export const OUTPUT_PROGRESS = "답변을 쓰고 있어.";
+const PAUSED_PROGRESS = "이어서 살펴보고 있어.";
+/** Without new text for this long, Codex is likely doing other work (reasoning, file changes). */
+const OUTPUT_PAUSE_MS = 1500;
+let outputPauseTimer: number | undefined;
+
+// Deltas arrive per token; render them at most once per frame.
+const deltaBuffer = createDeltaBuffer((deltas) =>
+  useAppStore.setState((state) => ({ streaming: applyDeltas(state.streaming, deltas) })),
+);
+
 function applyTaskEvent(payload: TaskEventPayload): void {
   const { taskId, event } = payload;
+  if (event.type === "output") {
+    deltaBuffer.push({ taskId, itemId: event.itemId ?? null, content: event.content });
+    const state = useAppStore.getState();
+    if (state.pendingApprovals.length === 0 && state.progressMessage !== OUTPUT_PROGRESS) {
+      useAppStore.setState({ characterState: "working", progressMessage: OUTPUT_PROGRESS });
+    }
+    window.clearTimeout(outputPauseTimer);
+    outputPauseTimer = window.setTimeout(() => {
+      const current = useAppStore.getState();
+      if (current.isSending && current.progressMessage === OUTPUT_PROGRESS) {
+        useAppStore.setState({ progressMessage: PAUSED_PROGRESS });
+      }
+    }, OUTPUT_PAUSE_MS);
+    return;
+  }
+  window.clearTimeout(outputPauseTimer);
   const message = activityText(event);
   const status = sessionTaskStatus(event);
   const timestamp = new Date().toISOString();
+  // The saved result (or the error/cancel message) replaces the partial answer, which is never kept.
+  if (status !== null) deltaBuffer.discard(taskId);
 
   useAppStore.setState((state) => {
     const messages =
@@ -402,19 +436,18 @@ function applyTaskEvent(payload: TaskEventPayload): void {
       errorMessage: event.type === "error" ? event.error : null,
       isSending: status === null,
       activeTaskId: status === null ? state.activeTaskId : null,
+      streaming: status !== null && state.streaming?.taskId === taskId ? null : state.streaming,
       pendingApprovals,
       progressMessage:
-        event.type === "output"
-          ? "프로젝트 내용을 정리하고 있어."
-          : event.type === "thinking"
-            ? (event.message ?? "요청을 살펴보고 있어.")
-            : event.type === "tool"
-              ? (event.detail ?? "프로젝트를 살펴보고 있어.")
-              : waitingForUser
-                ? "네 확인을 기다리고 있어."
-                : status === null
-                  ? state.progressMessage
-                  : null,
+        event.type === "thinking"
+          ? (event.message ?? "요청을 살펴보고 있어.")
+          : event.type === "tool"
+            ? (event.detail ?? "프로젝트를 살펴보고 있어.")
+            : waitingForUser
+              ? "네 확인을 기다리고 있어."
+              : status === null
+                ? state.progressMessage
+                : null,
       messages,
       tasks,
       activities: message ? addActivity(state, taskId, message) : state.activities,

@@ -73,3 +73,8 @@ Each milestone is its own PR with review.
   - `components/chat/Markdown.tsx` renders assistant answers with `react-markdown` 10 and `remark-gfm` 4. Its default escapes raw HTML, inline and block, so it shows as text and never becomes an element.
   - Links render as text with the URL as a tooltip, and images render as their alt text. Code blocks get a copy button.
   - Server-rendered tests cover the formatting, the HTML escaping, and the link and image overrides.
+- **Milestone 3 (streaming):** done.
+  - `output` events carry the Codex agent message `itemId`, from the provider through preload validation to the renderer.
+  - `lib/streaming.ts` groups deltas by task and message item and batches them once per animation frame. The store shows the in-progress answer as a Markdown reply with "답변을 쓰고 있어." progress.
+  - On completion the saved result replaces it. On cancel or error, pending deltas are discarded and nothing partial is shown or saved.
+  - Tests cover delta grouping, replacement when a new item starts, frame batching, discarding, and the provider's `itemId`.

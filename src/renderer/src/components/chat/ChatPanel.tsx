@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { useAppStore } from "../../state/appStore";
+import { OUTPUT_PROGRESS, useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
@@ -115,14 +115,27 @@ export function ChatPanel() {
   const isSending = useAppStore((state) => state.isSending);
   const progressMessage = useAppStore((state) => state.progressMessage);
   const hasPendingApproval = useAppStore((state) => state.pendingApprovals.length > 0);
+  const streamingText = useAppStore((state) => state.streaming?.text ?? "");
   const endRef = useRef<HTMLDivElement>(null);
   const now = useNow();
   const isEmpty = messages.length === 0;
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followRef = useRef(true);
+
+  // New messages, approvals, and the start or end of a task always bring the log to the bottom.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the log grows
   useEffect(() => {
+    followRef.current = true;
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, isSending, hasPendingApproval]);
+
+  // Streamed text and progress lines that appear under it are followed only while the reader
+  // is at the bottom.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follow each streamed frame and progress change
+  useEffect(() => {
+    if (followRef.current) endRef.current?.scrollIntoView({ block: "end" });
+  }, [streamingText, progressMessage]);
 
   if (isEmpty) {
     return (
@@ -144,7 +157,17 @@ export function ChatPanel() {
 
   return (
     <section className="chat-panel" aria-label="Poko와 대화">
-      <div className="chat-panel__scroll" role="log" aria-live="polite">
+      <div
+        ref={scrollRef}
+        className="chat-panel__scroll"
+        role="log"
+        aria-live="polite"
+        onScroll={() => {
+          const element = scrollRef.current;
+          if (!element) return;
+          followRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+        }}
+      >
         <ol className="message-list" aria-label="대화 기록">
           {messages.map((message) =>
             message.role === "user" ? (
@@ -158,13 +181,25 @@ export function ChatPanel() {
               </li>
             ),
           )}
-          <ApprovalCard />
-          {isSending && !hasPendingApproval && (
-            <li className="message message--assistant message--loading">
+          {isSending && streamingText && (
+            <li className="message message--assistant message--streaming" aria-busy="true">
               <Character state={characterState} size={26} />
-              <p className="message__progress">{progressMessage ?? "프로젝트를 살펴보고 있어."}</p>
+              <Markdown>{streamingText}</Markdown>
             </li>
           )}
+          <ApprovalCard />
+          {/* Keep showing progress (tools, steps after an approval) below a streamed message;
+              hide it only while the answer itself is being written. */}
+          {isSending &&
+            !hasPendingApproval &&
+            !(streamingText && progressMessage === OUTPUT_PROGRESS) && (
+              <li className="message message--assistant message--loading">
+                <Character state={characterState} size={26} />
+                <p className="message__progress">
+                  {progressMessage ?? "프로젝트를 살펴보고 있어."}
+                </p>
+              </li>
+            )}
         </ol>
         <div ref={endRef} />
       </div>

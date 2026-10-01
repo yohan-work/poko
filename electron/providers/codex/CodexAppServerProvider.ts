@@ -387,7 +387,8 @@ export class CodexAppServerProvider implements AgentProvider {
           const delta = readString(message.params.delta);
           if (delta) {
             finalMessage += delta;
-            yield { type: "output", content: delta };
+            const itemId = readString(message.params.itemId);
+            yield { type: "output", content: delta, ...(itemId ? { itemId } : {}) };
           }
         } else if (message.method === "item/completed") {
           const item = message.params.item;

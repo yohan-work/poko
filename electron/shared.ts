@@ -39,7 +39,8 @@ export type AgentEvent =
   | { type: "started" }
   | { type: "thinking"; message?: string }
   | { type: "tool"; tool: string; detail?: string }
-  | { type: "output"; content: string }
+  /** `itemId` groups deltas by agent message, so the UI can replace text when a new message starts. */
+  | { type: "output"; content: string; itemId?: string }
   | { type: "completed"; result: string }
   | { type: "cancelled" }
   | {
