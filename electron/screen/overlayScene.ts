@@ -1,5 +1,6 @@
 import type { OverlayScene } from "../shared";
 import type { AxElement, Frame, WindowSnapshot } from "./axHelper";
+import { MAX_LISTED } from "./lookPrompt";
 
 /** Poko points at no more than this many elements per answer. */
 export const MAX_POINTS = 3;
@@ -23,6 +24,21 @@ const roleNames: Record<string, string> = {
 };
 
 const CITATION = /\[(\d{1,4})\]/g;
+/** Fenced blocks and inline code: `items[0]` there is code, not a citation. */
+const CODE = /(```[\s\S]*?(?:```|$)|`[^`\n]*`)/;
+
+/** Only elements Codex was shown can be cited. */
+function listedById(snapshot: WindowSnapshot): Map<number, AxElement> {
+  return new Map(snapshot.elements.slice(0, MAX_LISTED).map((element) => [element.id, element]));
+}
+
+/** Applies `replace` to the prose of a Markdown answer, leaving code untouched. */
+function outsideCode(answer: string, replace: (prose: string) => string): string {
+  return answer
+    .split(CODE)
+    .map((part, index) => (index % 2 === 1 ? part : replace(part)))
+    .join("");
+}
 
 /** A short, single-line name for an element, from its (untrusted) label or its role. */
 export function elementName(element: AxElement): string {
@@ -31,13 +47,24 @@ export function elementName(element: AxElement): string {
   return roleNames[element.role] ?? "이 부분";
 }
 
-/** Elements the answer cited as `[12]`, in order, that exist and have a frame on screen. */
-export function citedElements(answer: string, snapshot: WindowSnapshot): AxElement[] {
-  const byId = new Map(snapshot.elements.map((element) => [element.id, element]));
+/**
+ * Elements the answer cited as `[12]`, in order, that Codex was shown and that lie inside the
+ * picked window and the display. The limit applies after that filter, so a cited element that
+ * is scrolled away never takes the place of one Poko can point at.
+ */
+export function citedElements(
+  answer: string,
+  snapshot: WindowSnapshot,
+  display: Frame,
+): AxElement[] {
+  const byId = listedById(snapshot);
+  const prose = answer.split(CODE).filter((_, index) => index % 2 === 0);
   const cited: AxElement[] = [];
-  for (const match of answer.matchAll(CITATION)) {
+  for (const match of prose.join("\n").matchAll(CITATION)) {
     const element = byId.get(Number(match[1]));
-    if (!element?.frame || element.frame.width <= 0 || element.frame.height <= 0) continue;
+    const frame = element?.frame;
+    if (!element || !frame || frame.width <= 0 || frame.height <= 0) continue;
+    if (!overlaps(frame, snapshot.window.frame) || !overlaps(frame, display)) continue;
     if (!cited.includes(element)) cited.push(element);
     if (cited.length === MAX_POINTS) break;
   }
@@ -49,12 +76,14 @@ export function citedElements(answer: string, snapshot: WindowSnapshot): AxEleme
  * Backticks and brackets are removed from names so a label can't change the Markdown around it.
  */
 export function replaceCitations(answer: string, snapshot: WindowSnapshot): string {
-  const byId = new Map(snapshot.elements.map((element) => [element.id, element]));
-  return answer.replace(CITATION, (whole, id: string) => {
-    const element = byId.get(Number(id));
-    if (!element) return whole;
-    return `‘${elementName(element).replace(/[`[\]*_<>]/g, "")}’`;
-  });
+  const byId = listedById(snapshot);
+  return outsideCode(answer, (prose) =>
+    prose.replace(CITATION, (whole, id: string) => {
+      const element = byId.get(Number(id));
+      if (!element) return whole;
+      return `‘${elementName(element).replace(/[`[\]*_<>]/g, "")}’`;
+    }),
+  );
 }
 
 function overlaps(frame: Frame, bounds: Frame): boolean {
@@ -67,8 +96,9 @@ function overlaps(frame: Frame, bounds: Frame): boolean {
 }
 
 /**
- * The scene for the overlay on one display. Frames become relative to the display, and parts
- * outside the window or display are dropped, so Poko never points somewhere it didn't look.
+ * The scene for the overlay on one display. Frames become relative to the display. Points
+ * outside the window or display are dropped again here, so Poko never points somewhere it
+ * didn't look.
  */
 export function buildOverlayScene(
   snapshot: WindowSnapshot,

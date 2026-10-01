@@ -1,6 +1,7 @@
 import type { AxElement, WindowSnapshot } from "./axHelper";
 
-const MAX_LISTED = 250;
+/** Elements beyond this aren't shown to Codex, so citations of them are ignored. */
+export const MAX_LISTED = 250;
 const MAX_LABEL = 80;
 
 function clip(text: string, max = MAX_LABEL): string {

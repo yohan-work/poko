@@ -278,7 +278,7 @@ async function pointAt(snapshot: WindowSnapshot, answer: string): Promise<void> 
   if (!screenOverlay) return;
   try {
     const display = screenOverlay.displayFor(snapshot.window.frame);
-    const scene = buildOverlayScene(snapshot, citedElements(answer, snapshot), display);
+    const scene = buildOverlayScene(snapshot, citedElements(answer, snapshot, display), display);
     if (scene) await screenOverlay.show(scene, display);
   } catch (error) {
     console.error("Could not show Poko on screen.", error);

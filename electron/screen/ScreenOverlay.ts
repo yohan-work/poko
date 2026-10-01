@@ -14,6 +14,8 @@ export class ScreenOverlay {
   private window: BrowserWindow | null = null;
   private ready: Promise<void> | null = null;
   private hideTimer: NodeJS.Timeout | null = null;
+  /** Bumped by every hide, so a show still loading the window can't appear after it. */
+  private generation = 0;
 
   constructor(
     private readonly preloadPath: string,
@@ -32,8 +34,9 @@ export class ScreenOverlay {
   }
 
   async show(scene: OverlayScene, display: Frame): Promise<void> {
+    const generation = ++this.generation;
     const window = await this.ensureWindow();
-    if (window.isDestroyed()) return;
+    if (window.isDestroyed() || generation !== this.generation) return;
     if (this.hideTimer) clearTimeout(this.hideTimer);
     window.setBounds(display);
     window.webContents.send(IPC_CHANNELS.overlayScene, scene);
@@ -44,6 +47,7 @@ export class ScreenOverlay {
 
   /** Hides right away, for example before a capture, so Poko never covers what it reads. */
   async hide(): Promise<void> {
+    this.generation += 1;
     if (this.hideTimer) clearTimeout(this.hideTimer);
     this.hideTimer = null;
     const window = this.window;
@@ -99,7 +103,14 @@ export class ScreenOverlay {
       this.rendererUrl
         ? window.loadURL(`${this.rendererUrl}#overlay`)
         : window.loadFile(this.rendererFile, { hash: "overlay" })
-    ).then(() => undefined);
+    ).then(
+      () => undefined,
+      (error: unknown) => {
+        // A failed load isn't cached: the next show creates a fresh window.
+        if (this.window === window) this.destroy();
+        throw error;
+      },
+    );
     await this.ready;
     return window;
   }

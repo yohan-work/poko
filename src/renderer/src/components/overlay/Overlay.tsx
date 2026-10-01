@@ -6,6 +6,8 @@ import { Character } from "../character/Character";
 const POINT_MS = 3200;
 const ORB = 64;
 const GAP = 14;
+/** The bubble's widest size (CSS max-width) plus its gap from the orb. */
+const BUBBLE_SPACE = 268;
 
 type Frame = OverlayScene["points"][number]["frame"];
 
@@ -52,7 +54,7 @@ export function Overlay() {
     y: Math.max(scene.origin.y + scene.origin.height - ORB - 24, 8),
   };
   const orb = point ? orbPosition(point.frame, scene.display) : start;
-  const bubbleLeft = orb.x + ORB + 220 > scene.display.width;
+  const bubbleLeft = orb.x + ORB + BUBBLE_SPACE > scene.display.width;
 
   return (
     <div className="overlay">
