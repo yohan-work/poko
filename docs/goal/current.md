@@ -34,7 +34,7 @@
 - 완료: Phase 04 plan PR #8은 squash merge commit `140979e`로 원격 `main`에 반영됐다.
 - 완료: Phase 04 PR #10은 리뷰(4건 수정: process group 종료, `willRetry`, symlink 경계, 복수 승인 대기열) 후 squash merge commit `1526608`로 원격 `main`에 반영됐다.
 - 검증: `pnpm check`(typecheck, lint, 37 tests, build), `pnpm format:check`, `git diff --check` 통과.
-- 미검증: GUI 상호작용, 실제 Codex model 요청, OS별 sandbox enforcement. write mode는 비활성이다.
+- 미검증: GUI 상호작용, OS별 sandbox enforcement. write mode는 비활성이다. (실제 Codex 요청은 아래 PR #22 항목에서 확인됨)
 - 완료: UI 개편 PR #12(사이드바·대화 화면), #13(검정 구 + 코랄 위성 캐릭터), #14(작업·기억·활동 탭)가 리뷰 후 squash merge됐다. 최신 `main`은 `76948f6`이다.
 - 결정: 작업 완료 후 PR → 리뷰 → 지적 반영 → squash merge까지 사용자 확인 없이 진행한다(사용자 지시, 2026-10-01).
 - 결정: 다음 순서는 Phase 06 화면 동반자(사용자의 'wow point' 요청) → Phase 07 여러 대화 → 이후 workspace-write 샌드박스 기반 쓰기 모드. 계획은 [phase-06](../phases/phase-06.md).

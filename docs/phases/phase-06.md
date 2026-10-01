@@ -71,6 +71,13 @@ Each milestone is its own PR with review.
 2. **Overlay character.** The transparent overlay window. Poko flies to and circles elements referenced in the look answer. It hides while Poko captures or measures (content protection is only an extra layer) and respects reduced motion.
 3. **One approved step at a time.** The action schema and validation, the approval card with a target crop, the stop shortcut, AX execution with re-check, the step loop, and the safety rules above.
 
+## Open questions to settle in implementation
+
+These come from plan review. Each milestone PR must answer them with real-browser evidence.
+
+- **Hit test and Poko's own windows:** the "visible and on top" check must ignore Poko's main window and overlay but still detect other apps covering the target. Option: hit-test with Poko's windows hidden or ordered back for that moment, or check the window stacking order (`CGWindowListCopyWindowInfo`) for any non-Poko window over the target's frame, before the AX hit test on the target app.
+- **Typing into real web forms:** setting `AXValue` may not fire `input`/`change` events in framework-controlled forms (React and similar), and rich editors (`contenteditable`, for example Gmail compose) may not expose a settable value. Milestone 3 must test common sites. If the page didn't take the text, `type` is reported as unsupported for that field rather than offered. A submit after a `type` is offered only when the field's value read back matches.
+
 ## Explicitly deferred
 
 - Multi-step plan approval and auto-run.
