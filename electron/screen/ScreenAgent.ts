@@ -21,7 +21,9 @@ import {
   type StepRecord,
 } from "./steps";
 
-export const MAX_STEPS = 8;
+export const MAX_STEPS = 10;
+/** Time for the page to react before Poko checks whether anything changed. */
+const SETTLE_MS = 1200;
 const MAX_REFUSALS = 3;
 const MAX_REASKS = 2;
 const APPROVAL_TIMEOUT_MS = 5 * 60_000;
@@ -32,6 +34,8 @@ export interface Capture {
   imagePath: string;
   workDir: string;
   imageSize: { width: number; height: number };
+  /** Small raw bitmap of the whole window, to tell whether an action changed anything. */
+  fingerprint: Uint8Array;
   /** A PNG data URL and raw BGRA pixels of one rectangle of the image. */
   crop(rect: Frame): { dataUrl: string; bitmap: Uint8Array };
   release(): Promise<void>;
@@ -124,13 +128,21 @@ export class ScreenAgent {
         await deps.hideOverlay();
         const capture = await deps.capture(windowId);
         try {
-          const reply = await deps.ask(
-            buildStepPrompt(goal, history, capture.snapshot),
-            capture,
-            this.controller.signal,
+          const prompt = buildStepPrompt(goal, history, capture.snapshot);
+          let proposed = parseStep(
+            await deps.ask(prompt, capture, this.controller.signal),
+            capture.snapshot,
           );
           this.throwIfStopped();
-          const proposed = parseStep(reply, capture.snapshot);
+          if (!proposed) {
+            // Codex sometimes ends a turn without a usable reply; it gets one more try.
+            const retry = `${prompt}\n\nYour previous reply was not one valid JSON step. Reply again with exactly one JSON object and nothing else.`;
+            proposed = parseStep(
+              await deps.ask(retry, capture, this.controller.signal),
+              capture.snapshot,
+            );
+            this.throwIfStopped();
+          }
           if (!proposed) {
             deps.emit({
               type: "error",
@@ -154,7 +166,12 @@ export class ScreenAgent {
             });
             return;
           }
-          history.push({ say: proposed.say, outcome: outcome.text });
+          const { action } = proposed as ActionStep;
+          history.push({
+            say: proposed.say,
+            action: `${action.kind} [${action.elementId}]`,
+            outcome: outcome.text,
+          });
           refusedInRow = outcome.refused ? refusedInRow + 1 : 0;
           if (refusedInRow >= MAX_REFUSALS) {
             deps.emit({
@@ -171,6 +188,10 @@ export class ScreenAgent {
     } catch (error) {
       if (error instanceof Stopped || this.stopped) {
         deps.emit({ type: "cancelled" });
+        return;
+      }
+      if (error instanceof HelperError && error.code === "window_not_found") {
+        deps.emit({ type: "error", error: "고른 창이 닫히거나 사라져서 멈췄어." });
         return;
       }
       console.error("Screen task failed.", error);
@@ -203,7 +224,10 @@ export class ScreenAgent {
     try {
       await deps.act(windowId, request("check"));
     } catch (error) {
-      return { text: `refused: ${refusalReason(error)}`, refused: true };
+      return {
+        text: `refused, nothing happened: ${refusalReason(error)}; choose a different element`,
+        refused: true,
+      };
     }
     const rect = cropRect(element.frame, capture.snapshot.window.frame, capture.imageSize, {
       visiblePart: action.kind === "reveal",
@@ -211,6 +235,7 @@ export class ScreenAgent {
     if (!rect) return { text: "refused: it isn't fully in the picture", refused: true };
 
     let shown = capture.crop(rect);
+    let before = capture.fingerprint;
     for (let asks = 0; ; asks += 1) {
       const choice = await this.askUser(
         step.say,
@@ -227,6 +252,7 @@ export class ScreenAgent {
       const fresh = await deps.capture(windowId);
       try {
         const now = fresh.crop(rect);
+        before = fresh.fingerprint;
         if (changedPixelShare(shown.bitmap, now.bitmap) <= MAX_SILENT_CHANGE) break;
         // The page changed since the user looked: show what is there now and ask again.
         if (asks + 1 >= MAX_REASKS)
@@ -256,21 +282,32 @@ export class ScreenAgent {
         refused: false,
       };
     }
+    // Pages can accept an action and ignore it. Codex is told when nothing visibly changed, so
+    // it tries another way instead of repeating the same step.
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    this.throwIfStopped();
+    const after = await deps.capture(windowId);
+    const changed = changedPixelShare(before, after.fingerprint) > MAX_SILENT_CHANGE;
+    await after.release();
+
     const name = elementName(element);
-    const done =
-      action.kind === "type"
-        ? result.valueMatches
+    const typedButIgnored = action.kind === "type" && !result.valueMatches;
+    const done = typedButIgnored
+      ? `‘${name}’에 입력했지만 페이지가 값을 받지 않았어.`
+      : !changed
+        ? `‘${name}’에 동작했지만 화면이 바뀌지 않았어.`
+        : action.kind === "type"
           ? `‘${name}’에 입력했어.`
-          : `‘${name}’에 입력했지만 페이지가 값을 받지 않았어.`
-        : action.kind === "click"
-          ? `‘${name}’을(를) 눌렀어.`
-          : `‘${name}’이(가) 보이게 했어.`;
+          : action.kind === "click"
+            ? `‘${name}’을(를) 눌렀어.`
+            : `‘${name}’이(가) 보이게 했어.`;
     deps.emit({ type: "tool", tool: "screen", detail: done });
     return {
-      text:
-        action.kind === "type" && !result.valueMatches
-          ? "done, but the field did not take the text"
-          : "done",
+      text: typedButIgnored
+        ? "done, but the field did not take the text"
+        : changed
+          ? "done; the page changed"
+          : "done, but nothing on the page visibly changed; try a different element or approach",
       refused: false,
     };
   }

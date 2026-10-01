@@ -39,6 +39,8 @@ function setup(
   replies: string[],
   options: {
     pixels?: () => number;
+    /** The whole window's look; changing it after an action means the page reacted. */
+    page?: () => number;
     act?: ScreenAgentDeps["act"];
     snapshot?: typeof snapshot;
   } = {},
@@ -55,6 +57,7 @@ function setup(
       imagePath: "/tmp/screen.png",
       workDir: "/tmp/work",
       imageSize: { width: 800, height: 600 },
+      fingerprint: new Uint8Array(400).fill(options.page?.() ?? 0),
       crop: () => ({
         dataUrl: "data:image/png;base64,AA",
         bitmap: new Uint8Array(400).fill(value),
@@ -158,8 +161,14 @@ describe("ScreenAgent", () => {
     expect(world.acts.map((request) => request.kind)).toEqual(["check", "press"]);
   });
 
-  it("ends on a reply that isn't one valid step", async () => {
-    const world = setup(["Sure, I'll click Add one."]);
+  it("gives Codex one more try after a reply that isn't a step", async () => {
+    const world = setup(["요청한 작업을 마쳤어.", done]);
+    await world.agent.run(9, "goal");
+    expect(world.events.at(-1)).toEqual({ type: "completed", result: "다 했어" });
+  });
+
+  it("ends when the second reply isn't one valid step either", async () => {
+    const world = setup(["Sure, I'll click Add one.", "Still not JSON."]);
     await world.agent.run(9, "add one");
     expect(types(world.events)).toEqual(["started", "thinking", "error"]);
     expect(world.acts).toEqual([]);
@@ -232,5 +241,32 @@ describe("ScreenAgent", () => {
     world.whenAsked((id) => world.agent.respond(id, "approve"));
     await world.agent.run(9, "show it");
     expect(world.acts.map((request) => request.kind)).toEqual(["check", "reveal"]);
+  });
+
+  it("tells Codex when an action changed nothing on the page", async () => {
+    let page = 0;
+    const world = setup([click, done], { page: () => page });
+    world.whenAsked((id) => world.agent.respond(id, "approve"));
+    await world.agent.run(9, "add one");
+    expect(world.events.find((event) => event.type === "tool")).toMatchObject({
+      detail: expect.stringContaining("바뀌지 않았어"),
+    });
+    page = 0;
+  });
+
+  it("reports a click that changed the page as done", async () => {
+    let page = 0;
+    const world = setup([click, done], {
+      page: () => page,
+      act: async (_id, request) => {
+        if (request.kind === "press") page = 200;
+        return {};
+      },
+    });
+    world.whenAsked((id) => world.agent.respond(id, "approve"));
+    await world.agent.run(9, "add one");
+    expect(world.events.find((event) => event.type === "tool")).toMatchObject({
+      detail: "‘Add one’을(를) 눌렀어.",
+    });
   });
 });

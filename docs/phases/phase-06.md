@@ -136,6 +136,19 @@ Decisions:
   - Gmail rows are found and offered with `method: "mouse"`. This was checked without clicking.
 - The window picker has its own request field, prefilled from the composer. The final `done` reply may carry up to 4,000 characters, so a summary of what Poko opened comes back as the answer. The prompt asks Codex to open what is needed first, then answer in Markdown.
 
+### First real-site run: fixes from "search, open the site, find Careers, summarize"
+
+The user's request stalled. Running it for real on Google in Safari surfaced these, all fixed:
+
+- **The card was hidden behind the browser.** When a step needs approval, Poko's window now comes to the front.
+- **Another app covered the browser** (a Teams window popped up). In 대신 해 줘, each look first brings the picked window to the front (`poko-ax raise`).
+- **AXPress lied again.** Google's suggestions (like Gmail rows) accept `AXPress` and do nothing. So **every press is now the checked mouse click**, with all the checks above (same element, covered, inner controls and links, hover re-check).
+- **Multi-line links have an empty middle.** The click point is the first of these that the page's hit test puts on the target: the center, the centers of its children, then a spread of points.
+- **Codex repeated refused or ineffective steps.** History now names each step's element and action. A refusal says to pick a different element, and the prompt says never to repeat a refused element. After each action Poko waits 1.2 s and compares a 96×96 fingerprint of the window. If nothing changed, the step outcome says so, and the activity log shows "화면이 바뀌지 않았어".
+- **Codex sometimes ends a turn without a reply.** It gets one retry with a reminder of the JSON format.
+- **A closed window** ends the task with "고른 창이 닫히거나 사라져서 멈췄어". Steps per task: up to 10.
+- **Result:** the same request ran in 66 s with 5 approved steps (search box, suggestion, the site's link in the results, the site menu, Careers) and ended with a summary of the Careers page. Approvals were given by a test script.
+
 ## Open questions to settle in implementation
 
 These come from plan review. Each milestone PR must answer them with real-browser evidence.

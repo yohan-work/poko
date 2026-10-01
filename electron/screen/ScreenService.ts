@@ -143,6 +143,7 @@ export class ScreenService {
       workDir,
       tempDir,
       imageSize,
+      fingerprint: new Uint8Array(image.resize({ width: 96, height: 96 }).toBitmap()),
       app: window.owner || window.bundleId || "앱",
       crop: (rect) => {
         const part = image.crop(rect);
@@ -150,6 +151,11 @@ export class ScreenService {
       },
       release: () => this.cleanup(tempDir),
     };
+  }
+
+  /** Brings the window in front, so another app's window doesn't cover what Poko looks at. */
+  async raise(windowId: number): Promise<void> {
+    parseActResult(await runHelper(this.helperPath, ["raise", String(windowId)]));
   }
 
   /** Runs the helper's `act` for one request; throws HelperError when a check refuses. */
