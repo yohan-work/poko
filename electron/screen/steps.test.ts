@@ -78,6 +78,20 @@ describe("crops", () => {
     });
   });
 
+  it("crops only the visible part when asked, for reveal", () => {
+    const window = snapshot.window.frame;
+    expect(
+      cropRect(
+        { x: -100, y: 1020, width: 60, height: 30 },
+        window,
+        { width: 1920, height: 2006 },
+        {
+          visiblePart: true,
+        },
+      ),
+    ).toEqual({ x: 1720, y: 1980, width: 120, height: 26 });
+  });
+
   it("refuses crops that leave the image", () => {
     const window = snapshot.window.frame;
     const image = { width: 1920, height: 2006 };

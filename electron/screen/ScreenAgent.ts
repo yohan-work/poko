@@ -66,6 +66,10 @@ const refusals: Record<string, string> = {
   look_only_app: "Poko can't act in this app",
   target_changed: "it changed",
   target_gone: "it is gone",
+  window_not_found: "the window is gone",
+  window_not_matched: "the window couldn't be found",
+  window_ambiguous: "the window couldn't be told apart from another",
+  bad_request: "the request was invalid",
 };
 
 class Stopped extends Error {}
@@ -200,7 +204,9 @@ export class ScreenAgent {
     } catch (error) {
       return { text: `refused: ${refusalReason(error)}`, refused: true };
     }
-    const rect = cropRect(element.frame, capture.snapshot.window.frame, capture.imageSize);
+    const rect = cropRect(element.frame, capture.snapshot.window.frame, capture.imageSize, {
+      visiblePart: action.kind === "reveal",
+    });
     if (!rect) return { text: "refused: it isn't fully in the picture", refused: true };
 
     let shown = capture.crop(rect);
@@ -235,7 +241,19 @@ export class ScreenAgent {
     try {
       result = await deps.act(windowId, request(intent));
     } catch (error) {
-      return { text: `refused just before acting: ${refusalReason(error)}`, refused: true };
+      // A check that refused means nothing happened. A timeout or a failed call may have acted
+      // anyway, so Codex is told to look before repeating it.
+      if (error instanceof HelperError && error.code in refusals)
+        return { text: `refused just before acting: ${refusalReason(error)}`, refused: true };
+      deps.emit({
+        type: "tool",
+        tool: "screen",
+        detail: "동작 결과를 확인하지 못했어. 화면을 다시 보고 이어갈게.",
+      });
+      return {
+        text: "result unknown: it may or may not have happened; check the screen before repeating it",
+        refused: false,
+      };
     }
     const name = elementName(element);
     const done =

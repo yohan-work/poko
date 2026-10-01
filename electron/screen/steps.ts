@@ -39,21 +39,34 @@ export function parseStep(reply: string, snapshot: WindowSnapshot): ScreenStep |
 /**
  * The target's rectangle in the window capture, in image pixels. Element frames are global
  * points; the capture is the window at the display's scale. Returns null when the element
- * isn't fully inside the image, so the card never shows a partial or wrong crop.
+ * isn't fully inside the image, so the card never shows a partial or wrong crop, except for
+ * `visiblePart`, which crops what is on screen.
  */
 export function cropRect(
   element: Frame,
   window: Frame,
   image: { width: number; height: number },
+  /** For `reveal`: crop the part that is on screen, since the rest is what it scrolls into view. */
+  options: { visiblePart?: boolean } = {},
 ): Frame | null {
   if (window.width <= 0 || image.width <= 0) return null;
   const scale = image.width / window.width;
-  const rect = {
+  let rect = {
     x: Math.round((element.x - window.x) * scale),
     y: Math.round((element.y - window.y) * scale),
     width: Math.round(element.width * scale),
     height: Math.round(element.height * scale),
   };
+  if (options.visiblePart) {
+    const x = Math.max(rect.x, 0);
+    const y = Math.max(rect.y, 0);
+    rect = {
+      x,
+      y,
+      width: Math.min(rect.x + rect.width, image.width) - x,
+      height: Math.min(rect.y + rect.height, image.height) - y,
+    };
+  }
   const fits =
     rect.width > 0 &&
     rect.height > 0 &&

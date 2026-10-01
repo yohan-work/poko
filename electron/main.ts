@@ -37,7 +37,7 @@ let screenService: ScreenService | null = null;
 let screenOverlay: ScreenOverlay | null = null;
 let screenProvider: CodexAppServerProvider | null = null;
 /** The running "act" task, if any. Only one task of any kind runs at a time. */
-let screenRun: { taskId: string; agent: ScreenAgent } | null = null;
+let screenRun: { taskId: string; agent: ScreenAgent; done: Promise<void> } | null = null;
 /** The only global shortcut: it stops a screen task at once. */
 const STOP_SHORTCUT = "CommandOrControl+Shift+Escape";
 /** Running screen tasks: their temp folder (screenshot and empty work folder) and snapshot. */
@@ -110,6 +110,8 @@ function registerIpcHandlers(): void {
     if (screenRun) throw new Error("Poko is busy with a screen task.");
     const workspacePath = database?.getWorkspace() ?? null;
     const cwd = await resolveWorkspaceDirectory(workspacePath);
+    // A screen task may have started while the folder was being checked.
+    if (screenRun) throw new Error("Poko is busy with a screen task.");
     const taskId = database?.createTask(rawMessage.trim(), cwd);
     if (!taskId) throw new Error("Local storage is unavailable.");
     try {
@@ -226,6 +228,11 @@ function registerIpcHandlers(): void {
         error: screenErrors[code] ?? "화면을 가져오지 못했어. 권한을 확인하고 다시 시도해 줘.",
       };
     }
+    // Another task may have started while the window was being captured.
+    if (agentCore.hasActiveTasks || screenRun) {
+      void screenService.cleanup(look.tempDir);
+      return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
+    }
     const question = request.question.trim() || "이 화면을 설명해 줘.";
     const taskId = database.createTask(
       `🖥️ ${look.app} 화면 보기: ${question}`,
@@ -292,13 +299,13 @@ function registerIpcHandlers(): void {
       },
       ownPid: process.pid,
     });
-    screenRun = { taskId, agent };
     if (!globalShortcut.register(STOP_SHORTCUT, () => screenRun?.agent.stop()))
       console.error("Could not register the stop shortcut.");
-    void agent.run(windowId, goal).finally(() => {
+    const done = agent.run(windowId, goal).finally(() => {
       globalShortcut.unregister(STOP_SHORTCUT);
       if (screenRun?.agent === agent) screenRun = null;
     });
+    screenRun = { taskId, agent, done };
     return { taskId };
   });
 
@@ -559,8 +566,15 @@ app.on("window-all-closed", () => {
 
 let quitAfterTasks = false;
 app.on("before-quit", (event) => {
-  screenRun?.agent.stop();
   globalShortcut.unregisterAll();
+  if (screenRun) {
+    // Let the stopped task record that it was cancelled before the database closes.
+    event.preventDefault();
+    const { agent, done } = screenRun;
+    agent.stop();
+    void done.then(() => app.quit());
+    return;
+  }
   if (agentCore?.hasActiveTasks) {
     event.preventDefault();
     if (quitAfterTasks) return;

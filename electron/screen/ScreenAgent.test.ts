@@ -37,7 +37,11 @@ const done = '{"say":"다 했어","action":{"kind":"done"}}';
 /** A fake world: scripted Codex replies, a pixel source, and a recording helper. */
 function setup(
   replies: string[],
-  options: { pixels?: () => number; act?: ScreenAgentDeps["act"] } = {},
+  options: {
+    pixels?: () => number;
+    act?: ScreenAgentDeps["act"];
+    snapshot?: typeof snapshot;
+  } = {},
 ) {
   const events: AgentEvent[] = [];
   const acts: ActRequest[] = [];
@@ -47,7 +51,7 @@ function setup(
     captures += 1;
     const value = options.pixels?.() ?? 0;
     return {
-      snapshot,
+      snapshot: options.snapshot ?? snapshot,
       imagePath: "/tmp/screen.png",
       workDir: "/tmp/work",
       imageSize: { width: 800, height: 600 },
@@ -192,5 +196,41 @@ describe("ScreenAgent", () => {
     expect(world.events.find((event) => event.type === "tool")).toMatchObject({
       detail: expect.stringContaining("받지 않았어"),
     });
+  });
+
+  it("says the result is unknown, not refused, when acting times out", async () => {
+    const world = setup([click, done], {
+      act: async (_id, request) => {
+        if (request.kind === "press") throw new HelperError("timeout", "slow");
+        return {};
+      },
+    });
+    world.whenAsked((id) => world.agent.respond(id, "approve"));
+    await world.agent.run(9, "add one");
+    expect(world.events.find((event) => event.type === "tool")).toMatchObject({
+      detail: expect.stringContaining("확인하지 못했어"),
+    });
+    expect(world.events.at(-1)).toEqual({ type: "completed", result: "다 했어" });
+  });
+
+  it("offers reveal for an element that is only partly on screen", async () => {
+    const partial = parseSnapshot({
+      ...JSON.parse(JSON.stringify(snapshot)),
+      elements: [
+        {
+          id: 6,
+          role: "AXButton",
+          label: "Below",
+          frame: { x: 10, y: 290, width: 60, height: 30 },
+          path: [0, 3],
+        },
+      ],
+    });
+    const world = setup(['{"say":"보이게 할게","action":{"kind":"reveal","elementId":6}}', done], {
+      snapshot: partial,
+    });
+    world.whenAsked((id) => world.agent.respond(id, "approve"));
+    await world.agent.run(9, "show it");
+    expect(world.acts.map((request) => request.kind)).toEqual(["check", "reveal"]);
   });
 });
