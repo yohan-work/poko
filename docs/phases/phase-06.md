@@ -106,6 +106,24 @@ Decisions:
 - The pixel check: a mean difference measured an unchanged control at 0, the same field after typing at 0.034, and a different field of the same size at 0.043. It can't tell look-alike controls apart, and it dilutes small changes such as one letter. The accessibility re-check is what proves identity. The pixel check instead counts pixels that changed by more than 24 levels in any channel. Above 0.2% of the crop (about 9 pixels of a 120×36 button), Poko shows the new crop and asks again.
 - Open question resolved: the hit test uses the target app's own `AXUIElementCopyElementAtPosition` (which sees in-page modals and sticky headers) plus the window stacking order with Poko's process ignored (which sees other apps).
 
+### Milestone 3b notes (implemented): one approved step at a time
+
+- In the window picker, **대신 해 줘** turns the composer text into a goal for a browser window. Other apps are listed as look-only. `ScreenAgent` (main process) runs the loop:
+  1. Hide the overlay, then snapshot and capture the window.
+  2. Run one Codex turn on the screen profile that returns one JSON step.
+  3. Check the step with the helper. A refusal goes back to Codex as that step's outcome, and three refusals in a row end the task.
+  4. Crop the target and show the approval card. The overlay holds Poko at the target, saying the step.
+  5. On approval: hide the overlay and capture again. If the crop changed by more than 0.2%, show the new crop and ask again, at most twice.
+  6. The helper checks once more and acts.
+  7. Record the outcome and loop. The task stops after 8 steps.
+- **Changes from the plan:**
+  - Each step is a new Codex turn whose prompt carries the goal and earlier steps, instead of one long thread. This kept the provider unchanged, and every turn sees only the current screen.
+  - Declining a step ends the task: the user is in charge, and Poko doesn't look for a way around a "no".
+  - A step waits 5 minutes for approval, then the task stops.
+- **Stop:** `⌘⇧Esc` (`CommandOrControl+Shift+Escape`) is registered only while a screen task runs. Stop aborts the Codex turn and declines a waiting step. The loop checks the stop flag before every helper call, so nothing acts after a stop. The task's cancel button does the same.
+- Approval goes only through the card. `approvals.kind` gains `screen_action` (a text column, so no migration). The crop isn't stored.
+- Real run, using Codex 0.159.3 and Safari on the local test page, with approvals given by a test script: the goal "Add one 버튼을 두 번 누르고, Plain 입력칸에 poko를 입력해 줘" took 3 approved steps and finished in 24 s. The page then showed count 2 and the field held "poko" (its input event fired). Each step's card crop showed the right control.
+
 ## Open questions to settle in implementation
 
 These come from plan review. Each milestone PR must answer them with real-browser evidence.

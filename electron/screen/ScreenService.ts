@@ -4,8 +4,11 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { desktopCapturer, shell } from "electron";
 import type { ScreenStatus, ScreenWindow } from "../shared";
+import type { Capture } from "./ScreenAgent";
 import {
+  type ActRequest,
   HelperError,
+  parseActResult,
   parsePermissions,
   parseSnapshot,
   parseWindows,
@@ -20,6 +23,15 @@ const SETTINGS_URLS = {
   screen: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
   accessibility: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
 } as const;
+
+/** Browsers the helper may act in (it checks again itself). Others are look-only. */
+const ACT_BROWSERS = new Set([
+  "com.apple.Safari",
+  "com.google.Chrome",
+  "company.thebrowser.Browser",
+  "org.mozilla.firefox",
+  "com.microsoft.edgemac",
+]);
 
 export interface PreparedLook {
   prompt: string;
@@ -76,12 +88,29 @@ export class ScreenService {
         app: window.owner || window.bundleId || "앱",
         title: window.title,
         thumbnail: thumbnail && !thumbnail.isEmpty() ? thumbnail.toDataURL() : null,
+        canAct: window.bundleId !== null && ACT_BROWSERS.has(window.bundleId),
       };
     });
   }
 
   /** Snapshot, capture, and prompt for one look at `windowId`. */
   async prepareLook(windowId: number, question: string): Promise<PreparedLook> {
+    const capture = await this.capture(windowId);
+    return {
+      prompt: buildLookPrompt(question, capture.snapshot),
+      imagePath: capture.imagePath,
+      workDir: capture.workDir,
+      tempDir: capture.tempDir,
+      app: capture.app,
+      snapshot: capture.snapshot,
+    };
+  }
+
+  /**
+   * The window's accessibility snapshot and a full-scale capture, saved to a fresh temp folder
+   * with an empty work folder beside it. `release` removes both.
+   */
+  async capture(windowId: number): Promise<Capture & { tempDir: string; app: string }> {
     const window = (await this.windows()).find((candidate) => candidate.id === windowId);
     if (!window || window.pid === process.pid)
       throw new HelperError("window_not_found", "The window is no longer available.");
@@ -99,7 +128,8 @@ export class ScreenService {
     const image = sources.find((source) => windowIdFromSource(source.id) === windowId)?.thumbnail;
     if (!image || image.isEmpty())
       throw new HelperError("capture_failed", "Screen Recording permission is needed.");
-    if (!captureMatchesWindow(image.getSize(), frame))
+    const imageSize = image.getSize();
+    if (!captureMatchesWindow(imageSize, frame))
       throw new HelperError("capture_mismatch", "The capture does not match the window.");
 
     const tempDir = join(this.tempRoot, randomUUID());
@@ -108,13 +138,25 @@ export class ScreenService {
     const imagePath = join(tempDir, "screen.png");
     await writeFile(imagePath, image.toPNG());
     return {
-      prompt: buildLookPrompt(question, snapshot),
+      snapshot,
       imagePath,
       workDir,
       tempDir,
+      imageSize,
       app: window.owner || window.bundleId || "앱",
-      snapshot,
+      crop: (rect) => {
+        const part = image.crop(rect);
+        return { dataUrl: part.toDataURL(), bitmap: new Uint8Array(part.toBitmap()) };
+      },
+      release: () => this.cleanup(tempDir),
     };
+  }
+
+  /** Runs the helper's `act` for one request; throws HelperError when a check refuses. */
+  async act(windowId: number, request: ActRequest): Promise<{ valueMatches?: boolean }> {
+    return parseActResult(
+      await runHelper(this.helperPath, ["act", String(windowId)], 8000, JSON.stringify(request)),
+    );
   }
 
   cleanup(tempDir: string): Promise<void> {

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 import { Icon } from "../Icon";
@@ -38,6 +38,9 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
   const refreshScreen = useAppStore((state) => state.refreshScreen);
   const acceptScreenNotice = useAppStore((state) => state.acceptScreenNotice);
   const lookAtWindow = useAppStore((state) => state.lookAtWindow);
+  const actInWindow = useAppStore((state) => state.actInWindow);
+  const [mode, setMode] = useState<"look" | "act">("look");
+  const goal = question.trim();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -116,10 +119,33 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
           <p className="screen-picker__note">볼 수 있는 창이 없어. 창을 열고 다시 확인해 줘.</p>
         ) : (
           <>
+            <fieldset className="screen-mode">
+              <legend className="visually-hidden">화면에서 할 일</legend>
+              <button
+                type="button"
+                aria-pressed={mode === "look"}
+                className="screen-mode__option"
+                onClick={() => setMode("look")}
+              >
+                보고 설명해 줘
+              </button>
+              <button
+                type="button"
+                aria-pressed={mode === "act"}
+                className="screen-mode__option"
+                onClick={() => setMode("act")}
+              >
+                대신 해 줘
+              </button>
+            </fieldset>
             <p className="screen-picker__note">
-              {question.trim()
-                ? `“${question.trim()}” 에 답하려고 볼 창을 골라 줘.`
-                : "창을 고르면 포코가 무엇이 보이는지 설명할게."}
+              {mode === "act"
+                ? goal
+                  ? `“${goal}” 을(를) 할 브라우저 창을 골라 줘. 한 단계씩 그림으로 보여주고, 허용해야만 진행해. ⌘⇧Esc로 언제든 멈출 수 있어. 클릭은 지금 Safari에서만 돼.`
+                  : "먼저 입력창에 할 일을 적어 줘. 예: “검색창에 날씨를 입력해 줘”"
+                : goal
+                  ? `“${goal}” 에 답하려고 볼 창을 골라 줘.`
+                  : "창을 고르면 포코가 무엇이 보이는지 설명할게."}
             </p>
             <ul className="screen-windows">
               {screen.windows.map((window) => (
@@ -127,9 +153,14 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
                   <button
                     className="screen-window"
                     type="button"
+                    disabled={mode === "act" && (!window.canAct || !goal)}
                     onClick={() => {
-                      // The question stays in the composer until the look really starts.
-                      void lookAtWindow(window.id, question).then((started) => {
+                      // The question stays in the composer until the task really starts.
+                      const start =
+                        mode === "act"
+                          ? actInWindow(window.id, question)
+                          : lookAtWindow(window.id, question);
+                      void start.then((started) => {
                         if (started) onPicked();
                       });
                     }}
@@ -143,6 +174,9 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
                     )}
                     <span className="screen-window__app">{window.app}</span>
                     {window.title && <span className="screen-window__title">{window.title}</span>}
+                    {mode === "act" && !window.canAct && (
+                      <span className="screen-window__title">보기만 할 수 있어</span>
+                    )}
                   </button>
                 </li>
               ))}

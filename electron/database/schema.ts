@@ -92,7 +92,7 @@ export const approvals = sqliteTable(
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
     requestId: text("request_id").notNull(),
-    kind: text("kind", { enum: ["command", "file_change"] }).notNull(),
+    kind: text("kind", { enum: ["command", "file_change", "screen_action"] }).notNull(),
     summary: text("summary").notNull(),
     cwd: text("cwd"),
     reason: text("reason"),

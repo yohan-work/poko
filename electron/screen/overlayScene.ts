@@ -104,6 +104,8 @@ export function buildOverlayScene(
   snapshot: WindowSnapshot,
   elements: AxElement[],
   display: Frame,
+  /** What Poko says instead of naming the element, for a proposed step. */
+  say?: string,
 ): OverlayScene | null {
   const window = snapshot.window.frame;
   const relative = (frame: Frame): Frame => ({
@@ -119,7 +121,7 @@ export function buildOverlayScene(
     )
     .map((element) => ({
       frame: relative(element.frame as Frame),
-      say: `여기야: ${elementName(element)}`,
+      say: say ?? `여기야: ${elementName(element)}`,
     }));
   if (points.length === 0) return null;
   return {

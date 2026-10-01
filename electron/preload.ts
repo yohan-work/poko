@@ -104,6 +104,8 @@ const pokoApi = {
     listWindows: (): Promise<ScreenWindow[]> => ipcRenderer.invoke(IPC_CHANNELS.screenListWindows),
     look: (windowId: number, question: string): Promise<ScreenLookResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.screenLook, { windowId, question }),
+    act: (windowId: number, goal: string): Promise<ScreenLookResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.screenAct, { windowId, goal }),
   },
   overlay: {
     onScene: (listener: (scene: OverlayScene) => void) => {
