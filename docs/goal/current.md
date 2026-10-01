@@ -7,12 +7,12 @@
 ## 목표와 성공 기준
 
 - 목표: Poko v0.1을 단계별 PR → 리뷰 → 머지 흐름으로 구현해 로컬 AI desktop agent를 제공한다.
-- 성공 기준: Phase 00–05가 머지됐다(캐릭터 UI, 읽기 전용 Codex 분석, 저장, 승인 게이트, 대화 품질). 실제 환경 검증 후 Phase 06 쓰기 모드와 Phase 07 여러 대화를 PR 단위로 검증해 완성한다.
+- 성공 기준: Phase 00–05가 머지됐다(캐릭터 UI, 읽기 전용 Codex 분석, 저장, 승인 게이트, 대화 품질). Phase 06 화면 동반자, Phase 07 여러 대화, 이후 샌드박스 기반 쓰기 모드를 PR 단위로 검증해 완성한다.
 
 ## 범위와 확정된 결정
 
 - 포함: Phase 00–04 기반, Claude 스타일 UI 개편, Phase 05 대화 품질.
-- 제외: 자동 memory extraction, browser, scheduler. 승인 기반 쓰기 모드는 실제 환경 검증 후 Phase 06에서 진행한다.
+- 제외: 자동 memory extraction, browser 자동화, scheduler, 자동 실행. 승인 기반 파일 쓰기는 workspace-write 샌드박스와 함께 Phase 07 이후에 진행한다.
 - 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. Electron main/preload/renderer는 Electron Vite를 사용하며 renderer에는 좁은 IPC bridge만 노출한다. README는 현재 동작과 계획 기능을 구분한다.
 - 결정: 사용자 승인으로 Phase 04 Codex transport를 `codex exec --json`에서 stdio JSON-RPC `codex app-server`로 전환한다. App Server는 experimental이므로 capability를 좁게 유지하고 검증 전 write 실행은 fail-closed로 둔다.
 

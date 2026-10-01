@@ -569,7 +569,7 @@ export class CodexAppServerProvider implements AgentProvider {
   ): ApprovalEvent {
     // An approved command would run outside the read-only sandbox, and a text screen can't make
     // that safe, so v0.1 never offers command approvals. File changes are offered instead, as a
-    // diff limited to the workspace. Sandboxed command approval is planned for Phase 06.
+    // diff limited to the workspace. Sandboxed command approval is planned for a later phase.
     const command = readString(params.command)?.trim();
     return {
       type: "approvalRequired",
