@@ -10,6 +10,8 @@ import type {
   WorkspaceInfo,
   PersistedMemory,
   MemoryInput,
+  ScreenStatus,
+  ScreenWindow,
 } from "../../../../electron/shared";
 
 export interface ConversationMessage {
@@ -30,6 +32,14 @@ export interface ActivityEntry {
 export type PendingApproval = Extract<AgentEvent, { type: "approvalRequired" }> & {
   taskId: string;
 };
+
+export interface ScreenState {
+  open: boolean;
+  loading: boolean;
+  status: ScreenStatus | null;
+  windows: ScreenWindow[];
+  error: string | null;
+}
 
 export interface SessionTask {
   id: string;
@@ -69,6 +79,13 @@ interface AppState {
   selectWorkspace: () => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   cancelTask: () => Promise<void>;
+  screen: ScreenState;
+  openScreen: () => Promise<void>;
+  closeScreen: () => void;
+  refreshScreen: () => Promise<void>;
+  acceptScreenNotice: () => Promise<void>;
+  openScreenSettings: (kind: "screen" | "accessibility") => void;
+  lookAtWindow: (windowId: number, question: string) => Promise<void>;
   respondToApproval: (choice: ApprovalChoice) => Promise<void>;
   setActiveView: (view: AppView) => void;
   clearError: () => void;
@@ -160,6 +177,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   streaming: null,
   pendingApprovals: [],
   isRespondingToApproval: false,
+  screen: { open: false, loading: false, status: null, windows: [], error: null },
   progressMessage: null,
   workspace: null,
   errorMessage: null,
@@ -256,57 +274,61 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       return;
     }
+    await runTask(
+      content,
+      () => window.poko.tasks.start(content),
+      "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
+    );
+  },
 
-    const userMessage = createMessage("user", content);
-    set((state) => ({
-      activeView: "conversation",
-      characterState: "thinking",
-      errorMessage: null,
-      isSending: true,
-      progressMessage: "포코가 요청을 살펴보고 있어.",
-      messages: [...state.messages, userMessage],
-    }));
+  openScreen: async () => {
+    set({ screen: { ...get().screen, open: true, error: null } });
+    await get().refreshScreen();
+  },
 
-    let taskId: string | null = null;
-    let unsubscribe = (): void => {};
-    const pendingEvents: TaskEventPayload[] = [];
-    const onTaskEvent = (payload: TaskEventPayload): void => {
-      if (!taskId) {
-        pendingEvents.push(payload);
-        return;
-      }
-      if (payload.taskId !== taskId) return;
-      applyTaskEvent(payload);
-      if (sessionTaskStatus(payload.event) !== null) unsubscribe();
-    };
+  closeScreen: () => set({ screen: { ...get().screen, open: false } }),
 
+  refreshScreen: async () => {
+    set({ screen: { ...get().screen, loading: true, error: null } });
     try {
-      unsubscribe = window.poko.tasks.onEvent(onTaskEvent);
-      const response = await window.poko.tasks.start(content);
-      const startedTaskId = response.taskId;
-      taskId = startedTaskId;
-      const createdAt = new Date().toISOString();
-      set((state) => ({
-        activeTaskId: startedTaskId,
-        tasks: [
-          { id: startedTaskId, title: content, status: "running" as const, createdAt },
-          ...state.tasks.filter((task) => task.id !== startedTaskId),
-        ].slice(0, 50),
-      }));
-      const queued = pendingEvents.splice(0);
-      for (const payload of queued) onTaskEvent(payload);
+      const status = await window.poko.screen.status();
+      const ready =
+        status.supported &&
+        status.noticeAccepted &&
+        status.permissions.accessibility &&
+        status.permissions.screen;
+      const windows = ready ? await window.poko.screen.listWindows() : [];
+      set({ screen: { ...get().screen, status, windows, loading: false } });
     } catch {
-      unsubscribe();
-      const error = "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.";
-      set((state) => ({
-        characterState: "error",
-        errorMessage: error,
-        isSending: false,
-        activeTaskId: null,
-        progressMessage: null,
-        messages: [...state.messages, createMessage("assistant", error)],
-      }));
+      set({
+        screen: {
+          ...get().screen,
+          loading: false,
+          error: "화면 정보를 가져오지 못했어. 잠시 뒤 다시 시도해 줘.",
+        },
+      });
     }
+  },
+
+  acceptScreenNotice: async () => {
+    await window.poko.screen.acceptNotice();
+    await get().refreshScreen();
+  },
+
+  openScreenSettings: (kind) => {
+    void window.poko.screen.openSettings(kind);
+  },
+
+  lookAtWindow: async (windowId, question) => {
+    if (get().isSending) return;
+    const picked = get().screen.windows.find((window) => window.id === windowId);
+    const asked = question.trim() || "이 화면을 설명해 줘.";
+    set({ screen: { ...get().screen, open: false } });
+    await runTask(
+      `🖥️ ${picked?.app ?? "앱"} 화면 보기: ${asked}`,
+      () => window.poko.screen.look(windowId, question),
+      "화면을 가져오지 못했어. 권한을 확인하고 다시 시도해 줘.",
+    );
   },
 
   cancelTask: async () => {
@@ -373,6 +395,75 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveView: (activeView) => set({ activeView }),
   clearError: () => set({ errorMessage: null, workspaceError: null }),
 }));
+
+/**
+ * Shows the user's message, starts a task, and follows its events until it ends. `start`
+ * returns the new task id, or an `error` to show instead.
+ */
+async function runTask(
+  content: string,
+  start: () => Promise<{ taskId: string } | { error: string }>,
+  failure: string,
+): Promise<void> {
+  const set = useAppStore.setState;
+  const userMessage = createMessage("user", content);
+  set((state) => ({
+    activeView: "conversation",
+    characterState: "thinking",
+    errorMessage: null,
+    isSending: true,
+    progressMessage: "포코가 요청을 살펴보고 있어.",
+    messages: [...state.messages, userMessage],
+  }));
+
+  let taskId: string | null = null;
+  let unsubscribe = (): void => {};
+  const pendingEvents: TaskEventPayload[] = [];
+  const onTaskEvent = (payload: TaskEventPayload): void => {
+    if (!taskId) {
+      pendingEvents.push(payload);
+      return;
+    }
+    if (payload.taskId !== taskId) return;
+    applyTaskEvent(payload);
+    if (sessionTaskStatus(payload.event) !== null) unsubscribe();
+  };
+
+  const fail = (error: string) => {
+    unsubscribe();
+    set((state) => ({
+      characterState: "error",
+      errorMessage: error,
+      isSending: false,
+      activeTaskId: null,
+      progressMessage: null,
+      messages: [...state.messages, createMessage("assistant", error)],
+    }));
+  };
+
+  try {
+    unsubscribe = window.poko.tasks.onEvent(onTaskEvent);
+    const response = await start();
+    if ("error" in response) {
+      fail(response.error);
+      return;
+    }
+    const startedTaskId = response.taskId;
+    taskId = startedTaskId;
+    const createdAt = new Date().toISOString();
+    set((state) => ({
+      activeTaskId: startedTaskId,
+      tasks: [
+        { id: startedTaskId, title: content, status: "running" as const, createdAt },
+        ...state.tasks.filter((task) => task.id !== startedTaskId),
+      ].slice(0, 50),
+    }));
+    const queued = pendingEvents.splice(0);
+    for (const payload of queued) onTaskEvent(payload);
+  } catch {
+    fail(failure);
+  }
+}
 
 /** Progress text while Codex is writing the answer itself. */
 export const OUTPUT_PROGRESS = "답변을 쓰고 있어.";

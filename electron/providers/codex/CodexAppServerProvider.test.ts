@@ -10,6 +10,8 @@ import {
   CodexAppServerProvider,
   getFileChanges,
   isInside,
+  disabledFeatures,
+  permissionProfile,
   touchesGitDirectory,
 } from "./CodexAppServerProvider";
 
@@ -576,5 +578,41 @@ describe("CodexAppServerProvider", () => {
     } finally {
       await rm(base, { recursive: true, force: true });
     }
+  });
+
+  it("turns off Codex's own computer and browser control for every task", () => {
+    expect(disabledFeatures("project")).toEqual(
+      expect.arrayContaining(["computer_use", "browser_use", "in_app_local_automation"]),
+    );
+    expect(disabledFeatures("project")).not.toContain("shell_tool");
+  });
+
+  it("runs screen tasks with no shell, no file reads beyond the work folder, and the screenshot attached", async () => {
+    const server = new FakeAppServer();
+    const args: string[] = [];
+    const provider = new CodexAppServerProvider({
+      executable: "codex",
+      spawnProcess: (_command, spawnArgs) => {
+        args.push(...spawnArgs);
+        return server as unknown as ChildProcessWithoutNullStreams;
+      },
+    });
+    const stream = consume(
+      provider.runTask({ ...task, profile: "screen", images: ["/tmp/screen.png"] }),
+    );
+    await turnStarted(server);
+    expect(args.join(" ")).toContain("--disable shell_tool");
+    expect(args.join(" ")).toContain("--disable view_image");
+    expect(args.join(" ")).not.toContain('":minimal"');
+    const thread = await server.waitFor((m) => m.method === "thread/start");
+    expect(JSON.stringify(thread.params)).not.toContain(":minimal");
+    const turn = await server.waitFor((m) => m.method === "turn/start");
+    expect((turn.params as { input: unknown[] }).input).toEqual([
+      { type: "text", text: "Analyze" },
+      { type: "localImage", path: "/tmp/screen.png" },
+    ]);
+    expect(permissionProfile("project").filesystem).toHaveProperty(":minimal", "read");
+    server.kill();
+    await stream.done;
   });
 });

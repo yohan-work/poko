@@ -20,6 +20,7 @@ Icon?
 # Poko development and local data
 node_modules/
 out/
+native/build/
 dist/
 release/
 coverage/

@@ -175,6 +175,22 @@ export class PokoDatabase {
     );
   }
 
+  isScreenNoticeAccepted(): boolean {
+    return (
+      this.db.select().from(settings).where(eq(settings.key, "screenNoticeAccepted")).get()
+        ?.value === "true"
+    );
+  }
+
+  acceptScreenNotice(): void {
+    const timestamp = now();
+    this.db
+      .insert(settings)
+      .values({ key: "screenNoticeAccepted", value: "true", updatedAt: timestamp })
+      .onConflictDoUpdate({ target: settings.key, set: { value: "true", updatedAt: timestamp } })
+      .run();
+  }
+
   setWorkspace(path: string | null): void {
     const timestamp = now();
     if (path === null) {

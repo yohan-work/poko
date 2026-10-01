@@ -15,10 +15,25 @@ import { resolveWorkspaceDirectory } from "./agent/workspace";
 import { resolveCodexExecutable } from "./providers/codex/CodexProvider";
 import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
 import { PokoDatabase } from "./database/Database";
+import { ScreenService } from "./screen/ScreenService";
+import { HelperError } from "./screen/axHelper";
 
 let mainWindow: BrowserWindow | null = null;
 let agentCore: AgentCore | null = null;
 let database: PokoDatabase | null = null;
+let screenService: ScreenService | null = null;
+/** Temp folders (screenshot and empty work folder) of running screen tasks. */
+const screenTempDirs = new Map<string, string>();
+
+const screenErrors: Record<string, string> = {
+  window_not_found: "그 창을 더 이상 찾을 수 없어. 다시 골라 줘.",
+  window_not_matched: "고른 창을 정확히 찾지 못했어. 창을 앞으로 가져온 뒤 다시 시도해 줘.",
+  window_ambiguous:
+    "같은 모양의 창이 여러 개라 하나를 고를 수 없어. 다른 창을 닫고 다시 시도해 줘.",
+  no_accessibility: "손쉬운 사용 권한이 필요해.",
+  capture_failed: "화면 기록 권한이 필요해.",
+  capture_mismatch: "창을 정확히 캡처하지 못했어. 창 크기를 바꾸지 말고 다시 시도해 줘.",
+};
 
 function workspaceInfo(workspacePath: string | null): WorkspaceInfo | null {
   if (!workspacePath) return null;
@@ -131,6 +146,81 @@ function registerIpcHandlers(): void {
     return outcome;
   });
 
+  ipcMain.handle(IPC_CHANNELS.screenStatus, (event) => {
+    if (!isTrustedRenderer(event) || !database || !screenService)
+      throw new Error("Unknown renderer requested screen status.");
+    return screenService.status(database.isScreenNoticeAccepted());
+  });
+  ipcMain.handle(IPC_CHANNELS.screenOpenSettings, (event, kind: unknown) => {
+    if (!isTrustedRenderer(event) || !screenService)
+      throw new Error("Unknown renderer requested settings.");
+    if (kind !== "screen" && kind !== "accessibility") throw new TypeError("Invalid settings.");
+    return screenService.openSettings(kind);
+  });
+  ipcMain.handle(IPC_CHANNELS.screenAcceptNotice, (event) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer accepted the screen notice.");
+    database.acceptScreenNotice();
+    return true;
+  });
+  ipcMain.handle(IPC_CHANNELS.screenListWindows, (event) => {
+    if (!isTrustedRenderer(event) || !screenService)
+      throw new Error("Unknown renderer requested windows.");
+    return screenService.listWindows();
+  });
+  ipcMain.handle(IPC_CHANNELS.screenLook, async (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !database || !agentCore || !screenService)
+      throw new Error("Unknown renderer requested a screen look.");
+    const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
+      windowId?: unknown;
+      question?: unknown;
+    };
+    if (
+      !Number.isSafeInteger(request.windowId) ||
+      typeof request.question !== "string" ||
+      request.question.length > 2000
+    )
+      throw new TypeError("Invalid screen request.");
+    if (!database.isScreenNoticeAccepted()) return { error: "먼저 화면 보기 안내를 확인해 줘." };
+    if (agentCore.hasActiveTasks)
+      return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
+
+    let look: Awaited<ReturnType<ScreenService["prepareLook"]>>;
+    try {
+      look = await screenService.prepareLook(request.windowId as number, request.question);
+    } catch (error) {
+      const code = error instanceof HelperError ? error.code : "";
+      return {
+        error: screenErrors[code] ?? "화면을 가져오지 못했어. 권한을 확인하고 다시 시도해 줘.",
+      };
+    }
+    const question = request.question.trim() || "이 화면을 설명해 줘.";
+    const taskId = database.createTask(
+      `🖥️ ${look.app} 화면 보기: ${question}`,
+      `screen:${look.app}`,
+    );
+    screenTempDirs.set(taskId, look.tempDir);
+    try {
+      agentCore.startTask({
+        prompt: look.prompt,
+        cwd: look.workDir,
+        taskId,
+        screen: { images: [look.imagePath] },
+      });
+    } catch {
+      screenTempDirs.delete(taskId);
+      void screenService.cleanup(look.tempDir);
+      database.recordTaskEvent(
+        taskId,
+        "error",
+        "작업을 시작하지 못했어.",
+        "작업을 시작하지 못했어.",
+      );
+      return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
+    }
+    return { taskId };
+  });
+
   ipcMain.handle(IPC_CHANNELS.appBootstrap, (event) => {
     if (!isTrustedRenderer(event) || !database)
       throw new Error("Unknown renderer requested app data.");
@@ -224,11 +314,22 @@ app
       join(app.getAppPath(), "skills/coding/SKILL.md"),
       "utf8",
     ).catch(() => "");
+    screenService = new ScreenService(
+      join(app.getAppPath(), "native", "build", "poko-ax"),
+      join(userDataDirectory, "screen-tmp"),
+    );
+    await screenService.cleanupAll().catch(() => undefined);
     const executable = await resolveCodexExecutable();
     agentCore = new AgentCore(
       new CodexAppServerProvider({ executable }),
       (payload: TaskEventPayload) => {
         const event = payload.event;
+        // A finished screen task's screenshot and work folder are removed right away.
+        const tempDir = screenTempDirs.get(payload.taskId);
+        if (tempDir && ["completed", "error", "cancelled"].includes(event.type)) {
+          screenTempDirs.delete(payload.taskId);
+          void screenService?.cleanup(tempDir);
+        }
         let rendererPayload = payload;
         if (event.type === "approvalRequired") {
           const request: ApprovalRequest = { taskId: payload.taskId, ...event };

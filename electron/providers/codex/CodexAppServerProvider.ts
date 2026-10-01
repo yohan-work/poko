@@ -224,6 +224,49 @@ interface ProviderOptions {
   taskTimeoutMs?: number;
 }
 
+/**
+ * Codex features Poko never uses. Its own computer, browser, and automation control would act
+ * on the user's machine outside Poko's approvals. A screen task also gets no shell, no Codex
+ * memories, and no plugins: it only looks at the attached screenshot.
+ */
+const ALWAYS_DISABLED = [
+  "computer_use",
+  "browser_use",
+  "browser_use_external",
+  "browser_use_full_cdp_access",
+  "in_app_browser",
+  "in_app_local_automation",
+];
+const SCREEN_DISABLED = [
+  "shell_tool",
+  "unified_exec",
+  "memories",
+  "apps",
+  "plugins",
+  "multi_agent",
+  "image_generation",
+  // The screenshot is attached directly; no tool may open other image files by path.
+  "view_image",
+];
+
+export function disabledFeatures(profile: "project" | "screen"): string[] {
+  return profile === "screen" ? [...ALWAYS_DISABLED, ...SCREEN_DISABLED] : ALWAYS_DISABLED;
+}
+
+/** Project tasks read the workspace; screen tasks read only their empty temp folder. */
+export function permissionProfile(profile: "project" | "screen") {
+  const filesystem: Record<string, unknown> =
+    profile === "screen"
+      ? { ":root": "deny", ":workspace_roots": { ".": "read" } }
+      : { ":root": "deny", ":minimal": "read", ":workspace_roots": { ".": "read" } };
+  return { extends: ":read-only", filesystem, network: { enabled: false } };
+}
+
+function permissionsToml(profile: "project" | "screen"): string {
+  const minimal = profile === "screen" ? "" : '":minimal"="read",';
+  return `{extends=":read-only",filesystem={":root"="deny",${minimal}":workspace_roots"={"."="read"}},network={enabled=false}}`;
+}
+
 export class CodexAppServerProvider implements AgentProvider {
   private readonly executable: string;
   private readonly spawnProcess: AppServerSpawn;
@@ -255,6 +298,7 @@ export class CodexAppServerProvider implements AgentProvider {
       yield { type: "cancelled" };
       return;
     }
+    const profile = input.profile ?? "project";
 
     let connection: AppServerConnection;
     try {
@@ -265,9 +309,10 @@ export class CodexAppServerProvider implements AgentProvider {
           "--config",
           'default_permissions="poko-readonly"',
           "--config",
-          'permissions={"poko-readonly"={extends=":read-only",filesystem={":root"="deny",":minimal"="read",":workspace_roots"={"."="read"}},network={enabled=false}}}',
+          `permissions={"poko-readonly"=${permissionsToml(profile)}}`,
           "--config",
           "mcp_servers={}",
+          ...disabledFeatures(profile).flatMap((feature) => ["--disable", feature]),
           "app-server",
           "--listen",
           "stdio://",
@@ -344,17 +389,7 @@ export class CodexAppServerProvider implements AgentProvider {
           sandbox: "read-only",
           config: {
             default_permissions: "poko-readonly",
-            permissions: {
-              "poko-readonly": {
-                extends: ":read-only",
-                filesystem: {
-                  ":root": "deny",
-                  ":minimal": "read",
-                  ":workspace_roots": { ".": "read" },
-                },
-                network: { enabled: false },
-              },
-            },
+            permissions: { "poko-readonly": permissionProfile(profile) },
             mcp_servers: {},
           },
         }),
@@ -370,7 +405,10 @@ export class CodexAppServerProvider implements AgentProvider {
         connection.request("turn/start", {
           threadId,
           cwd: input.cwd,
-          input: [{ type: "text", text: input.prompt }],
+          input: [
+            { type: "text", text: input.prompt },
+            ...(input.images ?? []).map((path) => ({ type: "localImage", path })),
+          ],
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
           sandboxPolicy: { type: "readOnly", networkAccess: false },
