@@ -1,4 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  type IpcMainInvokeEvent,
+} from "electron";
 import { basename, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import {
@@ -16,8 +23,11 @@ import { resolveCodexExecutable } from "./providers/codex/CodexProvider";
 import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
 import { PokoDatabase } from "./database/Database";
 import { ScreenService } from "./screen/ScreenService";
-import { HelperError, type WindowSnapshot } from "./screen/axHelper";
+import { type AxElement, HelperError, type WindowSnapshot } from "./screen/axHelper";
+import type { Capture } from "./screen/ScreenAgent";
+import { randomUUID } from "node:crypto";
 import { ScreenOverlay } from "./screen/ScreenOverlay";
+import { ScreenAgent } from "./screen/ScreenAgent";
 import { buildOverlayScene, citedElements, replaceCitations } from "./screen/overlayScene";
 
 let mainWindow: BrowserWindow | null = null;
@@ -25,6 +35,11 @@ let agentCore: AgentCore | null = null;
 let database: PokoDatabase | null = null;
 let screenService: ScreenService | null = null;
 let screenOverlay: ScreenOverlay | null = null;
+let screenProvider: CodexAppServerProvider | null = null;
+/** The running "act" task, if any. Only one task of any kind runs at a time. */
+let screenRun: { taskId: string; agent: ScreenAgent } | null = null;
+/** The only global shortcut: it stops a screen task at once. */
+const STOP_SHORTCUT = "CommandOrControl+Shift+Escape";
 /** Running screen tasks: their temp folder (screenshot and empty work folder) and snapshot. */
 const screenTasks = new Map<string, { tempDir: string; snapshot: WindowSnapshot }>();
 
@@ -92,6 +107,7 @@ function registerIpcHandlers(): void {
       throw new TypeError("The request is too long.");
     }
 
+    if (screenRun) throw new Error("Poko is busy with a screen task.");
     const workspacePath = database?.getWorkspace() ?? null;
     const cwd = await resolveWorkspaceDirectory(workspacePath);
     const taskId = database?.createTask(rawMessage.trim(), cwd);
@@ -118,6 +134,10 @@ function registerIpcHandlers(): void {
     if (typeof rawTaskId !== "string" || rawTaskId.length > 100) {
       throw new TypeError("A valid task id is required.");
     }
+    if (screenRun?.taskId === rawTaskId) {
+      screenRun.agent.stop();
+      return true;
+    }
     return agentCore.cancelTask(rawTaskId);
   });
 
@@ -135,6 +155,13 @@ function registerIpcHandlers(): void {
       (request.choice !== "approve" && request.choice !== "decline")
     )
       throw new TypeError("Invalid approval response.");
+    if (screenRun?.taskId === request.taskId) {
+      const { agent } = screenRun;
+      if (!agent.hasPending(request.requestId)) return "stale";
+      const choice = request.choice as ApprovalChoice;
+      if (!database.resolveApproval(request.taskId, request.requestId, choice)) return "stale";
+      return agent.respond(request.requestId, choice) ? "applied" : "stale";
+    }
     if (!agentCore.hasPendingApproval(request.taskId, request.requestId)) return "stale";
     // Decide before recording, so the audit row always matches what Codex receives.
     const unsafe =
@@ -185,7 +212,7 @@ function registerIpcHandlers(): void {
     )
       throw new TypeError("Invalid screen request.");
     if (!database.isScreenNoticeAccepted()) return { error: "먼저 화면 보기 안내를 확인해 줘." };
-    if (agentCore.hasActiveTasks)
+    if (agentCore.hasActiveTasks || screenRun)
       return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
 
     let look: Awaited<ReturnType<ScreenService["prepareLook"]>>;
@@ -223,6 +250,55 @@ function registerIpcHandlers(): void {
       );
       return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
     }
+    return { taskId };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.screenAct, async (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !database || !agentCore || !screenService || !screenProvider)
+      throw new Error("Unknown renderer requested a screen task.");
+    const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
+      windowId?: unknown;
+      goal?: unknown;
+    };
+    if (
+      !Number.isSafeInteger(request.windowId) ||
+      typeof request.goal !== "string" ||
+      !request.goal.trim() ||
+      request.goal.length > 10_000
+    )
+      throw new TypeError("Invalid screen request.");
+    if (!database.isScreenNoticeAccepted()) return { error: "먼저 화면 보기 안내를 확인해 줘." };
+    if (agentCore.hasActiveTasks || screenRun)
+      return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
+    const windowId = request.windowId as number;
+    const goal = request.goal.trim();
+    const window = (await screenService.listWindows()).find((item) => item.id === windowId);
+    if (!window) return { error: screenErrors.window_not_found };
+    if (!window.canAct) return { error: "이 앱에서는 보기만 할 수 있어. 브라우저 창을 골라 줘." };
+    if (agentCore.hasActiveTasks || screenRun)
+      return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
+
+    const taskId = database.createTask(`🖱️ ${window.app}: ${goal}`, `screen:${window.app}`);
+    const service = screenService;
+    const provider = screenProvider;
+    const agent = new ScreenAgent({
+      capture: (id) => service.capture(id),
+      ask: (prompt, capture, signal) => askCodex(provider, taskId, prompt, capture, signal),
+      act: (id, actRequest) => service.act(id, actRequest),
+      emit: (agentEvent) => deliverTaskEvent({ taskId, event: agentEvent }),
+      point: (snapshot, element, say) => void pointAtElement(snapshot, element, say),
+      hideOverlay: async () => {
+        await screenOverlay?.hide();
+      },
+      ownPid: process.pid,
+    });
+    screenRun = { taskId, agent };
+    if (!globalShortcut.register(STOP_SHORTCUT, () => screenRun?.agent.stop()))
+      console.error("Could not register the stop shortcut.");
+    void agent.run(windowId, goal).finally(() => {
+      globalShortcut.unregister(STOP_SHORTCUT);
+      if (screenRun?.agent === agent) screenRun = null;
+    });
     return { taskId };
   });
 
@@ -274,6 +350,47 @@ function registerIpcHandlers(): void {
   });
 }
 
+/** One Codex turn for a screen step: nothing streams to the chat, only the final answer. */
+async function askCodex(
+  provider: CodexAppServerProvider,
+  taskId: string,
+  prompt: string,
+  capture: Capture,
+  signal: AbortSignal,
+): Promise<string> {
+  for await (const event of provider.runTask(
+    {
+      id: `${taskId}:${randomUUID()}`,
+      prompt,
+      cwd: capture.workDir,
+      mode: "read",
+      profile: "screen",
+      images: [capture.imagePath],
+    },
+    { signal },
+  )) {
+    if (event.type === "completed") return event.result;
+    if (event.type === "error") throw new Error(event.error);
+    if (event.type === "cancelled") throw new Error("cancelled");
+  }
+  throw new Error("Codex ended without an answer.");
+}
+
+async function pointAtElement(
+  snapshot: WindowSnapshot,
+  element: AxElement,
+  say: string,
+): Promise<void> {
+  if (!screenOverlay) return;
+  try {
+    const display = screenOverlay.displayFor(snapshot.window.frame);
+    const scene = buildOverlayScene(snapshot, [element], display, say);
+    if (scene) await screenOverlay.show(scene, display, { hold: true });
+  } catch (error) {
+    console.error("Could not show Poko on screen.", error);
+  }
+}
+
 async function pointAt(snapshot: WindowSnapshot, answer: string): Promise<void> {
   if (!screenOverlay) return;
   try {
@@ -307,6 +424,7 @@ async function createWindow(): Promise<void> {
   });
   mainWindow.on("closed", () => {
     agentCore?.cancelAll();
+    screenRun?.agent.stop();
     screenOverlay?.destroy();
     mainWindow = null;
   });
@@ -342,76 +460,10 @@ app
       join(__dirname, "../renderer/index.html"),
     );
     const executable = await resolveCodexExecutable();
+    screenProvider = new CodexAppServerProvider({ executable });
     agentCore = new AgentCore(
       new CodexAppServerProvider({ executable }),
-      (payload: TaskEventPayload) => {
-        const screenTask = screenTasks.get(payload.taskId);
-        if (screenTask && ["completed", "error", "cancelled"].includes(payload.event.type)) {
-          // A finished screen task's screenshot and work folder are removed right away.
-          screenTasks.delete(payload.taskId);
-          void screenService?.cleanup(screenTask.tempDir);
-          if (payload.event.type === "completed") {
-            const { snapshot } = screenTask;
-            const answer = payload.event.result;
-            // Poko flies to what it talked about, and the chat names it instead of `[12]`.
-            void pointAt(snapshot, answer);
-            payload = {
-              ...payload,
-              event: { ...payload.event, result: replaceCitations(answer, snapshot) },
-            };
-          }
-        }
-        const event = payload.event;
-        let rendererPayload = payload;
-        if (event.type === "approvalRequired") {
-          const request: ApprovalRequest = { taskId: payload.taskId, ...event };
-          try {
-            database?.recordApprovalRequest(request);
-          } catch (error) {
-            console.error("Could not persist approval request.", error);
-            agentCore?.respondToApproval(payload.taskId, event.requestId, "decline");
-            rendererPayload = {
-              ...payload,
-              event: { ...event, canApprove: false, reason: "승인 요청을 저장하지 못했어." },
-            };
-          }
-        }
-        const activityMessage =
-          event.type === "output"
-            ? null
-            : event.type === "thinking"
-              ? (event.message ?? "요청을 살펴보고 있어.")
-              : event.type === "tool"
-                ? (event.detail ?? "프로젝트를 살펴보고 있어.")
-                : event.type === "started"
-                  ? "포코가 요청을 확인했어."
-                  : event.type === "completed"
-                    ? "프로젝트 확인을 마쳤어."
-                    : event.type === "approvalRequired"
-                      ? event.canApprove
-                        ? "포코가 다음 작업의 확인을 기다리고 있어."
-                        : "안전한 확인 정보가 없어 요청을 거절했어."
-                      : event.type === "cancelled"
-                        ? "요청을 멈췄어."
-                        : "작업을 마치지 못했어.";
-        const result =
-          event.type === "completed"
-            ? event.result
-            : event.type === "error"
-              ? event.error
-              : event.type === "cancelled"
-                ? "요청을 멈췄어."
-                : undefined;
-        try {
-          if (event.type !== "approvalRequired") {
-            database?.recordTaskEvent(payload.taskId, event.type, activityMessage, result);
-          }
-        } catch (error) {
-          console.error("Could not persist task event.", error);
-        }
-        if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
-        mainWindow.webContents.send(IPC_CHANNELS.taskEvent, rendererPayload);
-      },
+      deliverTaskEvent,
       codingSkill,
     );
     registerIpcHandlers();
@@ -429,12 +481,86 @@ app
     app.quit();
   });
 
+/** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
+function deliverTaskEvent(incoming: TaskEventPayload): void {
+  let payload = incoming;
+  const screenTask = screenTasks.get(payload.taskId);
+  if (screenTask && ["completed", "error", "cancelled"].includes(payload.event.type)) {
+    // A finished screen task's screenshot and work folder are removed right away.
+    screenTasks.delete(payload.taskId);
+    void screenService?.cleanup(screenTask.tempDir);
+    if (payload.event.type === "completed") {
+      const { snapshot } = screenTask;
+      const answer = payload.event.result;
+      // Poko flies to what it talked about, and the chat names it instead of `[12]`.
+      void pointAt(snapshot, answer);
+      payload = {
+        ...payload,
+        event: { ...payload.event, result: replaceCitations(answer, snapshot) },
+      };
+    }
+  }
+  const event = payload.event;
+  let rendererPayload = payload;
+  if (event.type === "approvalRequired") {
+    const request: ApprovalRequest = { taskId: payload.taskId, ...event };
+    try {
+      database?.recordApprovalRequest(request);
+    } catch (error) {
+      console.error("Could not persist approval request.", error);
+      if (screenRun?.taskId === payload.taskId) screenRun.agent.respond(event.requestId, "decline");
+      else agentCore?.respondToApproval(payload.taskId, event.requestId, "decline");
+      rendererPayload = {
+        ...payload,
+        event: { ...event, canApprove: false, reason: "승인 요청을 저장하지 못했어." },
+      };
+    }
+  }
+  const activityMessage =
+    event.type === "output"
+      ? null
+      : event.type === "thinking"
+        ? (event.message ?? "요청을 살펴보고 있어.")
+        : event.type === "tool"
+          ? (event.detail ?? "프로젝트를 살펴보고 있어.")
+          : event.type === "started"
+            ? "포코가 요청을 확인했어."
+            : event.type === "completed"
+              ? "프로젝트 확인을 마쳤어."
+              : event.type === "approvalRequired"
+                ? event.canApprove
+                  ? "포코가 다음 작업의 확인을 기다리고 있어."
+                  : "안전한 확인 정보가 없어 요청을 거절했어."
+                : event.type === "cancelled"
+                  ? "요청을 멈췄어."
+                  : "작업을 마치지 못했어.";
+  const result =
+    event.type === "completed"
+      ? event.result
+      : event.type === "error"
+        ? event.error
+        : event.type === "cancelled"
+          ? "요청을 멈췄어."
+          : undefined;
+  try {
+    if (event.type !== "approvalRequired") {
+      database?.recordTaskEvent(payload.taskId, event.type, activityMessage, result);
+    }
+  } catch (error) {
+    console.error("Could not persist task event.", error);
+  }
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send(IPC_CHANNELS.taskEvent, rendererPayload);
+}
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
 let quitAfterTasks = false;
 app.on("before-quit", (event) => {
+  screenRun?.agent.stop();
+  globalShortcut.unregisterAll();
   if (agentCore?.hasActiveTasks) {
     event.preventDefault();
     if (quitAfterTasks) return;

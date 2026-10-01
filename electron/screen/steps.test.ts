@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actRequest, HelperError, parseActResult, parseSnapshot } from "./axHelper";
+import { actRequest, type Frame, HelperError, parseActResult, parseSnapshot } from "./axHelper";
 import { changedPixelShare, cropRect, MAX_SILENT_CHANGE, parseStep } from "./steps";
 
 const snapshot = parseSnapshot({
@@ -68,7 +68,9 @@ describe("step replies", () => {
 describe("crops", () => {
   it("maps a global element frame onto window capture pixels", () => {
     const window = snapshot.window.frame;
-    expect(cropRect(snapshot.elements[0].frame!, window, { width: 1920, height: 2006 })).toEqual({
+    expect(
+      cropRect(snapshot.elements[0].frame as Frame, window, { width: 1920, height: 2006 }),
+    ).toEqual({
       x: 32,
       y: 408,
       width: 120,

@@ -33,7 +33,8 @@ export class ScreenOverlay {
     }).bounds;
   }
 
-  async show(scene: OverlayScene, display: Frame): Promise<void> {
+  /** `hold` keeps Poko at the target (while a step waits for approval) until `hide`. */
+  async show(scene: OverlayScene, display: Frame, options: { hold?: boolean } = {}): Promise<void> {
     const generation = ++this.generation;
     const window = await this.ensureWindow();
     if (window.isDestroyed() || generation !== this.generation) return;
@@ -41,6 +42,7 @@ export class ScreenOverlay {
     window.setBounds(display);
     window.webContents.send(IPC_CHANNELS.overlayScene, scene);
     window.showInactive();
+    if (options.hold) return;
     this.hideTimer = setTimeout(() => this.hide(), scene.points.length * POINT_MS + EXTRA_MS);
     this.hideTimer.unref?.();
   }

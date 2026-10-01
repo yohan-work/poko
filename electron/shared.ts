@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   screenAcceptNotice: "screen:accept-notice",
   screenListWindows: "screen:list-windows",
   screenLook: "screen:look",
+  screenAct: "screen:act",
   overlayScene: "overlay:scene",
   overlayHide: "overlay:hide",
 } as const;
@@ -44,6 +45,8 @@ export interface ScreenWindow {
   title: string;
   /** Small PNG data URL, or null without Screen Recording permission. */
   thumbnail: string | null;
+  /** A supported browser, so Poko may act in its web pages (one approved step at a time). */
+  canAct: boolean;
 }
 
 export type CharacterState =
@@ -87,14 +90,30 @@ export type AgentEvent =
   | {
       type: "approvalRequired";
       requestId: string;
-      kind: "command" | "file_change";
+      kind: ApprovalKind;
       summary: string;
       cwd: string | null;
       reason: string | null;
       diff?: Array<{ path: string; change: string }>;
+      /** For `screen_action`: what will happen, with a crop of the target as the evidence. */
+      screen?: ScreenActionPreview;
       canApprove: boolean;
     }
   | { type: "error"; error: string };
+
+export type ApprovalKind = "command" | "file_change" | "screen_action";
+
+export interface ScreenActionPreview {
+  action: "click" | "type" | "reveal";
+  /** PNG data URL of the target, cut from the window capture. */
+  crop: string;
+  /** The element's (untrusted) name. */
+  target: string;
+  /** For `type`: the full text that will be entered. */
+  text?: string;
+  /** Set when the target looks like paying, deleting, or sending. */
+  warning?: string;
+}
 
 export type ApprovalChoice = "approve" | "decline";
 /**
@@ -105,7 +124,7 @@ export type ApprovalOutcome = "applied" | "declined_unsafe" | "stale";
 export interface ApprovalRequest {
   taskId: string;
   requestId: string;
-  kind: "command" | "file_change";
+  kind: ApprovalKind;
   summary: string;
   cwd: string | null;
   reason: string | null;

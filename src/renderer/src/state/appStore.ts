@@ -87,6 +87,8 @@ interface AppState {
   openScreenSettings: (kind: "screen" | "accessibility") => void;
   /** Resolves true when the look started, so the caller can clear the draft. */
   lookAtWindow: (windowId: number, question: string) => Promise<boolean>;
+  /** Starts a step-by-step task in a browser window; each step waits for approval. */
+  actInWindow: (windowId: number, goal: string) => Promise<boolean>;
   respondToApproval: (choice: ApprovalChoice) => Promise<void>;
   setActiveView: (view: AppView) => void;
   clearError: () => void;
@@ -323,6 +325,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openScreenSettings: (kind) => {
     void window.poko.screen.openSettings(kind);
+  },
+
+  actInWindow: async (windowId, goal) => {
+    if (get().isSending || !goal.trim()) return false;
+    const picked = get().screen.windows.find((window) => window.id === windowId);
+    set({ screen: { ...get().screen, open: false } });
+    return runTask(
+      `🖱️ ${picked?.app ?? "앱"}에서 해 줘: ${goal.trim()}`,
+      () => window.poko.screen.act(windowId, goal),
+      "화면 작업을 시작하지 못했어. 권한을 확인하고 다시 시도해 줘.",
+    );
   },
 
   lookAtWindow: async (windowId, question) => {
