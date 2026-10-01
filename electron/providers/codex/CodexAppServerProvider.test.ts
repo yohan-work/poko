@@ -567,6 +567,11 @@ describe("CodexAppServerProvider", () => {
       await mkdir(join(base, "t", "refs"), { recursive: true });
       await writeFile(join(base, "t", "HEAD"), "ref: refs/heads/main");
       expect(provider.canStillApprove("task-1", '"a"')).toBe(false);
+      // A folder swapped for a symlink to .git after the offer is caught too.
+      await rm(join(base, "t"), { recursive: true, force: true });
+      await mkdir(join(base, ".git"));
+      await symlink(join(base, ".git"), join(base, "t"));
+      expect(provider.canStillApprove("task-1", '"a"')).toBe(false);
       server.kill();
     } finally {
       await rm(base, { recursive: true, force: true });

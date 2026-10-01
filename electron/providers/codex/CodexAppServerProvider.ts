@@ -194,8 +194,8 @@ class AppServerConnection {
 interface PendingApproval {
   wireId: JsonRpcId;
   timer: NodeJS.Timeout;
-  /** Paths a pending file change would write, re-checked right before approval. */
-  paths: string[];
+  /** The file-change item, fully re-validated right before approval. */
+  fileChange?: Record<string, unknown>;
 }
 
 /**
@@ -466,7 +466,8 @@ export class CodexAppServerProvider implements AgentProvider {
     const session = this.sessions.get(taskId);
     const pending = session?.pending.get(requestId);
     if (!session || !pending) return false;
-    return pending.paths.length === 0 || !buildsRepository(session.task.cwd, pending.paths);
+    // Every path check (workspace, .git, repository files) runs again on the current disk.
+    return !pending.fileChange || getFileChanges(pending.fileChange, session.task.cwd) !== null;
   }
 
   respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
@@ -556,8 +557,7 @@ export class CodexAppServerProvider implements AgentProvider {
     session.pending.set(requestId, {
       wireId: message.id,
       timer,
-      paths:
-        message.method === "item/fileChange/requestApproval" && item ? changeTargets(item) : [],
+      ...(message.method === "item/fileChange/requestApproval" && item ? { fileChange: item } : {}),
     });
     return event;
   }
