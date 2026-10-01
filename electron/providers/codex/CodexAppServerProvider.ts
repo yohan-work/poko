@@ -194,7 +194,7 @@ class AppServerConnection {
 interface PendingApproval {
   wireId: JsonRpcId;
   timer: NodeJS.Timeout;
-  /** Paths a pending file change would write, so pending patches are judged together. */
+  /** Paths a pending file change would write, re-checked right before approval. */
   paths: string[];
 }
 
@@ -211,8 +211,6 @@ function canAcceptOnce(params: Record<string, unknown>): boolean {
 interface TaskSession {
   connection: AppServerConnection;
   pending: Map<string, PendingApproval>;
-  /** Paths of a file change being described, until it becomes pending. */
-  requestPaths: Map<string, string[]>;
   fileChanges: Map<string, Record<string, unknown>>;
   task: AgentTask;
   approvalTimedOut: boolean;
@@ -294,7 +292,6 @@ export class CodexAppServerProvider implements AgentProvider {
     const session: TaskSession = {
       connection,
       pending: new Map(),
-      requestPaths: new Map(),
       fileChanges: new Map(),
       task: input,
       approvalTimedOut: false,
@@ -462,18 +459,14 @@ export class CodexAppServerProvider implements AgentProvider {
   }
 
   /**
-   * Re-checks a pending file change right before approval: the disk or other pending patches
-   * may have changed since it was offered.
+   * Re-checks a pending file change right before approval: the disk may have changed since it
+   * was offered.
    */
   canStillApprove(taskId: string, requestId: string): boolean {
     const session = this.sessions.get(taskId);
     const pending = session?.pending.get(requestId);
     if (!session || !pending) return false;
-    if (pending.paths.length === 0) return true;
-    const others = [...session.pending.entries()]
-      .filter(([id]) => id !== requestId)
-      .flatMap(([, other]) => other.paths);
-    return !buildsRepository(session.task.cwd, [...pending.paths, ...others]);
+    return pending.paths.length === 0 || !buildsRepository(session.task.cwd, pending.paths);
   }
 
   respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
@@ -558,12 +551,14 @@ export class CodexAppServerProvider implements AgentProvider {
       signalProcess(session.connection.child, "SIGTERM");
     }, this.approvalTimeoutMs);
     timer.unref?.();
+    const itemId = readString(message.params.itemId);
+    const item = itemId ? session.fileChanges.get(itemId) : undefined;
     session.pending.set(requestId, {
       wireId: message.id,
       timer,
-      paths: session.requestPaths.get(requestId) ?? [],
+      paths:
+        message.method === "item/fileChange/requestApproval" && item ? changeTargets(item) : [],
     });
-    session.requestPaths.delete(requestId);
     return event;
   }
 
@@ -595,8 +590,7 @@ export class CodexAppServerProvider implements AgentProvider {
   ): ApprovalEvent {
     const itemId = readString(params.itemId);
     const item = itemId ? session.fileChanges.get(itemId) : undefined;
-    const changes = item ? getFileChanges(item, session.task.cwd, pendingPaths(session)) : null;
-    if (item && changes) session.requestPaths.set(requestId, changeTargets(item));
+    const changes = item ? getFileChanges(item, session.task.cwd) : null;
     const grantRoot = readString(params.grantRoot);
     const canApprove = Boolean(changes?.length) && !grantRoot;
     return {
@@ -635,8 +629,6 @@ type ApprovalEvent = Extract<AgentEvent, { type: "approvalRequired" }>;
 export function getFileChanges(
   item: Record<string, unknown>,
   root: string,
-  /** Paths other pending patches would write. */
-  alsoWritten: string[] = [],
 ): Array<{ path: string; change: string }> | null {
   if (!Array.isArray(item.changes) || item.changes.length === 0) return null;
   const changes: Array<{ path: string; change: string }> = [];
@@ -665,7 +657,7 @@ export function getFileChanges(
       return null;
     changes.push({ path: value.path, change: `${kind}:\n${value.diff}` });
   }
-  if (buildsRepository(root, [...changeTargets(item), ...alsoWritten])) return null;
+  if (buildsRepository(root, changeTargets(item))) return null;
   return changes;
 }
 
@@ -679,62 +671,40 @@ function changeTargets(item: Record<string, unknown>): string[] {
   });
 }
 
-function pendingPaths(session: TaskSession): string[] {
-  return [...session.pending.values()].flatMap((pending) => pending.paths);
-}
-
 /** File name as git and the file system will see it: lower case, no trailing dots or spaces. */
 function normalizedName(name: string): string {
   return name.toLowerCase().replace(/[. ]+$/, "");
 }
 
+/** Files that make a folder a git repository (or point git at one). */
+const REPOSITORY_FILES = new Set(["head", "commondir", "gitdir", "packed-refs"]);
+
 /**
- * Whether the patch would leave any folder in the workspace looking like a bare repository:
- * a `HEAD` or `config` file beside both `objects/` and `refs/`. Git would treat that folder as a
- * repository, and its config can run programs. The check looks at the folder's contents on
- * disk plus everything this patch writes, through real paths, ignoring case and trailing
- * dots, so a layout split across patches or hidden behind a symlink is still caught.
+ * Whether a patch could make or extend a git repository outside `.git`. Git only treats a folder
+ * as a repository when it has a `HEAD` file, so a patch may not write `HEAD` (or the files that
+ * redirect git: `commondir`, `gitdir`, `packed-refs`) anywhere, and may not write into a folder
+ * that already holds a `HEAD` file. Names ignore case and trailing dots; folders are checked on
+ * disk through real paths.
  */
 function buildsRepository(root: string, paths: string[]): boolean {
   const realRoot = realPath(resolve(root));
   if (!realRoot) return true;
-  const written = paths.map((path) => realPath(resolve(root, path)));
-  if (written.some((path) => path === null)) return true;
-  const folders = new Set<string>();
-  for (const path of written as string[]) {
-    for (let folder = dirname(path); folder.startsWith(realRoot); folder = dirname(folder)) {
-      folders.add(folder);
+  for (const path of paths) {
+    if (REPOSITORY_FILES.has(normalizedName(basename(path)))) return true;
+    const real = realPath(resolve(root, path));
+    if (!real) return true;
+    for (let folder = dirname(real); ; folder = dirname(folder)) {
+      if (!folder.startsWith(realRoot)) break;
+      try {
+        const hasHead = readdirSync(folder, { withFileTypes: true }).some(
+          (entry) => !entry.isDirectory() && normalizedName(entry.name) === "head",
+        );
+        if (hasHead) return true;
+      } catch {
+        /* the folder doesn't exist yet */
+      }
       if (folder === realRoot) break;
     }
-  }
-  for (const folder of folders) {
-    // name -> whether it is (or will be) a file and/or a directory
-    const entries = new Map<string, { file: boolean; dir: boolean }>();
-    const note = (name: string, kind: "file" | "dir") => {
-      const key = normalizedName(name);
-      const entry = entries.get(key) ?? { file: false, dir: false };
-      entry[kind] = true;
-      entries.set(key, entry);
-    };
-    try {
-      for (const entry of readdirSync(folder, { withFileTypes: true })) {
-        // A symlink could point at either, so it counts as both.
-        if (entry.isFile() || entry.isSymbolicLink()) note(entry.name, "file");
-        if (entry.isDirectory() || entry.isSymbolicLink()) note(entry.name, "dir");
-      }
-    } catch {
-      /* the folder doesn't exist yet */
-    }
-    for (const path of written as string[]) {
-      const below = relative(folder, path);
-      if (!below || below.startsWith("..") || isAbsolute(below)) continue;
-      const [first, ...rest] = below.split(sep);
-      note(first, rest.length === 0 ? "file" : "dir");
-    }
-    // Git needs a HEAD (or config) file beside both objects/ and refs/.
-    const isFile = (name: string) => entries.get(name)?.file ?? false;
-    const isDir = (name: string) => entries.get(name)?.dir ?? false;
-    if ((isFile("head") || isFile("config")) && isDir("objects") && isDir("refs")) return true;
   }
   return false;
 }
