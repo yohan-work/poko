@@ -251,6 +251,48 @@ func topWindow(at point: CGPoint, ignoring ignoredPid: Int?) -> Int? {
   return nil
 }
 
+/// Whether the app's own hit test at `point` lands on `element` or one of its descendants.
+func hits(_ app: AXUIElement, _ element: AXUIElement, at point: CGPoint) -> Bool {
+  var hit: AXUIElement?
+  guard AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit) == .success,
+    var probe = hit
+  else { return false }
+  for _ in 0..<64 {
+    if CFEqual(probe, element) { return true }
+    guard let parent = copy(probe, kAXParentAttribute) else { return false }
+    probe = parent as! AXUIElement
+  }
+  return false
+}
+
+/// One left click at `point`, only after the window is in front and the point still lands on
+/// the element with no window (Poko's included) above it. The cursor goes back where it was.
+func mouseClick(
+  at point: CGPoint, app: AXUIElement, window: AXUIElement, element: AXUIElement, pid: Int32,
+  windowId: Int, returnTo pokoPid: Int?
+) {
+  NSRunningApplication(processIdentifier: pid)?.activate()
+  AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+  usleep(300_000)
+  guard topWindow(at: point, ignoring: nil) == windowId, hits(app, element, at: point) else {
+    fail("covered", "Something covers the element after bringing the window forward.")
+  }
+  let original = CGEvent(source: nil)?.location ?? point
+  let source = CGEventSource(stateID: .hidSystemState)
+  for type in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+    CGEvent(
+      mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: .left
+    )?.post(tap: .cghidEventTap)
+    usleep(40_000)
+  }
+  CGEvent(
+    mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: original,
+    mouseButton: .left
+  )?.post(tap: .cghidEventTap)
+  // Poko comes back to the front so the next step's card is in view.
+  if let pokoPid { NSRunningApplication(processIdentifier: Int32(pokoPid))?.activate() }
+}
+
 func act(windowId: Int) {
   let input = FileHandle.standardInput.readDataToEndOfFile()
   guard let request = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any],
@@ -323,30 +365,17 @@ func act(windowId: Int) {
     fail("not_visible", "The element isn't fully on screen.")
   }
   let center = CGPoint(x: found["x"]! + found["width"]! / 2, y: found["y"]! + found["height"]! / 2)
-  var hit: AXUIElement?
-  guard AXUIElementCopyElementAtPosition(app, Float(center.x), Float(center.y), &hit) == .success,
-    var probe = hit
-  else { fail("covered", "Something covers the element.") }
-  var onTarget = false
-  for _ in 0..<64 {
-    if CFEqual(probe, element) { onTarget = true; break }
-    guard let parent = copy(probe, kAXParentAttribute) else { break }
-    probe = parent as! AXUIElement
-  }
-  guard onTarget else { fail("covered", "Something covers the element.") }
+  guard hits(app, element, at: center) else { fail("covered", "Something covers the element.") }
   guard topWindow(at: center, ignoring: ignoredPid) == windowId else {
     fail("covered", "Another window covers the element.")
   }
 
-  if kind == "press" || kind == "check" && request["intent"] as? String == "press" {
-    // Chrome's web buttons don't list AXPress, and pressing them reports success while nothing
-    // happens. Only an element that says it can be pressed is offered.
-    var names: CFArray?
-    AXUIElementCopyActionNames(element, &names)
-    guard ((names as? [String]) ?? []).contains(kAXPressAction as String) else {
-      fail("not_pressable", "This browser doesn't let Poko press this element.")
-    }
-  }
+  // Chrome's web buttons and script-driven rows (a Gmail message) don't list AXPress, and
+  // pressing them reports success while nothing happens. Those get a real mouse click at the
+  // checked point instead, after the window is brought forward and the point checked again.
+  var names: CFArray?
+  AXUIElementCopyActionNames(element, &names)
+  let pressable = ((names as? [String]) ?? []).contains(kAXPressAction as String)
   if kind == "type" || kind == "check" && request["intent"] as? String == "type" {
     var settable: DarwinBoolean = false
     AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
@@ -355,13 +384,20 @@ func act(windowId: Int) {
     }
   }
   if kind == "check" {
-    emit(["ok": true, "frame": found])
+    emit(["ok": true, "frame": found, "method": pressable ? "ax" : "mouse"])
     return
   }
 
   let result: AXError
   switch kind {
-  case "press": result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+  case "press" where pressable:
+    result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+  case "press":
+    let pid = Int32(described["pid"] as! Int)
+    mouseClick(
+      at: center, app: app, window: window, element: element, pid: pid, windowId: windowId,
+      returnTo: ignoredPid)
+    result = .success
   default:
     // Safari ignores a new value unless the field has focus inside the page first.
     AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -370,6 +406,7 @@ func act(windowId: Int) {
   }
   guard result == .success else { fail("action_failed", "The app didn't accept the action.") }
   var out: [String: Any] = ["ok": true]
+  if kind == "press" { out["method"] = pressable ? "ax" : "mouse" }
   // Read the value back so a field that didn't take the text is reported, not assumed.
   if kind == "type" {
     // Pages update the field asynchronously; give it a moment before reading back.

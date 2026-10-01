@@ -49,6 +49,22 @@ describe("step replies", () => {
     });
   });
 
+  it("lets only the final done reply carry a long answer", () => {
+    const summary = "요약: ".concat("가".repeat(1500));
+    expect(parseStep(JSON.stringify({ say: summary, action: { kind: "done" } }), snapshot)).toEqual(
+      {
+        say: summary,
+        action: { kind: "done" },
+      },
+    );
+    expect(
+      parseStep(
+        JSON.stringify({ say: summary, action: { kind: "click", elementId: 4 } }),
+        snapshot,
+      ),
+    ).toBeNull();
+  });
+
   it("rejects anything else", () => {
     const bad = [
       "I'll click it.",
@@ -59,7 +75,7 @@ describe("step replies", () => {
       '{"say":"","action":{"kind":"done"}}',
       '{"say":"x","action":{"kind":"click","elementId":"4"}}',
       'Sure! {"say":"x","action":{"kind":"done"}}',
-      `{"say":"${"x".repeat(301)}","action":{"kind":"done"}}`,
+      `{"say":"${"x".repeat(301)}","action":{"kind":"click","elementId":4}}`,
     ];
     for (const reply of bad) expect(parseStep(reply, snapshot)).toBeNull();
   });

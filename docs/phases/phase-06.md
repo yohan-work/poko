@@ -100,7 +100,7 @@ Real-browser results on a local test page (`127.0.0.1`, Safari 26 and Chrome) wi
 Decisions:
 - `reveal` (scroll into view) skips the visible-and-on-top tests, because a partly hidden element is exactly what it is for. Every link on the path to the target is checked, since pressing text or an image inside a link follows it.
 - `poko-ax act <windowId>` reads its request on stdin, so the text to type never appears in the process list. `check` runs every test without acting. `press`, `type`, and `reveal` run the same tests again and then act.
-- An element is pressed only if it lists `AXPress`; Chrome's web buttons don't, so **clicking is Safari-only for now** (decided with the user). In Chrome, Poko can type but not click until a safe way to click is found. A click is never sent as a synthetic mouse event.
+- An element is pressed only if it lists `AXPress`; Chrome's web buttons don't, so clicking was Safari-only at first (see the mouse click fallback below, which replaced this). A click is never sent as a synthetic mouse event.
 - Typing focuses the field first and reads the value back (polling up to 0.5 s); `valueMatches: false` means the page didn't take the text and is reported, not assumed.
 - Window matching accepts an AX title that starts with the capture title plus `" - "`, because browsers append their name and profile. This fixed a picked Chrome window that shared its frame with another one.
 - The pixel check: a mean difference measured an unchanged control at 0, the same field after typing at 0.034, and a different field of the same size at 0.043. It can't tell look-alike controls apart, and it dilutes small changes such as one letter. The accessibility re-check is what proves identity. The pixel check instead counts pixels that changed by more than 24 levels in any channel. Above 0.2% of the crop (about 9 pixels of a 120×36 button), Poko shows the new crop and asks again.
@@ -123,6 +123,18 @@ Decisions:
 - **Stop:** `⌘⇧Esc` (`CommandOrControl+Shift+Escape`) is registered only while a screen task runs. Stop aborts the Codex turn and declines a waiting step. The loop checks the stop flag before every helper call, so nothing acts after a stop. The task's cancel button does the same.
 - Approval goes only through the card. `approvals.kind` gains `screen_action` (a text column, so no migration). The crop isn't stored.
 - Real run, using Codex 0.159.3 and Safari on the local test page, with approvals given by a test script: the goal "Add one 버튼을 두 번 누르고, Plain 입력칸에 poko를 입력해 줘" took 3 approved steps and finished in 24 s. The page then showed count 2 and the field held "poko" (its input event fired). Each step's card crop showed the right control.
+
+### After Phase 06: mouse click fallback and requests in the picker
+
+- **Problem:** Gmail's message rows in Safari list no `AXPress`, so "open the email from … and summarize it" couldn't open the email. The user chose a checked mouse click for such elements, which changes the earlier "never a synthetic event" rule for clicks only. Typing still uses only `AXValue`.
+- **How a press works now:**
+  - If the element lists `AXPress`, Poko uses it.
+  - Otherwise, after every check has passed and the user has approved the crop, the helper brings the browser window to the front and raises it. It then checks the point again, with no window, including Poko's, above it, and the page's hit test still landing on the target. Only then does it post one left click there. The cursor goes back to where it was, and Poko comes back to the front so the next card is in view. `check` reports `method: "ax" | "mouse"`.
+- **Verification:**
+  - On a test page, Chrome and Safari both now list `AXPress` on buttons and rows. Chrome's earlier missing `AXPress` appears to have been its accessibility tree still being built right after `AXManualAccessibility` was set.
+  - A test build that forced the mouse path clicked a grid row and a button in Safari. Both took effect, and the cursor returned to the same point.
+  - Gmail rows are found and offered with `method: "mouse"`. This was checked without clicking.
+- The window picker has its own request field, prefilled from the composer. The final `done` reply may carry up to 4,000 characters, so a summary of what Poko opened comes back as the answer. The prompt asks Codex to open what is needed first, then answer in Markdown.
 
 ## Open questions to settle in implementation
 

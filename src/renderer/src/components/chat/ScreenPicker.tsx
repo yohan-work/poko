@@ -40,7 +40,12 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
   const lookAtWindow = useAppStore((state) => state.lookAtWindow);
   const actInWindow = useAppStore((state) => state.actInWindow);
   const [mode, setMode] = useState<"look" | "act">("look");
-  const goal = question.trim();
+  // The request starts from the composer text and can be written or changed here.
+  const [request, setRequest] = useState(question);
+  useEffect(() => {
+    if (screen.open) setRequest(question);
+  }, [screen.open, question]);
+  const goal = request.trim();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -138,14 +143,26 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
                 대신 해 줘
               </button>
             </fieldset>
+            <label className="screen-request">
+              <span className="visually-hidden">포코에게 부탁할 일</span>
+              <textarea
+                rows={2}
+                maxLength={2000}
+                value={request}
+                onChange={(event) => setRequest(event.target.value)}
+                placeholder={
+                  mode === "act"
+                    ? "예: 9월 30일에 김OO에게 온 메일을 열어서 요약해 줘"
+                    : "예: 이 페이지에서 뭘 할 수 있어? (비워 두면 화면을 설명해)"
+                }
+              />
+            </label>
             <p className="screen-picker__note">
               {mode === "act"
                 ? goal
-                  ? `“${goal}” 을(를) 할 브라우저 창을 골라 줘. 한 단계씩 그림으로 보여주고, 허용해야만 진행해. ⌘⇧Esc로 언제든 멈출 수 있어. 클릭은 지금 Safari에서만 돼.`
-                  : "먼저 입력창에 할 일을 적어 줘. 예: “검색창에 날씨를 입력해 줘”"
-                : goal
-                  ? `“${goal}” 에 답하려고 볼 창을 골라 줘.`
-                  : "창을 고르면 포코가 무엇이 보이는지 설명할게."}
+                  ? "할 일을 진행할 브라우저 창을 골라 줘. 한 단계씩 그림으로 보여주고, 허용해야만 진행해. ⌘⇧Esc로 언제든 멈출 수 있어."
+                  : "위에 할 일을 적고 브라우저 창을 골라 줘."
+                : "창을 고르면 포코가 보고 답할게."}
             </p>
             <ul className="screen-windows">
               {screen.windows.map((window) => (
@@ -158,8 +175,8 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
                       // The question stays in the composer until the task really starts.
                       const start =
                         mode === "act"
-                          ? actInWindow(window.id, question)
-                          : lookAtWindow(window.id, question);
+                          ? actInWindow(window.id, request)
+                          : lookAtWindow(window.id, request);
                       void start.then((started) => {
                         if (started) onPicked();
                       });
