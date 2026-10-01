@@ -25,7 +25,9 @@ Screenshots use sample data.
 - [x] Read-only Codex project analysis (Phase 02)
 - [x] Local task, conversation, activity, workspace, and memory persistence (Phase 03)
 - [x] In-app approval gate for Codex command and file-change requests (Phase 04)
-- [ ] Approval-gated write mode, after per-OS sandbox verification
+- [x] Saved memories and recent conversation as context, Markdown answers, and streaming replies (Phase 05)
+- [ ] Approval-gated write mode, after per-OS sandbox verification (Phase 06)
+- [ ] Multiple conversations (Phase 07)
 
 ## What Poko is aiming for
 
