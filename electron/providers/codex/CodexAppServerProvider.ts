@@ -194,6 +194,8 @@ class AppServerConnection {
 interface PendingApproval {
   wireId: JsonRpcId;
   timer: NodeJS.Timeout;
+  /** Paths a pending file change would write, so pending patches are judged together. */
+  paths: string[];
 }
 
 /**
@@ -209,6 +211,8 @@ function canAcceptOnce(params: Record<string, unknown>): boolean {
 interface TaskSession {
   connection: AppServerConnection;
   pending: Map<string, PendingApproval>;
+  /** Paths of a file change being described, until it becomes pending. */
+  requestPaths: Map<string, string[]>;
   fileChanges: Map<string, Record<string, unknown>>;
   task: AgentTask;
   approvalTimedOut: boolean;
@@ -290,6 +294,7 @@ export class CodexAppServerProvider implements AgentProvider {
     const session: TaskSession = {
       connection,
       pending: new Map(),
+      requestPaths: new Map(),
       fileChanges: new Map(),
       task: input,
       approvalTimedOut: false,
@@ -463,12 +468,17 @@ export class CodexAppServerProvider implements AgentProvider {
     // One-shot: the request is consumed even if writing the reply fails.
     session.pending.delete(requestId);
     clearTimeout(pending.timer);
+    // Re-check at approval time: the disk or other pending patches may have changed since.
+    const unsafe =
+      choice === "approve" &&
+      pending.paths.length > 0 &&
+      buildsRepository(session.task.cwd, [...pending.paths, ...pendingPaths(session)]);
     try {
       // Only the single-request decisions are ever sent; session-wide trust is never granted.
       session.connection.respond(pending.wireId, {
-        decision: choice === "approve" ? "accept" : "decline",
+        decision: choice === "approve" && !unsafe ? "accept" : "decline",
       });
-      return true;
+      return !unsafe;
     } catch {
       return false;
     }
@@ -538,7 +548,12 @@ export class CodexAppServerProvider implements AgentProvider {
       signalProcess(session.connection.child, "SIGTERM");
     }, this.approvalTimeoutMs);
     timer.unref?.();
-    session.pending.set(requestId, { wireId: message.id, timer });
+    session.pending.set(requestId, {
+      wireId: message.id,
+      timer,
+      paths: session.requestPaths.get(requestId) ?? [],
+    });
+    session.requestPaths.delete(requestId);
     return event;
   }
 
@@ -570,7 +585,8 @@ export class CodexAppServerProvider implements AgentProvider {
   ): ApprovalEvent {
     const itemId = readString(params.itemId);
     const item = itemId ? session.fileChanges.get(itemId) : undefined;
-    const changes = item ? getFileChanges(item, session.task.cwd) : null;
+    const changes = item ? getFileChanges(item, session.task.cwd, pendingPaths(session)) : null;
+    if (item && changes) session.requestPaths.set(requestId, changeTargets(item));
     const grantRoot = readString(params.grantRoot);
     const canApprove = Boolean(changes?.length) && !grantRoot;
     return {
@@ -609,6 +625,8 @@ type ApprovalEvent = Extract<AgentEvent, { type: "approvalRequired" }>;
 export function getFileChanges(
   item: Record<string, unknown>,
   root: string,
+  /** Paths other pending patches would write. */
+  alsoWritten: string[] = [],
 ): Array<{ path: string; change: string }> | null {
   if (!Array.isArray(item.changes) || item.changes.length === 0) return null;
   const changes: Array<{ path: string; change: string }> = [];
@@ -637,13 +655,22 @@ export function getFileChanges(
       return null;
     changes.push({ path: value.path, change: `${kind}:\n${value.diff}` });
   }
-  const targets = item.changes.flatMap((value) => {
-    const record = value as Record<string, unknown>;
-    const move = isRecord(record.kind) ? record.kind.move_path : undefined;
-    return [record.path, move].filter((path): path is string => typeof path === "string");
-  });
-  if (buildsRepository(root, targets)) return null;
+  if (buildsRepository(root, [...changeTargets(item), ...alsoWritten])) return null;
   return changes;
+}
+
+/** Every path a file-change item writes, including move destinations. */
+function changeTargets(item: Record<string, unknown>): string[] {
+  if (!Array.isArray(item.changes)) return [];
+  return item.changes.flatMap((value) => {
+    if (!isRecord(value)) return [];
+    const move = isRecord(value.kind) ? value.kind.move_path : undefined;
+    return [value.path, move].filter((path): path is string => typeof path === "string");
+  });
+}
+
+function pendingPaths(session: TaskSession): string[] {
+  return [...session.pending.values()].flatMap((pending) => pending.paths);
 }
 
 /** File name as git and the file system will see it: lower case, no trailing dots or spaces. */
@@ -653,7 +680,7 @@ function normalizedName(name: string): string {
 
 /**
  * Whether the patch would leave any folder in the workspace looking like a bare repository:
- * `HEAD` or `config` together with `objects` or `refs`. Git would treat that folder as a
+ * a `HEAD` or `config` file beside both `objects/` and `refs/`. Git would treat that folder as a
  * repository, and its config can run programs. The check looks at the folder's contents on
  * disk plus everything this patch writes, through real paths, ignoring case and trailing
  * dots, so a layout split across patches or hidden behind a symlink is still caught.
@@ -671,20 +698,33 @@ function buildsRepository(root: string, paths: string[]): boolean {
     }
   }
   for (const folder of folders) {
-    const names = new Set<string>();
+    // name -> whether it is (or will be) a file and/or a directory
+    const entries = new Map<string, { file: boolean; dir: boolean }>();
+    const note = (name: string, kind: "file" | "dir") => {
+      const key = normalizedName(name);
+      const entry = entries.get(key) ?? { file: false, dir: false };
+      entry[kind] = true;
+      entries.set(key, entry);
+    };
     try {
-      for (const entry of readdirSync(folder)) names.add(normalizedName(entry));
+      for (const entry of readdirSync(folder, { withFileTypes: true })) {
+        // A symlink could point at either, so it counts as both.
+        if (entry.isFile() || entry.isSymbolicLink()) note(entry.name, "file");
+        if (entry.isDirectory() || entry.isSymbolicLink()) note(entry.name, "dir");
+      }
     } catch {
       /* the folder doesn't exist yet */
     }
     for (const path of written as string[]) {
       const below = relative(folder, path);
-      if (below && !below.startsWith("..") && !isAbsolute(below))
-        names.add(normalizedName(below.split(sep)[0]));
+      if (!below || below.startsWith("..") || isAbsolute(below)) continue;
+      const [first, ...rest] = below.split(sep);
+      note(first, rest.length === 0 ? "file" : "dir");
     }
-    const hasRepoFile = names.has("head") || names.has("config");
-    const hasRepoFolder = names.has("objects") || names.has("refs");
-    if (hasRepoFile && hasRepoFolder) return true;
+    // Git needs a HEAD (or config) file beside both objects/ and refs/.
+    const isFile = (name: string) => entries.get(name)?.file ?? false;
+    const isDir = (name: string) => entries.get(name)?.dir ?? false;
+    if ((isFile("head") || isFile("config")) && isDir("objects") && isDir("refs")) return true;
   }
   return false;
 }

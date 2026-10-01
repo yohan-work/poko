@@ -312,7 +312,16 @@ describe("CodexAppServerProvider", () => {
     expect(
       getFileChanges(many("tools/HEAD", "tools/objects/x", "tools/refs/x"), "/workspace"),
     ).toBeNull();
-    expect(getFileChanges(many("tools/config", "tools/refs/heads/main"), "/workspace")).toBeNull();
+    expect(
+      getFileChanges(
+        many("tools/config", "tools/objects/x", "tools/refs/heads/main"),
+        "/workspace",
+      ),
+    ).toBeNull();
+    // Only both objects/ and refs/ make a repository.
+    expect(
+      getFileChanges(many("tools/config", "tools/refs/heads/main"), "/workspace"),
+    ).toHaveLength(2);
     expect(getFileChanges(many("src/config", "src/app.ts"), "/workspace")).toHaveLength(2);
     expect(getFileChanges(change({ type: "update" }, ".git/config"), "/workspace")).toBeNull();
     expect(
@@ -461,11 +470,20 @@ describe("CodexAppServerProvider", () => {
         changes: paths.map((path) => ({ path, kind: { type: "add" }, diff: "" })),
       });
       expect(getFileChanges(add("x/objects/a", "x/refs/a"), workspace)).toBeNull();
-      expect(getFileChanges(add("y/HEAD", "y/Objects/a"), workspace)).toBeNull();
-      expect(getFileChanges(add("z/HEAD.", "z/refs./a"), workspace)).toBeNull();
+      expect(getFileChanges(add("y/HEAD", "y/Objects/a", "y/Refs/a"), workspace)).toBeNull();
+      expect(getFileChanges(add("z/HEAD.", "z/objects/a", "z/refs./a"), workspace)).toBeNull();
       await mkdir(join(workspace, "sub"));
       await symlink(join(workspace, "sub"), join(workspace, "link"));
-      expect(getFileChanges(add("link/config", "sub/refs/a"), workspace)).toBeNull();
+      expect(
+        getFileChanges(add("link/config", "sub/objects/a", "sub/refs/a"), workspace),
+      ).toBeNull();
+      // Ordinary config/ and objects/ folders are not a repository.
+      await mkdir(join(workspace, "app", "config"), { recursive: true });
+      await mkdir(join(workspace, "app", "objects"));
+      await mkdir(join(workspace, "app", "refs"));
+      expect(getFileChanges(add("app/main.ts"), workspace)).toHaveLength(1);
+      // Other pending patches count as written.
+      expect(getFileChanges(add("t/objects/x", "t/refs/x"), workspace, ["t/config"])).toBeNull();
       expect(getFileChanges(add("src/config", "src/app.ts"), workspace)).toHaveLength(2);
       // An absolute path inside the workspace is judged only below the workspace.
       expect(touchesGitDirectory(workspace, join(workspace, "src", "app.ts"))).toBe(false);
@@ -518,6 +536,40 @@ describe("CodexAppServerProvider", () => {
       id: 7,
       result: { decision: "decline" },
     });
+    server.kill();
+  });
+
+  it("judges pending file changes together", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    sendFileChange(server, { id: "a", path: "t/config" });
+    await stream.next("approvalRequired");
+    server.send({
+      method: "item/started",
+      params: {
+        item: {
+          type: "fileChange",
+          id: "patch-2",
+          status: "inProgress",
+          changes: [
+            { path: "t/objects/x", kind: { type: "add" }, diff: "" },
+            { path: "t/refs/x", kind: { type: "add" }, diff: "" },
+          ],
+        },
+      },
+    });
+    server.send({
+      id: "b",
+      method: "item/fileChange/requestApproval",
+      params: { threadId: "thread-1", turnId: "turn-1", itemId: "patch-2", startedAtMs: 1 },
+    });
+    expect(await server.waitFor((m) => m.id === "b")).toEqual({
+      id: "b",
+      result: { decision: "decline" },
+    });
+    expect(provider.hasPendingApproval("task-1", '"a"')).toBe(true);
     server.kill();
   });
 });
