@@ -16,6 +16,7 @@ import {
   tasks,
 } from "./schema";
 import type { ApprovalRequest, ApprovalChoice } from "../shared";
+import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
 
 export type MemoryType = "preference" | "project" | "person" | "decision" | "fact" | "routine";
 export interface MemoryRecord {
@@ -33,13 +34,11 @@ export interface MessageRecord {
   content: string;
   createdAt: string;
 }
+/** Task summary sent to the renderer at startup. */
 export interface TaskRecord {
   id: string;
   title: string;
-  prompt: string;
-  provider: string;
   status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
-  workspace: string | null;
   createdAt: string;
   completedAt: string | null;
 }
@@ -138,12 +137,19 @@ export class PokoDatabase {
         .where(eq(messages.conversationId, conversationId))
         .orderBy(asc(messages.createdAt))
         .all() as MessageRecord[],
+      // Explicit columns: prompts and results stay in main rather than riding along to the renderer.
       tasks: this.db
-        .select()
+        .select({
+          id: tasks.id,
+          title: tasks.title,
+          status: tasks.status,
+          createdAt: tasks.createdAt,
+          completedAt: tasks.completedAt,
+        })
         .from(tasks)
         .orderBy(desc(tasks.createdAt))
         .limit(100)
-        .all() as TaskRecord[],
+        .all(),
       // Join the task title so older activity stays labeled even when its task is not loaded.
       activities: this.db
         .select({
@@ -204,6 +210,7 @@ export class PokoDatabase {
           provider: "codex",
           status: "running",
           workspace,
+          conversationId,
           createdAt: timestamp,
           completedAt: null,
         })
@@ -237,7 +244,14 @@ export class PokoDatabase {
       if (type === "completed" || type === "error" || type === "cancelled") {
         const status =
           type === "completed" ? "completed" : type === "cancelled" ? "cancelled" : "failed";
-        tx.update(tasks).set({ status, completedAt: timestamp }).where(eq(tasks.id, taskId)).run();
+        tx.update(tasks)
+          .set({
+            status,
+            completedAt: timestamp,
+            ...(type === "completed" && result !== undefined ? { result } : {}),
+          })
+          .where(eq(tasks.id, taskId))
+          .run();
         // A finished task can no longer act on an unanswered approval.
         tx.update(approvals)
           .set({ decision: type === "cancelled" ? "cancelled" : "expired", resolvedAt: timestamp })
@@ -261,6 +275,40 @@ export class PokoDatabase {
         }
       }
     });
+  }
+
+  /**
+   * Context for a task about to start: memories by priority and the most recent completed
+   * exchanges from the same conversation (newest first, excluding this task). Caps are applied
+   * by `limitContext`.
+   */
+  getTaskContext(taskId: string): TaskContext {
+    const task = this.db
+      .select({ conversationId: tasks.conversationId })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .get();
+    const memoryRows = this.db
+      .select({ type: memories.type, content: memories.content })
+      .from(memories)
+      .orderBy(desc(memories.importance), desc(memories.updatedAt))
+      .limit(CONTEXT_LIMITS.memoryCount)
+      .all();
+    const exchangeRows = task?.conversationId
+      ? this.db
+          .select({ request: tasks.prompt, answer: tasks.result })
+          .from(tasks)
+          .where(
+            sql`${tasks.conversationId} = ${task.conversationId} AND ${tasks.status} = 'completed' AND ${tasks.result} IS NOT NULL AND ${tasks.id} <> ${taskId}`,
+          )
+          .orderBy(desc(tasks.createdAt), desc(sql`${tasks}.rowid`))
+          .limit(CONTEXT_LIMITS.exchangeCount)
+          .all()
+      : [];
+    return limitContext(
+      memoryRows,
+      exchangeRows.map((row) => ({ request: row.request, answer: row.answer ?? "" })),
+    );
   }
 
   listMemories(): MemoryRecord[] {

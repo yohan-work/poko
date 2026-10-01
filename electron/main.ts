@@ -78,7 +78,8 @@ function registerIpcHandlers(): void {
     const taskId = database?.createTask(rawMessage.trim(), cwd);
     if (!taskId) throw new Error("Local storage is unavailable.");
     try {
-      agentCore.startTask({ prompt: rawMessage.trim(), cwd, taskId });
+      const context = database?.getTaskContext(taskId);
+      agentCore.startTask({ prompt: rawMessage.trim(), cwd, taskId, context });
     } catch (error) {
       database?.recordTaskEvent(
         taskId,

@@ -59,4 +59,34 @@ describe("AgentCore", () => {
     );
     expect(core.cancelTask("unknown")).toBe(false);
   });
+
+  it("places saved memories and recent conversation between the guidance and the request", async () => {
+    let prompt = "";
+    const provider: AgentProvider = {
+      async *runTask(input) {
+        prompt = input.prompt;
+        yield { type: "completed", result: "done" };
+      },
+    };
+    const core = new AgentCore(provider, vi.fn(), "Inspect before suggesting.");
+    core.startTask({
+      prompt: "그거 다시 설명해 줘",
+      cwd: "/workspace",
+      context: {
+        memories: [{ type: "preference", content: "답변은 간결하게" }],
+        history: [{ request: "구조 설명해 줘", answer: "Electron 앱이야." }],
+      },
+    });
+    await vi.waitFor(() => expect(prompt).not.toBe(""));
+
+    const order = [
+      "Safety:",
+      "Project guidance:",
+      "Saved memories",
+      "Recent conversation",
+      "User request:\n그거 다시 설명해 줘",
+    ].map((marker) => prompt.indexOf(marker));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
 });

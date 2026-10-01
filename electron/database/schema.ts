@@ -38,12 +38,19 @@ export const tasks = sqliteTable(
       enum: ["queued", "running", "waiting_approval", "completed", "failed", "cancelled"],
     }).notNull(),
     workspace: text("workspace"),
+    // Tasks outlive their conversation: deleting a conversation keeps task, Activity, and approval history.
+    conversationId: text("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    /** Poko's final answer, set only when the task completes. */
+    result: text("result"),
     createdAt: text("created_at").notNull(),
     completedAt: text("completed_at"),
   },
   (table) => [
     index("tasks_created_idx").on(table.createdAt),
     index("tasks_status_idx").on(table.status),
+    index("tasks_conversation_created_idx").on(table.conversationId, table.createdAt),
   ],
 );
 

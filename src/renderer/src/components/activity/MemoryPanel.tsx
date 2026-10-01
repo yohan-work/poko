@@ -100,7 +100,7 @@ export function MemoryPanel() {
       <PageHeader
         id="memory-title"
         title="기억"
-        description="직접 저장한 내용만 기억해. 이 컴퓨터에만 보관돼."
+        description="직접 저장한 내용만 기억해. 이 컴퓨터에 보관되고, 요청할 때 Codex에 함께 전달돼서 답변에 반영돼."
         action={
           !isAdding && (
             <button className="primary-button" type="button" onClick={() => setAdding(true)}>
