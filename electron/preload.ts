@@ -1,9 +1,10 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
 import {
   IPC_CHANNELS,
   type AgentEvent,
   type ApprovalChoice,
   type ApprovalOutcome,
+  type OverlayScene,
   type ScreenLookResponse,
   type ScreenStatus,
   type ScreenWindow,
@@ -103,6 +104,18 @@ const pokoApi = {
     listWindows: (): Promise<ScreenWindow[]> => ipcRenderer.invoke(IPC_CHANNELS.screenListWindows),
     look: (windowId: number, question: string): Promise<ScreenLookResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.screenLook, { windowId, question }),
+  },
+  overlay: {
+    onScene: (listener: (scene: OverlayScene) => void) => {
+      const handler = (_event: IpcRendererEvent, scene: OverlayScene) => listener(scene);
+      ipcRenderer.on(IPC_CHANNELS.overlayScene, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.overlayScene, handler);
+    },
+    onHide: (listener: () => void) => {
+      const handler = () => listener();
+      ipcRenderer.on(IPC_CHANNELS.overlayHide, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.overlayHide, handler);
+    },
   },
   approvals: {
     respond: (
