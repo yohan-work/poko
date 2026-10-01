@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import {
   IPC_CHANNELS,
   type AgentEvent,
+  type ApprovalChoice,
   type TaskEventPayload,
   type TaskStartResponse,
   type WorkspaceInfo,
@@ -41,6 +42,24 @@ function isTaskEventPayload(value: unknown): value is TaskEventPayload {
       return typeof event.result === "string";
     case "error":
       return typeof event.error === "string";
+    case "approvalRequired":
+      return (
+        typeof event.requestId === "string" &&
+        (event.kind === "command" || event.kind === "file_change") &&
+        typeof event.summary === "string" &&
+        (event.cwd === null || typeof event.cwd === "string") &&
+        (event.reason === null || typeof event.reason === "string") &&
+        typeof event.canApprove === "boolean" &&
+        (event.diff === undefined ||
+          (Array.isArray(event.diff) &&
+            event.diff.every(
+              (entry: unknown) =>
+                typeof entry === "object" &&
+                entry !== null &&
+                typeof (entry as { path?: unknown }).path === "string" &&
+                typeof (entry as { change?: unknown }).change === "string",
+            )))
+      );
     default:
       return false;
   }
@@ -68,6 +87,10 @@ const pokoApi = {
       ipcRenderer.on(IPC_CHANNELS.taskEvent, listener);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.taskEvent, listener);
     },
+  },
+  approvals: {
+    respond: (taskId: string, requestId: string, choice: ApprovalChoice): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.approvalRespond, { taskId, requestId, choice }),
   },
   memory: {
     list: (): Promise<PersistedMemory[]> => ipcRenderer.invoke(IPC_CHANNELS.memoryList),

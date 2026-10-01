@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
+import { ApprovalCard } from "./ApprovalCard";
 
 function SendIcon() {
   return (
@@ -29,6 +30,7 @@ export function ChatPanel() {
   const sendMessage = useAppStore((state) => state.sendMessage);
   const cancelTask = useAppStore((state) => state.cancelTask);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
+  const hasPendingApproval = useAppStore((state) => state.pendingApproval !== null);
 
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,7 +72,8 @@ export function ChatPanel() {
                   <p>{message.content}</p>
                 </li>
               ))}
-              {isSending && (
+              <ApprovalCard />
+              {isSending && !hasPendingApproval && (
                 <li
                   className="message message--assistant message--loading"
                   aria-label="응답 기다리는 중"

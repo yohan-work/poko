@@ -3,13 +3,16 @@ import { basename, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import {
   IPC_CHANNELS,
+  type ApprovalChoice,
+  type ApprovalRequest,
   type MemoryInput,
   type TaskEventPayload,
   type WorkspaceInfo,
 } from "./shared";
 import { AgentCore } from "./agent/AgentCore";
 import { resolveWorkspaceDirectory } from "./agent/workspace";
-import { CodexProvider, resolveCodexExecutable } from "./providers/codex/CodexProvider";
+import { resolveCodexExecutable } from "./providers/codex/CodexProvider";
+import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
 import { PokoDatabase } from "./database/Database";
 
 let mainWindow: BrowserWindow | null = null;
@@ -96,6 +99,30 @@ function registerIpcHandlers(): void {
       throw new TypeError("A valid task id is required.");
     }
     return agentCore.cancelTask(rawTaskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.approvalRespond, (event, rawRequest: unknown) => {
+    if (!isTrustedRenderer(event) || !database || !agentCore)
+      throw new Error("Unknown renderer requested an approval decision.");
+    if (typeof rawRequest !== "object" || rawRequest === null)
+      throw new TypeError("Invalid approval response.");
+    const request = rawRequest as { taskId?: unknown; requestId?: unknown; choice?: unknown };
+    if (
+      typeof request.taskId !== "string" ||
+      typeof request.requestId !== "string" ||
+      request.taskId.length > 100 ||
+      request.requestId.length > 200 ||
+      (request.choice !== "approve" && request.choice !== "decline")
+    )
+      throw new TypeError("Invalid approval response.");
+    const choice = request.choice as ApprovalChoice;
+    if (!agentCore.hasPendingApproval(request.taskId, request.requestId)) return false;
+    if (!database.resolveApproval(request.taskId, request.requestId, choice)) return false;
+    if (!agentCore.respondToApproval(request.taskId, request.requestId, choice)) {
+      console.error("The approval was recorded but Codex no longer has that request pending.");
+      return false;
+    }
+    return true;
   });
 
   ipcMain.handle(IPC_CHANNELS.appBootstrap, (event) => {
@@ -193,9 +220,23 @@ app
     ).catch(() => "");
     const executable = await resolveCodexExecutable();
     agentCore = new AgentCore(
-      new CodexProvider({ executable }),
+      new CodexAppServerProvider({ executable }),
       (payload: TaskEventPayload) => {
         const event = payload.event;
+        let rendererPayload = payload;
+        if (event.type === "approvalRequired") {
+          const request: ApprovalRequest = { taskId: payload.taskId, ...event };
+          try {
+            database?.recordApprovalRequest(request);
+          } catch (error) {
+            console.error("Could not persist approval request.", error);
+            agentCore?.respondToApproval(payload.taskId, event.requestId, "decline");
+            rendererPayload = {
+              ...payload,
+              event: { ...event, canApprove: false, reason: "승인 요청을 저장하지 못했어." },
+            };
+          }
+        }
         const activityMessage =
           event.type === "output"
             ? null
@@ -207,9 +248,13 @@ app
                   ? "포코가 요청을 확인했어."
                   : event.type === "completed"
                     ? "프로젝트 확인을 마쳤어."
-                    : event.type === "cancelled"
-                      ? "요청을 멈췄어."
-                      : "작업을 마치지 못했어.";
+                    : event.type === "approvalRequired"
+                      ? event.canApprove
+                        ? "포코가 다음 작업의 확인을 기다리고 있어."
+                        : "안전한 확인 정보가 없어 요청을 거절했어."
+                      : event.type === "cancelled"
+                        ? "요청을 멈췄어."
+                        : "작업을 마치지 못했어.";
         const result =
           event.type === "completed"
             ? event.result
@@ -219,12 +264,14 @@ app
                 ? "요청을 멈췄어."
                 : undefined;
         try {
-          database?.recordTaskEvent(payload.taskId, event.type, activityMessage, result);
+          if (event.type !== "approvalRequired") {
+            database?.recordTaskEvent(payload.taskId, event.type, activityMessage, result);
+          }
         } catch (error) {
           console.error("Could not persist task event.", error);
         }
         if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
-        mainWindow.webContents.send(IPC_CHANNELS.taskEvent, payload);
+        mainWindow.webContents.send(IPC_CHANNELS.taskEvent, rendererPayload);
       },
       codingSkill,
     );

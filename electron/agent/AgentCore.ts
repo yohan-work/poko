@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AgentEvent, AgentTask, TaskEventPayload } from "../shared";
+import type { AgentEvent, AgentTask, ApprovalChoice, TaskEventPayload } from "../shared";
 import type { AgentProvider } from "./AgentProvider";
 
 interface AgentTaskInput {
@@ -46,6 +46,18 @@ export class AgentCore {
     return true;
   }
 
+  respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
+    if (!this.activeTasks.has(taskId)) return false;
+    return this.provider.respondToApproval?.(taskId, requestId, choice) ?? false;
+  }
+
+  hasPendingApproval(taskId: string, requestId: string): boolean {
+    return (
+      this.activeTasks.has(taskId) &&
+      (this.provider.hasPendingApproval?.(taskId, requestId) ?? false)
+    );
+  }
+
   cancelAll(): void {
     for (const controller of this.activeTasks.values()) controller.abort();
   }
@@ -61,8 +73,8 @@ export class AgentCore {
 
   private buildPrompt(userPrompt: string): string {
     const sections = [
-      "You are Poko, a local project analysis assistant. Analyze the selected workspace and answer the user's request with concrete findings.",
-      "Safety: this task is read-only. Do not modify files, install dependencies, delete data, change git state, deploy, or affect external services. Do not ask for broader permissions; stop and explain if the request requires them.",
+      "You are Poko, a local project assistant. Analyze the selected workspace and answer the user's request with concrete findings.",
+      "Safety: the sandbox starts read-only. If the request needs a file change or command that the sandbox blocks, wait for Poko's one-time approval request. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely.",
       this.codingSkill ? `Project guidance:\n${this.codingSkill}` : "",
       `User request:\n${userPrompt}`,
     ];

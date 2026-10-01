@@ -74,4 +74,56 @@ describe("PokoDatabase", () => {
     expect(recovered.listMemories()).toHaveLength(1);
     recovered.close();
   });
+
+  it("audits one-shot approvals and never restores a pending approval", async () => {
+    const database = await openDatabase();
+    const taskId = database.createTask("테스트 실행해 줘", "/tmp/example-project");
+    const request = {
+      taskId,
+      requestId: "7",
+      kind: "command" as const,
+      summary: "pnpm test",
+      cwd: "/tmp/example-project",
+      reason: null,
+      canApprove: true,
+    };
+    expect(database.recordApprovalRequest(request)).toBe(true);
+    expect(database.getBootstrapData().tasks[0]).toMatchObject({ status: "waiting_approval" });
+    expect(database.resolveApproval("other-task", "7", "approve")).toBe(false);
+    expect(database.resolveApproval(taskId, "7", "approve")).toBe(true);
+    expect(database.resolveApproval(taskId, "7", "approve")).toBe(false);
+    expect(database.getBootstrapData().tasks[0]).toMatchObject({ status: "running" });
+    expect(() => database.recordApprovalRequest(request)).toThrow();
+
+    expect(database.recordApprovalRequest({ ...request, requestId: "8", canApprove: false })).toBe(
+      false,
+    );
+    expect(database.resolveApproval(taskId, "8", "approve")).toBe(false);
+
+    database.recordApprovalRequest({ ...request, requestId: "9" });
+    database.close();
+
+    const recovered = await openDatabase();
+    expect(recovered.getBootstrapData().tasks[0]).toMatchObject({ id: taskId, status: "failed" });
+    expect(recovered.resolveApproval(taskId, "9", "approve")).toBe(false);
+    recovered.close();
+  });
+
+  it("closes unanswered approvals when the task ends", async () => {
+    const database = await openDatabase();
+    const taskId = database.createTask("작업", "/tmp/example-project");
+    database.recordApprovalRequest({
+      taskId,
+      requestId: "1",
+      kind: "file_change",
+      summary: "1개 파일 변경을 적용하려고 해.",
+      cwd: "/tmp/example-project",
+      reason: null,
+      canApprove: true,
+    });
+    database.recordTaskEvent(taskId, "cancelled", "요청을 멈췄어.", "요청을 멈췄어.");
+    expect(database.resolveApproval(taskId, "1", "approve")).toBe(false);
+    expect(database.getBootstrapData().tasks[0]).toMatchObject({ status: "cancelled" });
+    database.close();
+  });
 });
