@@ -19,6 +19,7 @@ Today every request starts from scratch. `AgentCore.buildPrompt` sends only the 
 - To get clean, conversation-scoped exchanges, one migration adds two nullable columns to `tasks`:
   - `result`, set when a task completes. Don't infer exchanges from the `messages` table, which also holds failure and cancellation messages.
   - `conversation_id`, a foreign key to `conversations`, set when a task is created. History is filtered by it, so Phase 07's multiple conversations don't leak into each other.
+  - The foreign key uses `ON DELETE SET NULL`. Tasks are separate from the conversation (see `AGENTS.md`), so deleting a conversation in Phase 07 keeps the task, Activity, and approval history. Set this in the first migration: changing a delete action later makes drizzle-kit rebuild `tasks`, and inside the migrator's transaction that `DROP TABLE` would cascade into `activities` and `approvals`.
 - The migration backfills both columns. Existing tasks get the single existing conversation. Completed tasks get their result from the assistant message written in the same transaction, which has exactly the same timestamp as `completed_at`. Rows that still have no result are skipped, not sent as empty answers.
 - Prompt order: role, safety rules, project guidance, saved memories, recent conversation, current request.
 - Keep prompt-based context instead of resuming Codex threads (`thread/resume`). Threads would tie conversation state to one provider and replay tool output. This decision can be revisited when multiple conversations arrive.
