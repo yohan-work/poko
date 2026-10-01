@@ -5,7 +5,7 @@ export function ActivityPanel() {
 
   return (
     <section className="session-panel" aria-labelledby="activity-title">
-      <p className="future-view__eyebrow">함께한 순간</p>
+      <p className="session-panel__eyebrow">함께한 순간</p>
       <h1 id="activity-title">포코의 활동</h1>
       <p className="session-panel__description">포코가 작업한 과정의 기록이야.</p>
       {activities.length === 0 ? (

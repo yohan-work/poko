@@ -1,16 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { AppView } from "../../../electron/shared";
 import { useAppStore } from "./state/appStore";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { ActivityPanel } from "./components/activity/ActivityPanel";
 import { TasksPanel } from "./components/activity/TasksPanel";
 import { MemoryPanel } from "./components/activity/MemoryPanel";
+import { Character, stateLabels } from "./components/character/Character";
+import { Icon, type IconName } from "./components/Icon";
 
-const navigation: { id: AppView; label: string; shortLabel: string }[] = [
-  { id: "conversation", label: "대화", shortLabel: "대화" },
-  { id: "memory", label: "기억", shortLabel: "기억" },
-  { id: "tasks", label: "작업", shortLabel: "작업" },
-  { id: "activity", label: "활동", shortLabel: "활동" },
+const navigation: { id: AppView; label: string; icon: IconName }[] = [
+  { id: "conversation", label: "대화", icon: "chat" },
+  { id: "tasks", label: "작업", icon: "tasks" },
+  { id: "memory", label: "기억", icon: "memory" },
+  { id: "activity", label: "활동", icon: "activity" },
 ];
 
 function WorkspaceButton() {
@@ -20,44 +22,111 @@ function WorkspaceButton() {
   const selectWorkspace = useAppStore((state) => state.selectWorkspace);
 
   return (
-    <div className="workspace-control">
+    <div className="sidebar__footer">
       <button
         className="workspace-button"
         type="button"
         onClick={() => void selectWorkspace()}
         disabled={isSelectingWorkspace}
-        data-state={
-          isSelectingWorkspace
-            ? "loading"
-            : workspaceError
-              ? "error"
-              : workspace
-                ? "success"
-                : "default"
-        }
+        data-state={workspaceError ? "error" : workspace ? "selected" : "empty"}
         title={workspace?.path ?? "작업할 폴더 선택"}
       >
         <span className="workspace-button__icon" aria-hidden="true">
-          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M2.75 5.75c0-.83.67-1.5 1.5-1.5h4l1.6 1.7h5.9c.83 0 1.5.67 1.5 1.5v7.3c0 .83-.67 1.5-1.5 1.5h-11c-.83 0-1.5-.67-1.5-1.5v-9Z" />
-          </svg>
+          <Icon name="folder" />
         </span>
         <span className="workspace-button__copy">
-          <span className="workspace-button__label">작업 폴더</span>
           <span className="workspace-button__value">
-            {isSelectingWorkspace ? "폴더를 여는 중" : (workspace?.name ?? "선택해 줘")}
+            {isSelectingWorkspace ? "폴더를 여는 중" : (workspace?.name ?? "작업 폴더 선택")}
+          </span>
+          <span className="workspace-button__label">
+            {workspace ? "작업 폴더 · 읽기 전용" : "포코가 살펴볼 폴더"}
           </span>
         </span>
-        <span className="workspace-button__chevron" aria-hidden="true">
-          ⌄
-        </span>
+        <Icon name="chevron" className="workspace-button__chevron" />
       </button>
       {workspaceError && (
-        <span className="workspace-error" role="alert">
+        <p className="workspace-error" role="alert">
           {workspaceError}
-        </span>
+        </p>
       )}
     </div>
+  );
+}
+
+function Sidebar({ onCollapse }: { onCollapse: () => void }) {
+  const activeView = useAppStore((state) => state.activeView);
+  const characterState = useAppStore((state) => state.characterState);
+  const tasks = useAppStore((state) => state.tasks);
+  const setActiveView = useAppStore((state) => state.setActiveView);
+
+  return (
+    <aside className="sidebar" aria-label="포코 메뉴">
+      <div className="sidebar__header">
+        <button
+          className="icon-button"
+          type="button"
+          onClick={onCollapse}
+          aria-label="사이드바 닫기"
+          title="사이드바 닫기"
+        >
+          <Icon name="sidebar" />
+        </button>
+        <button
+          className="brand"
+          type="button"
+          onClick={() => setActiveView("conversation")}
+          aria-label="Poko 홈"
+        >
+          <Character state={characterState} size={22} />
+          <span className="brand__name">poko</span>
+        </button>
+      </div>
+
+      <nav className="sidebar__nav" aria-label="주요 화면">
+        {navigation.map((item) => (
+          <button
+            className={`nav-item${activeView === item.id ? " is-active" : ""}`}
+            type="button"
+            key={item.id}
+            onClick={() => setActiveView(item.id)}
+            aria-current={activeView === item.id ? "page" : undefined}
+          >
+            <Icon name={item.icon} />
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <section className="sidebar__recent" aria-labelledby="recent-title">
+        <h2 id="recent-title" className="sidebar__section-title">
+          최근 작업
+        </h2>
+        {tasks.length === 0 ? (
+          <p className="sidebar__empty">아직 작업이 없어.</p>
+        ) : (
+          <ul className="recent-list">
+            {tasks.slice(0, 30).map((task) => (
+              <li key={task.id}>
+                <button
+                  className="recent-list__item"
+                  type="button"
+                  onClick={() => setActiveView("tasks")}
+                  title={task.title}
+                >
+                  <span
+                    className={`recent-list__dot recent-list__dot--${task.status}`}
+                    aria-hidden="true"
+                  />
+                  <span className="recent-list__title">{task.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <WorkspaceButton />
+    </aside>
   );
 }
 
@@ -65,35 +134,34 @@ export function App() {
   const activeView = useAppStore((state) => state.activeView);
   const characterState = useAppStore((state) => state.characterState);
   const initializeWorkspace = useAppStore((state) => state.initializeWorkspace);
-  const setActiveView = useAppStore((state) => state.setActiveView);
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     void initializeWorkspace();
   }, [initializeWorkspace]);
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <button
-          className="brand"
-          type="button"
-          onClick={() => setActiveView("conversation")}
-          aria-label="Poko 홈"
-        >
-          <span className="brand__mark" aria-hidden="true">
-            <i />
-            <i />
-          </span>
-          <span className="brand__name">poko</span>
-        </button>
-        <WorkspaceButton />
-      </header>
+    <div className="app-shell" data-sidebar={isSidebarOpen ? "open" : "closed"}>
+      {/* One live region announces Poko's state; the drawn characters stay silent. */}
+      <p className="sr-only" aria-live="polite">
+        포코: {stateLabels[characterState]}
+      </p>
+      {isSidebarOpen && <Sidebar onCollapse={() => setSidebarOpen(false)} />}
 
       <main className="main-content">
+        {!isSidebarOpen && (
+          <button
+            className="icon-button main-content__sidebar-toggle"
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="사이드바 열기"
+            title="사이드바 열기"
+          >
+            <Icon name="sidebar" />
+          </button>
+        )}
         {activeView === "conversation" ? (
           <ChatPanel />
-        ) : activeView === "activity" ? (
-          <ActivityPanel />
         ) : activeView === "memory" ? (
           <MemoryPanel />
         ) : activeView === "tasks" ? (
@@ -102,33 +170,6 @@ export function App() {
           <ActivityPanel />
         )}
       </main>
-
-      <nav className="bottom-nav" aria-label="주요 화면">
-        {navigation.map((item) => (
-          <button
-            className={`bottom-nav__item${activeView === item.id ? " is-active" : ""}`}
-            type="button"
-            key={item.id}
-            onClick={() => setActiveView(item.id)}
-            aria-current={activeView === item.id ? "page" : undefined}
-          >
-            <span
-              className={`bottom-nav__glyph bottom-nav__glyph--${item.id}`}
-              aria-hidden="true"
-            />
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      <footer className="status-line" data-state={characterState}>
-        <span className="status-line__dot" aria-hidden="true" />
-        <span>{characterState === "error" ? "연결을 확인해 줘" : "내 컴퓨터에서 실행 중"}</span>
-        <span className="status-line__separator" aria-hidden="true">
-          ·
-        </span>
-        <span>미리보기</span>
-      </footer>
     </div>
   );
 }

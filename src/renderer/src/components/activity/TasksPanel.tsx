@@ -13,7 +13,7 @@ export function TasksPanel() {
 
   return (
     <section className="session-panel" aria-labelledby="tasks-title">
-      <p className="future-view__eyebrow">우리의 프로젝트</p>
+      <p className="session-panel__eyebrow">우리의 프로젝트</p>
       <h1 id="tasks-title">함께한 작업</h1>
       <p className="session-panel__description">포코와 함께한 작업이 이 컴퓨터에 저장돼.</p>
       {tasks.length === 0 ? (

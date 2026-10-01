@@ -38,7 +38,7 @@ export function MemoryPanel() {
 
   return (
     <section className="session-panel memory-panel" aria-labelledby="memory-title">
-      <p className="future-view__eyebrow">포코가 기억할 내용</p>
+      <p className="session-panel__eyebrow">포코가 기억할 내용</p>
       <h1 id="memory-title">우리의 기억</h1>
       <p className="session-panel__description">직접 저장한 내용은 이 컴퓨터에만 보관돼.</p>
       <form className="memory-form" onSubmit={(event) => void submit(event)}>
@@ -65,7 +65,7 @@ export function MemoryPanel() {
               </option>
             ))}
           </select>
-          <button className="chat-composer__send" type="submit" disabled={!content.trim()}>
+          <button className="primary-button" type="submit" disabled={!content.trim()}>
             기억하기
           </button>
         </div>
