@@ -1,6 +1,6 @@
 import type { OverlayScene } from "../shared";
 import type { AxElement, Frame, WindowSnapshot } from "./axHelper";
-import { MAX_LISTED } from "./lookPrompt";
+import { listedElements } from "./lookPrompt";
 
 /** Poko points at no more than this many elements per answer. */
 export const MAX_POINTS = 3;
@@ -29,7 +29,7 @@ const CODE = /(```[\s\S]*?(?:```|$)|`[^`\n]*`)/;
 
 /** Only elements Codex was shown can be cited. */
 function listedById(snapshot: WindowSnapshot): Map<number, AxElement> {
-  return new Map(snapshot.elements.slice(0, MAX_LISTED).map((element) => [element.id, element]));
+  return new Map(listedElements(snapshot).map((element) => [element.id, element]));
 }
 
 /** Applies `replace` to the prose of a Markdown answer, leaving code untouched. */
