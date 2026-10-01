@@ -1,28 +1,27 @@
 import { useMemo, useState } from "react";
 import { useAppStore, type ActivityEntry } from "../../state/appStore";
-import { clockTime, dayLabel } from "../../lib/time";
+import { clockTime, dayKey, dayLabel } from "../../lib/time";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 
 export function ActivityPanel() {
   const activities = useAppStore((state) => state.activities);
-  const tasks = useAppStore((state) => state.tasks);
   const [query, setQuery] = useState("");
 
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const titles = new Map(tasks.map((task) => [task.id, task.title]));
     const sorted = activities
       .filter((entry) => entry.message.toLowerCase().includes(needle))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const byDay = new Map<string, Array<ActivityEntry & { taskTitle?: string }>>();
+    // Group by calendar day, not by label, so equal labels from different years stay apart.
+    const byDay = new Map<string, { label: string; entries: ActivityEntry[] }>();
     for (const entry of sorted) {
-      const label = dayLabel(entry.createdAt);
-      const list = byDay.get(label) ?? [];
-      list.push({ ...entry, taskTitle: titles.get(entry.taskId) });
-      byDay.set(label, list);
+      const key = dayKey(entry.createdAt);
+      const group = byDay.get(key) ?? { label: dayLabel(entry.createdAt), entries: [] };
+      group.entries.push(entry);
+      byDay.set(key, group);
     }
     return [...byDay.entries()];
-  }, [activities, tasks, query]);
+  }, [activities, query]);
 
   return (
     <Page labelledBy="activity-title">
@@ -38,8 +37,8 @@ export function ActivityPanel() {
       ) : groups.length === 0 ? (
         <EmptyState>검색과 맞는 기록이 없어.</EmptyState>
       ) : (
-        groups.map(([label, entries]) => (
-          <section className="timeline" key={label} aria-label={label}>
+        groups.map(([key, { label, entries }]) => (
+          <section className="timeline" key={key} aria-label={label}>
             <h2 className="timeline__day">{label}</h2>
             <ol className="timeline__list">
               {entries.map((entry) => (

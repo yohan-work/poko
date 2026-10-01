@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { PersistedMemory } from "../../../../../electron/shared";
 import type { MemoryInput } from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
@@ -133,21 +133,32 @@ export function MemoryPanel() {
   );
 }
 
-/** Rough check for text that the 4-line clamp would hide. */
-function isLong(content: string): boolean {
-  return content.length > 120 || content.split("\n").length > 4;
-}
-
 function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const contentRef = useRef<HTMLParagraphElement>(null);
+
+  // Measure the clamped text so the toggle appears whenever lines are actually hidden.
+  useLayoutEffect(() => {
+    const element = contentRef.current;
+    if (!element || expanded) return;
+    const measure = () => setOverflows(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [expanded]);
+
   return (
     <li className="memory-card">
       <span className="memory-card__type">
         {memoryTypes.find((item) => item.value === memory.type)?.label}
       </span>
       <div>
-        <p className={`memory-card__content${expanded ? " is-expanded" : ""}`}>{memory.content}</p>
-        {isLong(memory.content) && (
+        <p ref={contentRef} className={`memory-card__content${expanded ? " is-expanded" : ""}`}>
+          {memory.content}
+        </p>
+        {(overflows || expanded) && (
           <button
             className="memory-card__more"
             type="button"

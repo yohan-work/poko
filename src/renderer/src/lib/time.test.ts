@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayLabel, relativeTime } from "./time";
+import { dayKey, dayLabel, relativeTime } from "./time";
 
 const now = new Date(2026, 9, 1, 15, 0, 0);
 const at = (y: number, m: number, d: number, h: number, min: number, sec = 0) =>
@@ -20,5 +20,13 @@ describe("dayLabel", () => {
     expect(dayLabel(at(2026, 9, 1, 0, 5), now)).toBe("오늘");
     expect(dayLabel(at(2026, 8, 30, 23, 59), now)).toBe("어제");
     expect(dayLabel(at(2026, 8, 28, 10, 0), now)).toMatch(/^9월 28일/);
+  });
+});
+
+describe("dates from another year", () => {
+  it("include the year and group separately", () => {
+    expect(relativeTime(at(2025, 9, 1, 9, 0), now)).toBe("2025년 10월 1일");
+    expect(dayLabel(at(2025, 9, 1, 9, 0), now)).toMatch(/^2025년 10월 1일/);
+    expect(dayKey(at(2025, 9, 1, 9, 0))).not.toBe(dayKey(at(2026, 9, 1, 9, 0)));
   });
 });

@@ -20,6 +20,7 @@ export interface ConversationMessage {
 export interface ActivityEntry {
   id: string;
   taskId: string;
+  taskTitle?: string;
   message: string;
   createdAt: string;
 }
@@ -133,7 +134,13 @@ const MAX_ACTIVITIES = 500;
 function addActivity(state: AppState, taskId: string, message: string): ActivityEntry[] {
   return [
     ...state.activities,
-    { id: crypto.randomUUID(), taskId, message, createdAt: new Date().toISOString() },
+    {
+      id: crypto.randomUUID(),
+      taskId,
+      taskTitle: state.tasks.find((task) => task.id === taskId)?.title,
+      message,
+      createdAt: new Date().toISOString(),
+    },
   ].slice(-MAX_ACTIVITIES);
 }
 
