@@ -4,6 +4,18 @@
 
 Poko is an early-stage open-source project. It gives local coding-agent tools a friendly character-led desktop interface and keeps conversation history, tasks, and explicit memories on your computer.
 
+![Poko home screen with the character greeting and message box](docs/images/screenshots/conversation.png)
+
+## Screenshots
+
+| Tasks | Memory |
+| --- | --- |
+| ![Empty Tasks view](docs/images/screenshots/tasks.png) | ![Empty Memory view with a New memory button](docs/images/screenshots/memory.png) |
+
+**Activity**
+
+![Empty Activity view](docs/images/screenshots/activity.png)
+
 ## Project status
 
 - [x] Foundation and architecture documented
