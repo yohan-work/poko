@@ -30,18 +30,18 @@ export function Character({ state, size = 72, showStatus = false }: CharacterPro
         viewBox="0 0 100 100"
         xmlns="http://www.w3.org/2000/svg"
       >
-        <circle className="character__ring" cx="46" cy="55" r="42" />
+        <circle className="character__ring" cx="50" cy="54" r="37" />
         <g className="character__body-group">
-          <circle className="character__body" cx="46" cy="55" r="35" />
+          <circle className="character__body" cx="50" cy="54" r="31" />
           <g className="character__eyes">
-            <rect className="character__eye" x="34" y="44" width="7.5" height="15" rx="3.75" />
-            <rect className="character__eye" x="48" y="44" width="7.5" height="15" rx="3.75" />
+            <rect className="character__eye" x="39.4" y="44.3" width="6.6" height="13.3" rx="3.3" />
+            <rect className="character__eye" x="51.8" y="44.3" width="6.6" height="13.3" rx="3.3" />
           </g>
-          <path className="character__happy" d="M34 54q3.75-6 7.5 0M48 54q3.75-6 7.5 0" />
+          <path className="character__happy" d="M39.4 52.6q3.3-5.3 6.6 0M51.8 52.6q3.3-5.3 6.6 0" />
         </g>
-        {/* Poko's companion dot: orbits while thinking, blinks for approval, falls on error. */}
+        {/* Poko's companion dot orbits at radius 38 so its whole path stays inside the viewBox. */}
         <g className="character__orbit">
-          <circle className="character__satellite" cx="81" cy="21" r="7.5" />
+          <circle className="character__satellite" cx="76.9" cy="27.1" r="6.5" />
         </g>
       </svg>
       {showStatus && (

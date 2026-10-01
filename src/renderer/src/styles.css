@@ -1,7 +1,7 @@
 /* Poko desktop UI
  * layout: left sidebar (navigation, recent tasks, workspace) + centered conversation column
  * tone: quiet, warm neutral surfaces; one coral accent; follows the system light/dark setting
- * character: a white orb with pill eyes and a coral companion dot; states use the eyes, the dot, and motion
+ * character: a black orb with white pill eyes and a coral companion dot; states use the eyes, the dot, and motion
  */
 
 :root {
@@ -26,10 +26,9 @@
   --color-success: oklch(72% 0.12 150);
   --color-error: oklch(70% 0.15 25);
   --color-error-soft: oklch(70% 0.15 25 / 14%);
-  --color-character: oklch(98% 0.004 85);
-  --color-character-edge: oklch(100% 0 0 / 0%);
-  --color-character-eye: oklch(17% 0.005 75);
-  --character-shadow: none;
+  --color-character: oklch(14% 0.003 75);
+  --color-character-edge: oklch(100% 0 0 / 30%);
+  --color-character-eye: oklch(98% 0.004 85);
   --font-body:
     "IBM Plex Sans Variable", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-display: "Iowan Old Style", "Palatino", "Georgia", "Apple SD Gothic Neo", serif;
@@ -75,9 +74,8 @@
     --color-success: oklch(50% 0.12 150);
     --color-error: oklch(52% 0.17 25);
     --color-error-soft: oklch(52% 0.17 25 / 10%);
-    --color-character: oklch(100% 0 0);
-    --color-character-edge: oklch(0% 0 0 / 22%);
-    --character-shadow: drop-shadow(0 1px 2px oklch(0% 0 0 / 18%));
+    --color-character: oklch(15% 0.003 75);
+    --color-character-edge: oklch(0% 0 0 / 0%);
     --shadow-composer: 0 4px 20px -10px oklch(0% 0 0 / 18%);
   }
 }
@@ -413,24 +411,25 @@ button:disabled {
 .character__art {
   display: block;
   overflow: visible;
-  filter: var(--character-shadow);
 }
 
 .character__body-group {
   transform-box: view-box;
-  transform-origin: 46px 90px;
+  transform-origin: 50px 85px;
   animation: breathe 4.2s ease-in-out infinite;
 }
 
 .character__body {
   fill: var(--color-character);
   stroke: var(--color-character-edge);
-  stroke-width: 1.5;
+  /* A fixed 1px rim keeps the dark orb visible on dark backgrounds even at icon size. */
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
 }
 
 .character__eyes {
   transform-box: view-box;
-  transform-origin: 45px 51px;
+  transform-origin: 50px 51px;
   transition: transform 300ms var(--ease);
   animation: blink 5.5s ease-in-out infinite;
 }
@@ -449,7 +448,7 @@ button:disabled {
 
 .character__orbit {
   transform-box: view-box;
-  transform-origin: 46px 55px;
+  transform-origin: 50px 54px;
 }
 
 .character__satellite {
@@ -529,7 +528,7 @@ button:disabled {
 .character--error .character__satellite {
   animation: none;
   fill: var(--color-text-faint);
-  transform: translate(-2px, 62px) scale(0.8);
+  transform: translate(0, 56px) scale(0.8);
 }
 
 .character--approval .character__ring {
