@@ -305,6 +305,15 @@ describe("CodexAppServerProvider", () => {
     ).toBeNull();
     expect(getFileChanges(change({ type: "rename" }), "/workspace")).toBeNull();
     expect(getFileChanges({ changes: [] }, "/workspace")).toBeNull();
+    // A patch that lays out a bare repository (HEAD or config beside objects/ or refs/).
+    const many = (...paths: string[]) => ({
+      changes: paths.map((path) => ({ path, kind: { type: "add" }, diff: "" })),
+    });
+    expect(
+      getFileChanges(many("tools/HEAD", "tools/objects/x", "tools/refs/x"), "/workspace"),
+    ).toBeNull();
+    expect(getFileChanges(many("tools/config", "tools/refs/heads/main"), "/workspace")).toBeNull();
+    expect(getFileChanges(many("src/config", "src/app.ts"), "/workspace")).toHaveLength(2);
     expect(getFileChanges(change({ type: "update" }, ".git/config"), "/workspace")).toBeNull();
     expect(
       getFileChanges(change({ type: "add" }, ".GIT/hooks/pre-commit"), "/workspace"),

@@ -3,7 +3,7 @@ import {
   type ChildProcessWithoutNullStreams,
   type SpawnOptions,
 } from "node:child_process";
-import { lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
@@ -637,7 +637,31 @@ export function getFileChanges(
       return null;
     changes.push({ path: value.path, change: `${kind}:\n${value.diff}` });
   }
+  const targets = item.changes.flatMap((value) => {
+    const record = value as Record<string, unknown>;
+    const move = isRecord(record.kind) ? record.kind.move_path : undefined;
+    return [record.path, move].filter((path): path is string => typeof path === "string");
+  });
+  if (buildsRepository(root, targets)) return null;
   return changes;
+}
+
+/**
+ * Whether the patch writes `HEAD` or `config` into a folder that has, or gets, `objects/` or
+ * `refs/`. Git treats such a folder as a bare repository, and its config can run programs.
+ */
+function buildsRepository(root: string, paths: string[]): boolean {
+  const written = paths.map((path) => resolve(root, path));
+  return written.some((target) => {
+    const name = basename(target).toLowerCase();
+    if (name !== "head" && name !== "config") return false;
+    const folder = dirname(target);
+    return ["objects", "refs"].some(
+      (part) =>
+        existsSync(join(folder, part)) ||
+        written.some((other) => other.startsWith(join(folder, part) + sep)),
+    );
+  });
 }
 
 /**
