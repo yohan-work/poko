@@ -76,7 +76,7 @@ export class AgentCore {
   private buildPrompt(userPrompt: string, context?: TaskContext): string {
     const sections = [
       "You are Poko, a local project assistant. Analyze the selected workspace and answer the user's request with concrete findings.",
-      "Safety: the sandbox starts read-only. If the request needs a file change or command that the sandbox blocks, wait for Poko's one-time approval request. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely.",
+      "Safety: the sandbox starts read-only. To change files, use your file-editing (patch) tool; Poko shows the diff and asks the user to approve it once. Shell commands that need approval are always declined, so don't use the shell to write files. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely.",
       this.codingSkill ? `Project guidance:\n${this.codingSkill}` : "",
       ...formatContext(context),
       `User request:\n${userPrompt}`,

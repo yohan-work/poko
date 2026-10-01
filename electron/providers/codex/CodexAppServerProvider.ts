@@ -9,7 +9,6 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
 import type { AgentProvider } from "../../agent/AgentProvider";
 import { signalProcess } from "./CodexProvider";
-import { deniedCommandReason } from "./commandPolicy";
 import {
   encodeRequestId,
   isRecord,
@@ -544,43 +543,23 @@ export class CodexAppServerProvider implements AgentProvider {
   }
 
   private describeCommandApproval(
-    session: TaskSession,
+    _session: TaskSession,
     requestId: string,
     params: Record<string, unknown>,
   ): ApprovalEvent {
+    // An approved command would run outside the read-only sandbox, and a text screen can't make
+    // that safe, so v0.1 never offers command approvals. File changes are offered instead, as a
+    // diff limited to the workspace. Sandboxed command approval is planned for Phase 06.
     const command = readString(params.command)?.trim();
-    const cwd = readString(params.cwd) ?? null;
-    // Older servers omit `kind`; the protocol default is "command".
-    const kind = params.kind ?? "command";
-    // Network access stays unavailable. An execpolicy amendment is only a proposal: it takes
-    // effect solely through "acceptWithExecpolicyAmendment", which Poko never sends, so its
-    // presence (Codex attaches one to most requests) does not broaden anything.
-    const present = (value: unknown) =>
-      Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined;
-    const needsNetwork =
-      present(params.networkApprovalContext) || present(params.proposedNetworkPolicyAmendments);
-    // An approved command runs outside the sandbox, so only the allowlist in commandPolicy.ts
-    // is offered. Allowed tools can still run project code; the approval card warns about it.
-    // Length first: the screen is linear, but there is no reason to scan an oversized command.
-    const denied = command && command.length <= 8_000 ? deniedCommandReason(command) : null;
-    const canApprove =
-      kind === "command" &&
-      Boolean(command && command.length <= 8_000) &&
-      // Only the workspace root: a subfolder (or .git itself) could hold a repository
-      // whose config runs programs.
-      Boolean(cwd && isWorkspaceRoot(session.task.cwd, cwd)) &&
-      !needsNetwork &&
-      !denied;
     return {
       type: "approvalRequired",
       requestId,
       kind: "command",
       summary: command || "명령 내용을 확인할 수 없어.",
-      cwd,
-      reason: denied
-        ? `포코가 허용하지 않는 종류의 명령이라 거절했어 (${denied}).`
-        : (readString(params.reason) ?? null),
-      canApprove,
+      cwd: readString(params.cwd) ?? null,
+      reason:
+        "명령 실행 승인은 아직 지원하지 않아서 거절했어. 파일 변경은 확인을 받아 진행할 수 있어.",
+      canApprove: false,
     };
   }
 
@@ -647,7 +626,10 @@ export function getFileChanges(
     const kind = readString(value.kind.type);
     if (!kind || !["add", "update", "delete"].includes(kind)) return null;
     if (!isInside(root, resolve(root, value.path))) return null;
+    // Git config and hooks run programs, so a patch never touches .git (any case, for macOS).
+    if (touchesGitDirectory(value.path)) return null;
     const movePath = value.kind.move_path;
+    if (typeof movePath === "string" && touchesGitDirectory(movePath)) return null;
     if (
       movePath != null &&
       (typeof movePath !== "string" || !isInside(root, resolve(root, movePath)))
@@ -658,11 +640,8 @@ export function getFileChanges(
   return changes;
 }
 
-/** True when `target` resolves to the workspace root itself. */
-function isWorkspaceRoot(root: string, target: string): boolean {
-  if (!isAbsolute(target)) return false;
-  const realRoot = realPath(resolve(root));
-  return realRoot !== null && realRoot === realPath(resolve(target));
+function touchesGitDirectory(path: string): boolean {
+  return path.split(/[\\/]/).some((part) => part.toLowerCase() === ".git");
 }
 
 export function isInside(root: string, target: string): boolean {

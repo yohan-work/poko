@@ -1084,16 +1084,6 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-.approval-card__warning {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-soft);
-  background: var(--color-error-soft);
-  font-size: 0.84rem;
-  line-height: 1.5;
-}
-
 .approval-card__details {
   display: grid;
   margin: 0;

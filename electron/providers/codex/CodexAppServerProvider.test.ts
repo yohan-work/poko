@@ -130,6 +130,35 @@ const commandApproval = (overrides: Record<string, unknown> = {}) => ({
   },
 });
 
+/** Starts a file-change item and asks to approve it, the way Codex does. */
+function sendFileChange(
+  server: FakeAppServer,
+  { id = 7 as string | number, path = "src/a.ts", params = {} as Record<string, unknown> } = {},
+) {
+  server.send({
+    method: "item/started",
+    params: {
+      item: {
+        type: "fileChange",
+        id: "patch-1",
+        status: "inProgress",
+        changes: [{ path, kind: { type: "update" }, diff: "-a\n+b" }],
+      },
+    },
+  });
+  server.send({
+    id,
+    method: "item/fileChange/requestApproval",
+    params: {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "patch-1",
+      startedAtMs: 1,
+      ...params,
+    },
+  });
+}
+
 describe("CodexAppServerProvider", () => {
   it("streams a read-only turn to completion", async () => {
     const server = new FakeAppServer();
@@ -157,15 +186,11 @@ describe("CodexAppServerProvider", () => {
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
-    // Older servers omit `kind`; it defaults to "command".
-    server.send(commandApproval());
+    sendFileChange(server);
 
-    const event = await stream.next("approvalRequired");
-    expect(event).toMatchObject({
+    expect(await stream.next("approvalRequired")).toMatchObject({
       requestId: "7",
-      kind: "command",
-      summary: "pnpm test",
-      cwd: "/workspace",
+      kind: "file_change",
       canApprove: true,
     });
     expect(provider.hasPendingApproval("other-task", "7")).toBe(false);
@@ -182,26 +207,49 @@ describe("CodexAppServerProvider", () => {
   });
 
   it.each([
-    ["outside the workspace", { cwd: "/elsewhere" }],
-    ["in a workspace subfolder", { cwd: "/workspace/.git" }],
-    ["without a command", { command: null }],
+    ["a plain command", {}],
+    // The real shape: an execpolicy proposal and a decision list.
+    [
+      "with an execpolicy proposal",
+      {
+        command: "/bin/zsh -lc \"printf 'hi' > hello.txt\"",
+        proposedExecpolicyAmendment: ["/bin/zsh", "-lc", "printf 'hi' > hello.txt"],
+        availableDecisions: ["accept", "cancel"],
+      },
+    ],
     ["asking for network access", { networkApprovalContext: { host: "example.com" } }],
-    ["asking for a network policy change", { proposedNetworkPolicyAmendments: [{}] }],
-    ["the server won't accept", { availableDecisions: ["decline", "cancel"] }],
-    ["of an unknown kind", { kind: "permissions" }],
-  ])("declines a command %s without asking", async (_label, overrides) => {
+  ])("declines every command approval (%s) without asking", async (_label, overrides) => {
     const server = new FakeAppServer();
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
     server.send(commandApproval(overrides));
 
-    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: false });
+    expect(await stream.next("approvalRequired")).toMatchObject({
+      kind: "command",
+      canApprove: false,
+      reason: expect.stringContaining("지원하지 않아"),
+    });
     expect(await server.waitFor((m) => m.id === 7)).toEqual({
       id: 7,
       result: { decision: "decline" },
     });
     expect(provider.hasPendingApproval("task-1", "7")).toBe(false);
+    server.kill();
+  });
+
+  it("declines a file change the server won't let us accept once", async () => {
+    const server = new FakeAppServer();
+    const provider = providerFor(server);
+    const stream = consume(provider.runTask(task));
+    await turnStarted(server);
+    sendFileChange(server, { params: { availableDecisions: ["acceptForSession", "cancel"] } });
+
+    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: false });
+    expect(await server.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "decline" },
+    });
     server.kill();
   });
 
@@ -252,6 +300,13 @@ describe("CodexAppServerProvider", () => {
     ).toBeNull();
     expect(getFileChanges(change({ type: "rename" }), "/workspace")).toBeNull();
     expect(getFileChanges({ changes: [] }, "/workspace")).toBeNull();
+    expect(getFileChanges(change({ type: "update" }, ".git/config"), "/workspace")).toBeNull();
+    expect(
+      getFileChanges(change({ type: "add" }, ".GIT/hooks/pre-commit"), "/workspace"),
+    ).toBeNull();
+    expect(
+      getFileChanges(change({ type: "update", move_path: ".git/config" }), "/workspace"),
+    ).toBeNull();
   });
 
   it("fails closed on unsupported server requests", async () => {
@@ -276,7 +331,7 @@ describe("CodexAppServerProvider", () => {
     const controller = new AbortController();
     const stream = consume(provider.runTask(task, { signal: controller.signal }));
     await turnStarted(server);
-    server.send(commandApproval());
+    sendFileChange(server);
     await stream.next("approvalRequired");
 
     controller.abort();
@@ -293,7 +348,7 @@ describe("CodexAppServerProvider", () => {
     const provider = providerFor(server, { approvalTimeoutMs: 20 });
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
-    server.send(commandApproval());
+    sendFileChange(server);
     await stream.next("approvalRequired");
 
     expect(await server.waitFor((m) => m.id === 7)).toEqual({
@@ -383,28 +438,17 @@ describe("CodexAppServerProvider", () => {
     }
   });
 
-  it("still asks about a command that only proposes an execpolicy amendment, and accepts it once", async () => {
-    // Real Codex attaches a proposed amendment to most requests and lists its decisions.
+  it("accepts a file change once, never for the session", async () => {
     const server = new FakeAppServer();
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
-    const proposal = ["/bin/zsh", "-lc", "printf 'hi' > hello.txt"];
-    server.send(
-      commandApproval({
-        kind: "command",
-        proposedExecpolicyAmendment: proposal,
-        availableDecisions: [
-          "accept",
-          { acceptWithExecpolicyAmendment: { execpolicy_amendment: proposal } },
-          "cancel",
-        ],
-      }),
-    );
+    sendFileChange(server, {
+      params: { availableDecisions: ["accept", "acceptForSession", "cancel"] },
+    });
 
     expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: true });
     expect(provider.respondToApproval("task-1", "7", "approve")).toBe(true);
-    // Only the one-shot decision is sent, never the amendment.
     expect(await server.waitFor((m) => m.id === 7)).toEqual({
       id: 7,
       result: { decision: "accept" },
@@ -417,7 +461,7 @@ describe("CodexAppServerProvider", () => {
     const provider = providerFor(server);
     const stream = consume(provider.runTask(task));
     await turnStarted(server);
-    server.send(commandApproval({ availableDecisions: ["accept", "cancel"] }));
+    sendFileChange(server, { params: { availableDecisions: ["accept", "cancel"] } });
 
     await stream.next("approvalRequired");
     expect(provider.respondToApproval("task-1", "7", "decline")).toBe(true);
@@ -425,18 +469,6 @@ describe("CodexAppServerProvider", () => {
       id: 7,
       result: { decision: "decline" },
     });
-    server.kill();
-  });
-
-  it("does not treat empty network fields as a network request", async () => {
-    const server = new FakeAppServer();
-    const provider = providerFor(server);
-    const stream = consume(provider.runTask(task));
-    await turnStarted(server);
-    server.send(
-      commandApproval({ proposedNetworkPolicyAmendments: [], networkApprovalContext: null }),
-    );
-    expect(await stream.next("approvalRequired")).toMatchObject({ canApprove: true });
     server.kill();
   });
 });
