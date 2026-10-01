@@ -1,81 +1,20 @@
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
+import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
-  IPC_CHANNELS,
-  type AgentEvent,
+  type AppBootstrap,
   type ApprovalChoice,
   type ApprovalOutcome,
+  IPC_CHANNELS,
+  type MemoryInput,
   type OverlayScene,
+  type PersistedMemory,
   type ScreenLookResponse,
   type ScreenStatus,
   type ScreenWindow,
   type TaskEventPayload,
   type TaskStartResponse,
   type WorkspaceInfo,
-  type AppBootstrap,
-  type MemoryInput,
-  type PersistedMemory,
 } from "./shared";
-
-function isTaskEventPayload(value: unknown): value is TaskEventPayload {
-  if (typeof value !== "object" || value === null || !("taskId" in value) || !("event" in value)) {
-    return false;
-  }
-  const payload = value as { taskId: unknown; event: unknown };
-  if (
-    typeof payload.taskId !== "string" ||
-    typeof payload.event !== "object" ||
-    payload.event === null
-  ) {
-    return false;
-  }
-
-  const event = payload.event as Record<string, unknown>;
-  switch (event.type) {
-    case "started":
-    case "cancelled":
-      return true;
-    case "thinking":
-      return event.message === undefined || typeof event.message === "string";
-    case "tool":
-      return (
-        typeof event.tool === "string" &&
-        (event.detail === undefined || typeof event.detail === "string")
-      );
-    case "output":
-      return (
-        typeof event.content === "string" &&
-        (event.itemId === undefined || typeof event.itemId === "string")
-      );
-    case "completed":
-      return typeof event.result === "string";
-    case "error":
-      return typeof event.error === "string";
-    case "approvalRequired":
-      return (
-        typeof event.requestId === "string" &&
-        (event.kind === "command" || event.kind === "file_change") &&
-        typeof event.summary === "string" &&
-        (event.cwd === null || typeof event.cwd === "string") &&
-        (event.reason === null || typeof event.reason === "string") &&
-        typeof event.canApprove === "boolean" &&
-        (event.diff === undefined ||
-          (Array.isArray(event.diff) &&
-            event.diff.every(
-              (entry: unknown) =>
-                typeof entry === "object" &&
-                entry !== null &&
-                typeof (entry as { path?: unknown }).path === "string" &&
-                typeof (entry as { change?: unknown }).change === "string",
-            )))
-      );
-    default:
-      return false;
-  }
-}
-
-function isAgentEvent(value: unknown): value is AgentEvent {
-  return typeof value === "object" && value !== null && "type" in value;
-}
 
 const pokoApi = {
   app: { bootstrap: (): Promise<AppBootstrap> => ipcRenderer.invoke(IPC_CHANNELS.appBootstrap) },
