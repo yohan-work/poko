@@ -41,6 +41,19 @@ describe("Markdown", () => {
     expect(html).toContain("각주");
     expect(html).not.toContain("Footnotes");
     expect(html).not.toContain('title="#');
+    expect(html).not.toContain("↩");
+  });
+
+  it("keeps footnote ids unique across answers", () => {
+    const html = renderToStaticMarkup(
+      <>
+        <Markdown>{"하나[^1]\n\n[^1]: a"}</Markdown>
+        <Markdown>{"둘[^1]\n\n[^1]: b"}</Markdown>
+      </>,
+    );
+    const ids = [...html.matchAll(/ id="([^"]+)"/g)].map((match) => match[1]);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("does not make links navigable or load images", () => {
