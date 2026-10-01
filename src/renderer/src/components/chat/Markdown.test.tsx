@@ -1,0 +1,34 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { Markdown } from "./Markdown";
+
+const render = (markdown: string) => renderToStaticMarkup(<Markdown>{markdown}</Markdown>);
+
+describe("Markdown", () => {
+  it("renders lists, inline code, tables, and code blocks with a copy button", () => {
+    const html = render(
+      "- one\n- `two`\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n```ts\nconst x = 1;\n```",
+    );
+    expect(html).toContain("<li>one</li>");
+    expect(html).toContain("<code>two</code>");
+    expect(html).toContain("<table>");
+    expect(html).toContain('class="code-block__copy"');
+    expect(html).toContain('<code class="language-ts">const x = 1;\n</code>');
+  });
+
+  it("shows raw HTML as text instead of rendering it", () => {
+    const html = render('hello <img src="x" onerror="alert(1)"> <b>bold</b>');
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<b>");
+    expect(html).toContain("&lt;b&gt;bold&lt;/b&gt;");
+    expect(render("<script>alert(1)</script>")).not.toContain("<script");
+  });
+
+  it("does not make links navigable or load images", () => {
+    const html = render("[docs](https://example.com) ![chart](https://example.com/a.png)");
+    expect(html).not.toContain("<a");
+    expect(html).toContain('title="https://example.com"');
+    expect(html).not.toContain("<img");
+    expect(html).toContain("[이미지: chart]");
+  });
+});

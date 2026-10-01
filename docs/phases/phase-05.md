@@ -69,3 +69,7 @@ Each milestone is its own PR with review.
   - `PokoDatabase.getTaskContext` reads memories and same-conversation exchanges. `limitContext` and `formatContext` in `electron/agent/context.ts` apply the caps and build the prompt sections.
   - Startup task DTOs now select explicit columns, so prompts and results stay in main.
   - Tests cover the caps and newest-first selection, prompt order, failed and cancelled exclusion, conversation isolation, and the backfill on a database created with the earlier migrations.
+- **Milestone 2 (Markdown):** done.
+  - `components/chat/Markdown.tsx` renders assistant answers with `react-markdown` 10 and `remark-gfm` 4. Its default escapes inline raw HTML so it shows as text, and drops block HTML.
+  - Links render as text with the URL as a tooltip, and images render as their alt text. Code blocks get a copy button.
+  - Server-rendered tests cover the formatting, the HTML escaping, and the link and image overrides.
