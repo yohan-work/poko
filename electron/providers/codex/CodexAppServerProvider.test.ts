@@ -438,6 +438,7 @@ describe("CodexAppServerProvider", () => {
       expect(touchesGitDirectory(workspace, "hooks/pre-commit")).toBe(true);
       expect(touchesGitDirectory(workspace, "GIT~1/config")).toBe(true);
       expect(touchesGitDirectory(workspace, ".git./config")).toBe(true);
+      expect(touchesGitDirectory(workspace, ".git::$INDEX_ALLOCATION/config")).toBe(true);
       expect(touchesGitDirectory(workspace, "src/app.ts")).toBe(false);
       expect(
         getFileChanges(

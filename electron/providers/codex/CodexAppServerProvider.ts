@@ -643,13 +643,15 @@ export function getFileChanges(
 /**
  * Whether a path reaches the workspace's `.git` directory. The check runs on the real path
  * (after symlinks), case-insensitively for macOS, and treats Windows aliases (`GIT~1`,
- * `.git.`) as `.git`.
+ * `.git.`, NTFS streams) as `.git`.
  */
 export function touchesGitDirectory(root: string, path: string): boolean {
   const realRoot = realPath(resolve(root));
   const realTarget = realPath(resolve(root, path));
   if (!realRoot || !realTarget) return true;
   const isGit = (part: string) => {
+    // NTFS stream names (`.git::$INDEX_ALLOCATION`) also reach the directory; refuse any `:`.
+    if (part.includes(":")) return true;
     const name = part.toLowerCase().replace(/[. ]+$/, "");
     return name === ".git" || /^git~\d+$/.test(name);
   };
