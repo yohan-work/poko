@@ -32,7 +32,8 @@ let quitting = false;
 function refreshTray(): void {
   showTray(
     { ask: () => void ctx.quickPanel?.show(), open: () => void openMainWindow() },
-    ctx.database?.getSettings().quickShortcut ?? "Alt+Space",
+    // A shortcut another app owns isn't shown, since pressing it wouldn't open the panel.
+    ctx.quickShortcutOk ? (ctx.database?.getSettings().quickShortcut ?? "Alt+Space") : "off",
   );
 }
 

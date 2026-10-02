@@ -60,9 +60,10 @@ export function registerSettingsHandlers(): void {
     if (
       input.quickShortcut !== undefined &&
       (saved.quickShortcut !== before || !ctx.quickShortcutOk)
-    )
+    ) {
       applyQuickShortcut(saved.quickShortcut);
-    if (saved.quickShortcut !== before) ctx.refreshTray?.();
+      ctx.refreshTray?.();
+    }
     return saved;
   });
 }
