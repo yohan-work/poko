@@ -438,18 +438,24 @@ export const useAppStore = create<AppState>((set, get) => ({
 async function switchConversation(id: string | null): Promise<void> {
   const set = useAppStore.setState;
   const state = useAppStore.getState();
+  // Going back to the conversation already shown is always fine, even while Poko works.
+  if (id === state.activeConversationId && id !== null) {
+    set({ activeView: "conversation", conversationError: null });
+    return;
+  }
   if (state.isSending) {
     set({
       conversationError: "포코가 작업 중이라 다른 대화로 옮길 수 없어. 끝난 뒤에 다시 골라 줘.",
     });
     return;
   }
-  if (id === state.activeConversationId && id !== null) {
-    set({ activeView: "conversation", conversationError: null });
-    return;
-  }
+  if (switching) return;
+  switching = true;
   try {
     const response = await window.poko.conversations.open(id);
+    // Sending waits for a switch (see runTask), but a running task's conversation must stay on
+    // screen, so check again before replacing the messages.
+    if (useAppStore.getState().isSending) return;
     if ("error" in response) {
       set({ conversationError: response.error });
       return;
@@ -466,8 +472,13 @@ async function switchConversation(id: string | null): Promise<void> {
     });
   } catch {
     set({ conversationError: "대화를 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
+  } finally {
+    switching = false;
   }
 }
+
+/** True while a conversation is loading; a message can't be sent until it is shown. */
+let switching = false;
 
 /**
  * Shows the user's message, starts a task, and follows its events until it ends. `start`
@@ -479,11 +490,13 @@ async function runTask(
   failure: string,
 ): Promise<boolean> {
   const set = useAppStore.setState;
+  if (switching) return false;
   const userMessage = createMessage("user", content);
   set((state) => ({
     activeView: "conversation",
     characterState: "thinking",
     errorMessage: null,
+    conversationError: null,
     isSending: true,
     progressMessage: "포코가 요청을 살펴보고 있어.",
     messages: [...state.messages, userMessage],
