@@ -3,6 +3,8 @@ import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type AppBootstrap,
   type AppSettings,
+  type EngineId,
+  type ModelOption,
   type ClaudeSetup,
   type DataExportResult,
   type DeleteAllResponse,
@@ -31,6 +33,9 @@ const pokoApi = {
     get: (): Promise<SettingsView> => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
     set: (settings: Partial<AppSettings>): Promise<AppSettings> =>
       ipcRenderer.invoke(IPC_CHANNELS.settingsSet, settings),
+    /** Models the user can pick for an engine. */
+    models: (engine: EngineId): Promise<ModelOption[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.modelsList, engine),
   },
   data: {
     /** Asks where to save, then writes everything Poko kept as JSON. */

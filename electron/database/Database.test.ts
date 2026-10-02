@@ -196,12 +196,14 @@ describe("PokoDatabase", () => {
     const database = await openDatabase();
     expect(database.getSettings()).toEqual({
       engine: "codex",
+      codexModel: null,
+      claudeModel: null,
       memoriesInContext: true,
       checkpointDays: 30,
     });
     expect(
       database.setSettings({ engine: "claude", memoriesInContext: false, checkpointDays: 7 }),
-    ).toEqual({
+    ).toMatchObject({
       engine: "claude",
       memoriesInContext: false,
       checkpointDays: 7,
@@ -212,7 +214,15 @@ describe("PokoDatabase", () => {
         checkpointDays: 365 as unknown as 30,
         engine: "gpt" as unknown as "codex",
       }),
-    ).toEqual({ engine: "claude", memoriesInContext: false, checkpointDays: 7 });
+    ).toMatchObject({ engine: "claude", memoriesInContext: false, checkpointDays: 7 });
+
+    expect(database.setSettings({ codexModel: "gpt-6-astra", claudeModel: "opus" })).toMatchObject({
+      codexModel: "gpt-6-astra",
+      claudeModel: "opus",
+    });
+    expect(
+      database.setSettings({ codexModel: "bad model; rm -rf", claudeModel: null }),
+    ).toMatchObject({ codexModel: "gpt-6-astra", claudeModel: null });
 
     database.acceptScreenNotice();
     database.resetScreenNotice();

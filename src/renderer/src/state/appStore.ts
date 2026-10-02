@@ -6,6 +6,8 @@ import type {
   AppSettings,
   ClaudeSetup,
   DataExportResult,
+  EngineId,
+  ModelOption,
   DeleteAllResponse,
   ApprovalChoice,
   ApprovalOutcome,
@@ -72,6 +74,9 @@ interface AppState {
   /** Checks Codex again from 설정, showing the setup screen if something is missing. */
   recheckSetup: () => Promise<void>;
   settings: AppSettings | null;
+  /** Models per engine, loaded when the picker first needs them. */
+  models: Partial<Record<EngineId, ModelOption[]>>;
+  loadModels: (engine: EngineId) => Promise<void>;
   appVersion: string | null;
   settingsError: string | null;
   /** Loads preferences and the screen permissions for 설정. */
@@ -272,6 +277,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setupChecking: false,
   setupDismissed: false,
   settings: null,
+  models: {},
   appVersion: null,
   settingsError: null,
 
@@ -305,6 +311,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissSetup: () => set({ setupDismissed: true }),
 
   receiveSetup: (setup) => set({ setup }),
+
+  loadModels: async (engine) => {
+    const models = await window.poko.settings.models(engine).catch(() => []);
+    set({ models: { ...get().models, [engine]: models } });
+  },
 
   recheckSetup: async () => {
     set({ setupDismissed: false });

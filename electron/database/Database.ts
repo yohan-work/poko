@@ -22,6 +22,7 @@ import {
   type ApprovalRequest,
   CHECKPOINT_DAY_CHOICES,
   type CheckpointDays,
+  isModelName,
 } from "../shared";
 import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
 
@@ -486,12 +487,16 @@ export class PokoDatabase {
     const rows = this.db
       .select()
       .from(settings)
-      .where(sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine')`)
+      .where(
+        sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine', 'codexModel', 'claudeModel')`,
+      )
       .all();
     const value = (key: string) => rows.find((row) => row.key === key)?.value;
     const days = Number(value("checkpointDays"));
     return {
       engine: value("engine") === "claude" ? "claude" : "codex",
+      codexModel: isModelName(value("codexModel")) ? (value("codexModel") as string) : null,
+      claudeModel: isModelName(value("claudeModel")) ? (value("claudeModel") as string) : null,
       memoriesInContext: value("memoriesInContext") !== "false",
       checkpointDays: (CHECKPOINT_DAY_CHOICES as readonly number[]).includes(days)
         ? (days as CheckpointDays)
@@ -509,6 +514,12 @@ export class PokoDatabase {
     if ((CHECKPOINT_DAY_CHOICES as readonly unknown[]).includes(input.checkpointDays))
       updates.push(["checkpointDays", String(input.checkpointDays)]);
     const timestamp = now();
+    // A model is saved by name, or cleared (back to the CLI's default) with null.
+    for (const key of ["codexModel", "claudeModel"] as const) {
+      const model = input[key];
+      if (model === null) this.db.delete(settings).where(eq(settings.key, key)).run();
+      else if (isModelName(model)) updates.push([key, model]);
+    }
     for (const [key, value] of updates)
       this.db
         .insert(settings)

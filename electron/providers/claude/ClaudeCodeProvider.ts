@@ -16,6 +16,14 @@ export const READ_TOOLS = ["Read", "Grep", "Glob"] as const;
 export const EDIT_TOOLS = ["Edit", "Write"] as const;
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** Claude Code's model aliases; each always points at the latest model of its kind. */
+export const CLAUDE_MODELS = [
+  { id: "fable", label: "Fable" },
+  { id: "opus", label: "Opus" },
+  { id: "sonnet", label: "Sonnet" },
+  { id: "haiku", label: "Haiku" },
+] as const;
+
 export interface ClaudeRuntime {
   executable: string;
   environment: NodeJS.ProcessEnv;
@@ -56,7 +64,7 @@ interface ProviderOptions {
  * user or project rule can allow a tool or change the permission mode; `--safe-mode` turns off
  * hooks, plugins, skills, MCP servers, and CLAUDE.md. Every permission prompt comes to Poko.
  */
-export function claudeArgs(tools: readonly string[]): string[] {
+export function claudeArgs(tools: readonly string[], model?: string): string[] {
   return [
     "-p",
     "--input-format",
@@ -74,6 +82,7 @@ export function claudeArgs(tools: readonly string[]): string[] {
     "--safe-mode",
     "--strict-mcp-config",
     "--no-session-persistence",
+    ...(model ? ["--model", model] : []),
     "--tools",
     tools.join(","),
   ];
@@ -241,7 +250,7 @@ export class ClaudeCodeProvider implements AgentProvider {
     const runtime = this.runtime();
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = this.spawnProcess(runtime.executable, claudeArgs(tools), {
+      child = this.spawnProcess(runtime.executable, claudeArgs(tools, input.model), {
         cwd: input.cwd,
         env: runtime.environment,
         stdio: ["pipe", "pipe", "pipe"],
@@ -539,6 +548,11 @@ export class ClaudeCodeProvider implements AgentProvider {
 
   private friendlyError(result: string, stderr: string): string {
     const detail = `${result}\n${stderr}`.toLowerCase();
+    if (
+      /model/.test(detail) &&
+      /not found|not available|invalid|unknown|access|does not exist/.test(detail)
+    )
+      return "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘.";
     if (/not logged in|log in|login|authentication|unauthorized|401/.test(detail))
       return "Claude Code 로그인이 필요해. 터미널에서 claude를 실행해 로그인해 줘.";
     if (/enoent|not found/.test(detail)) return "Claude Code를 찾지 못했어. 설치를 확인해 줘.";

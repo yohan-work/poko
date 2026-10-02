@@ -1,9 +1,29 @@
 import { app, ipcMain } from "electron";
-import { type AppSettings, IPC_CHANNELS, type SettingsView } from "../shared";
+import { CLAUDE_MODELS } from "../providers/claude/ClaudeCodeProvider";
+import { type AppSettings, IPC_CHANNELS, type ModelOption, type SettingsView } from "../shared";
 import { ctx, isTrustedRenderer } from "./context";
 
-/** The 설정 page: preferences and the app version. */
+const MODEL_CACHE_MS = 10 * 60 * 1000;
+let codexModels: { at: number; models: ModelOption[] } | null = null;
+
+/** The 설정 page and the model picker: preferences, the app version, and models per engine. */
 export function registerSettingsHandlers(): void {
+  ipcMain.handle(
+    IPC_CHANNELS.modelsList,
+    async (event, engine: unknown): Promise<ModelOption[]> => {
+      if (!isTrustedRenderer(event)) throw new Error("Unknown renderer requested models.");
+      if (engine === "claude") return CLAUDE_MODELS.map((model) => ({ ...model }));
+      if (engine !== "codex" || !ctx.screenProvider) return [];
+      // Codex lists what this account can use; asking starts a process, so the answer is kept.
+      if (!codexModels || Date.now() - codexModels.at > MODEL_CACHE_MS) {
+        const models = await ctx.screenProvider.listModels();
+        if (models.length === 0) return [];
+        codexModels = { at: Date.now(), models };
+      }
+      return codexModels.models;
+    },
+  );
+
   ipcMain.handle(IPC_CHANNELS.settingsGet, (event): SettingsView => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer requested settings.");
@@ -16,6 +36,8 @@ export function registerSettingsHandlers(): void {
     const input = typeof raw === "object" && raw !== null ? (raw as Partial<AppSettings>) : {};
     return ctx.database.setSettings({
       engine: input.engine,
+      codexModel: input.codexModel,
+      claudeModel: input.claudeModel,
       memoriesInContext: input.memoriesInContext,
       checkpointDays: input.checkpointDays,
     });

@@ -5,6 +5,7 @@ import {
   type SpawnOptions,
 } from "node:child_process";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
@@ -421,6 +422,12 @@ export class CodexAppServerProvider implements AgentProvider {
     let aborted = false;
     let finalMessage = "";
     let terminal = false;
+    // A picked model the account can't use fails the turn; the user is told how to fix it.
+    let failure = "";
+    const failureMessage = (fallback: string): string =>
+      input.model && /model/i.test(failure)
+        ? "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘."
+        : fallback;
     const terminate = (): void => {
       try {
         signalProcess(connection.child, "SIGTERM");
@@ -459,6 +466,7 @@ export class CodexAppServerProvider implements AgentProvider {
       const threadResult = await this.withRequestTimeout(
         connection.request("thread/start", {
           cwd: input.cwd,
+          ...(input.model ? { model: input.model } : {}),
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
           sandbox: "read-only",
@@ -531,17 +539,24 @@ export class CodexAppServerProvider implements AgentProvider {
             yield { type: "cancelled" };
           } else {
             terminal = true;
+            if (isRecord(turn) && isRecord(turn.error))
+              failure += readString(turn.error.message) ?? "";
             yield {
               type: "error",
-              error: "Codex 작업을 마치지 못했어. 설정을 확인하고 다시 시도해 줘.",
+              error: failureMessage("Codex 작업을 마치지 못했어. 설정을 확인하고 다시 시도해 줘."),
             };
           }
           break;
         } else if (message.method === "error") {
+          if (isRecord(message.params.error))
+            failure += readString(message.params.error.message) ?? "";
           // Transient failures (e.g. a dropped model stream) are retried by Codex itself.
           if (message.params.willRetry === true) continue;
           terminal = true;
-          yield { type: "error", error: "Codex App Server에서 오류가 발생했어. 다시 시도해 줘." };
+          yield {
+            type: "error",
+            error: failureMessage("Codex App Server에서 오류가 발생했어. 다시 시도해 줘."),
+          };
           break;
         }
       }
@@ -564,6 +579,61 @@ export class CodexAppServerProvider implements AgentProvider {
       session.pending.clear();
       this.sessions.delete(input.id);
       terminate();
+    }
+  }
+
+  /** The models this account can use, as Codex lists them; empty when it can't be asked. */
+  async listModels(): Promise<Array<{ id: string; label: string; isDefault?: boolean }>> {
+    const runtime = this.runtime();
+    let connection: AppServerConnection;
+    try {
+      connection = new AppServerConnection(
+        // No workspace and no MCP servers: listing models needs neither.
+        this.spawnProcess(
+          runtime.executable,
+          ["--config", "mcp_servers={}", "app-server", "--listen", "stdio://"],
+          {
+            cwd: tmpdir(),
+            env: runtime.environment,
+            stdio: ["pipe", "pipe", "pipe"],
+            detached: process.platform !== "win32",
+            windowsHide: true,
+          },
+        ),
+      );
+    } catch {
+      return [];
+    }
+    try {
+      await this.withRequestTimeout(
+        connection.request("initialize", {
+          clientInfo: { name: "poko", title: "Poko", version: "0.1.0" },
+          capabilities: {},
+        }),
+      );
+      connection.notify("initialized");
+      const result = await this.withRequestTimeout(connection.request("model/list", {}));
+      const data = isRecord(result) && Array.isArray(result.data) ? result.data : [];
+      return data.flatMap((entry) => {
+        if (!isRecord(entry) || entry.hidden === true) return [];
+        const id = readString(entry.model) ?? readString(entry.id);
+        if (!id) return [];
+        return [
+          {
+            id,
+            label: readString(entry.displayName) ?? id,
+            ...(entry.isDefault === true ? { isDefault: true } : {}),
+          },
+        ];
+      });
+    } catch {
+      return [];
+    } finally {
+      try {
+        signalProcess(connection.child, "SIGTERM");
+      } catch {
+        /* already closed */
+      }
     }
   }
 

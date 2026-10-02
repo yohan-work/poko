@@ -270,6 +270,11 @@ describe("ClaudeCodeProvider", () => {
       return run(script, undefined, { ...task, cwd: root, editsEnabled: true });
     }
 
+    it("passes a picked model and nothing otherwise", () => {
+      expect(claudeArgs(READ_TOOLS, "opus")).toEqual(expect.arrayContaining(["--model", "opus"]));
+      expect(claudeArgs(READ_TOOLS)).not.toContain("--model");
+    });
+
     it("offers edit tools only when edits are on", () => {
       expect(claudeArgs([...READ_TOOLS, ...EDIT_TOOLS]).at(-1)).toBe("Read,Grep,Glob,Edit,Write");
     });

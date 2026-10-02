@@ -120,5 +120,19 @@ The probe ran in a temp folder.
 ## Explicitly deferred
 
 - Screen tasks on Claude Code (it can take images, but the screen loop is tuned for Codex).
-- Choosing a model.
 - Shell commands with approval on either engine.
+
+## Follow-up: choosing a model
+
+- A select under the message box, next to 읽기 전용 / 수정 허용, picks the model for the current engine.
+  - It applies from the next message and is disabled while a task runs.
+  - The choice is stored per engine (`codexModel`, `claudeModel`), and **기본값** leaves the choice to the CLI.
+- **Codex:**
+  - The list comes from the App Server's `model/list`, so it shows only the models the account can use, without hidden ones.
+  - It is fetched from a temp folder with no MCP servers and cached for 10 minutes.
+  - `thread/start` gets the model.
+- **Claude Code:**
+  - The list is the aliases `fable`, `opus`, `sonnet`, and `haiku`, each the latest of its kind, passed as `--model`.
+- **Validation:** model names are checked (`isModelName`) before they are saved or passed to a CLI.
+- **Errors:** a model the account can't use ends with "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘."
+- **Screen tasks** always use Codex's default model.

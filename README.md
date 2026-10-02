@@ -40,6 +40,7 @@ Screenshots use sample data.
 - [x] Installable macOS app with a Codex setup check on first run (Phase 09)
 - [x] Settings page: memory switch, undo retention, export, delete all (Phase 10)
 - [x] Claude Code as an alternative engine, with the same approvals and undo (Phase 11)
+- [x] Model picker under the message box, per engine
 
 ## What Poko is aiming for
 

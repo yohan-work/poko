@@ -52,4 +52,22 @@ describe("EngineProvider", () => {
       events.push(event);
     expect(events.at(-1)).toEqual({ type: "completed", result: "codex" });
   });
+
+  it("passes the engine's picked model, but never to screen tasks", async () => {
+    const seen: Array<string | undefined> = [];
+    const recorder: AgentProvider = {
+      async *runTask(input) {
+        seen.push(input.model);
+        yield { type: "completed", result: "" };
+      },
+    };
+    const provider = new EngineProvider(
+      { codex: recorder, claude: recorder },
+      () => "claude",
+      (engine) => (engine === "claude" ? "opus" : "gpt-6-astra"),
+    );
+    for await (const _ of provider.runTask(task("a"))) void _;
+    for await (const _ of provider.runTask({ ...task("s"), profile: "screen" })) void _;
+    expect(seen).toEqual(["opus", undefined]);
+  });
 });
