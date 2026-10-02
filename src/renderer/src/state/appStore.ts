@@ -57,6 +57,9 @@ interface AppState {
   conversationError: string | null;
   newConversation: () => Promise<void>;
   openConversation: (id: string) => Promise<void>;
+  /** Resolves to an error message, or null when renamed. */
+  renameConversation: (id: string, title: string) => Promise<string | null>;
+  deleteConversation: (id: string) => Promise<string | null>;
   activeView: AppView;
   characterState: CharacterState;
   isSending: boolean;
@@ -202,6 +205,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   newConversation: () => switchConversation(null),
 
   openConversation: (id) => switchConversation(id),
+
+  renameConversation: async (id, title) => {
+    try {
+      const response = await window.poko.conversations.rename(id, title);
+      if ("error" in response) return response.error;
+    } catch {
+      return "이름을 바꾸지 못했어. 잠시 뒤 다시 시도해 줘.";
+    }
+    const clean = title.replace(/\s+/g, " ").trim();
+    set((state) => ({
+      conversations: state.conversations.map((item) =>
+        item.id === id ? { ...item, title: clean } : item,
+      ),
+    }));
+    return null;
+  },
+
+  deleteConversation: async (id) => {
+    try {
+      const response = await window.poko.conversations.delete(id);
+      if ("error" in response) return response.error;
+    } catch {
+      return "대화를 지우지 못했어. 잠시 뒤 다시 시도해 줘.";
+    }
+    const wasActive = get().activeConversationId === id;
+    set((state) => ({
+      conversations: state.conversations.filter((item) => item.id !== id),
+      // Main already cleared it; show the greeting screen for a new conversation.
+      ...(wasActive
+        ? {
+            activeConversationId: null,
+            messages: [],
+            streaming: null,
+            errorMessage: null,
+            conversationError: null,
+            characterState: "idle" as const,
+            progressMessage: null,
+          }
+        : {}),
+    }));
+    return null;
+  },
 
   initializeWorkspace: async () => {
     try {

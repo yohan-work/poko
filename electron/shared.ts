@@ -3,6 +3,8 @@ export const IPC_CHANNELS = {
   workspaceSelect: "workspace:select",
   taskStart: "task:start",
   conversationOpen: "conversation:open",
+  conversationRename: "conversation:rename",
+  conversationDelete: "conversation:delete",
   taskCancel: "task:cancel",
   taskEvent: "task:event",
   appBootstrap: "app:bootstrap",

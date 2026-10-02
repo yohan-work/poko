@@ -7,7 +7,7 @@ import { TasksPanel } from "./components/activity/TasksPanel";
 import { MemoryPanel } from "./components/activity/MemoryPanel";
 import { Character, stateLabels } from "./components/character/Character";
 import { Icon, type IconName } from "./components/Icon";
-import { relativeTime } from "./lib/time";
+import { ConversationItem } from "./components/sidebar/ConversationItem";
 import { useNow } from "./lib/useNow";
 
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
@@ -60,11 +60,9 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const characterState = useAppStore((state) => state.characterState);
   const setActiveView = useAppStore((state) => state.setActiveView);
   const conversations = useAppStore((state) => state.conversations);
-  const activeConversationId = useAppStore((state) => state.activeConversationId);
   const isSending = useAppStore((state) => state.isSending);
   const conversationError = useAppStore((state) => state.conversationError);
   const newConversation = useAppStore((state) => state.newConversation);
-  const openConversation = useAppStore((state) => state.openConversation);
   const now = useNow();
   const busyHint = "포코가 작업 중이라 끝난 뒤에 옮길 수 있어.";
 
@@ -131,35 +129,9 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
           <p className="sidebar__empty">첫 메시지를 보내면 대화가 생겨.</p>
         ) : (
           <ul className="recent-list">
-            {conversations.map((conversation) => {
-              const active = conversation.id === activeConversationId;
-              return (
-                <li key={conversation.id}>
-                  <button
-                    className={`recent-list__item${active ? " is-active" : ""}`}
-                    type="button"
-                    onClick={() => void openConversation(conversation.id)}
-                    disabled={isSending && !active}
-                    aria-current={active ? "true" : undefined}
-                    title={isSending && !active ? busyHint : conversation.title}
-                  >
-                    {active && isSending && (
-                      <>
-                        <span
-                          className="recent-list__dot recent-list__dot--running"
-                          aria-hidden="true"
-                        />
-                        <span className="visually-hidden">작업 중</span>
-                      </>
-                    )}
-                    <span className="recent-list__title">{conversation.title}</span>
-                    <span className="recent-list__time">
-                      {relativeTime(conversation.updatedAt, now)}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
+            {conversations.map((conversation) => (
+              <ConversationItem key={conversation.id} conversation={conversation} now={now} />
+            ))}
           </ul>
         )}
       </section>

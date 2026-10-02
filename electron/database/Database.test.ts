@@ -291,4 +291,32 @@ describe("PokoDatabase", () => {
     expect(upgraded.listConversations()).toEqual([]);
     upgraded.close();
   });
+
+  it("renames and deletes conversations, keeping tasks and Activity", async () => {
+    const database = await openDatabase();
+    const task = database.createTask("메일 요약해 줘", "/tmp/p");
+    const id = database.getTaskConversation(task)?.id as string;
+    expect(database.hasRunningTask(id)).toBe(true);
+    database.recordTaskEvent(task, "completed", "마쳤어.", "요약이야.");
+    expect(database.hasRunningTask(id)).toBe(false);
+
+    expect(database.renameConversation(id, "  받은편지함\n정리  ")).toBe(true);
+    expect(database.getConversation(id)?.title).toBe("받은편지함 정리");
+    expect(() => database.renameConversation(id, "   ")).toThrow(TypeError);
+    expect(() => database.renameConversation(id, "가".repeat(81))).toThrow(TypeError);
+    expect(database.renameConversation("gone", "제목")).toBe(false);
+
+    database.setActiveConversation(id);
+    expect(database.deleteConversation(id)).toBe(true);
+    expect(database.listConversations()).toEqual([]);
+    expect(database.getConversationMessages(id)).toEqual([]);
+    expect(database.getActiveConversationId()).toBeNull();
+    // The task and its Activity stay as the audit trail, detached from the conversation.
+    const data = database.getBootstrapData();
+    expect(data.tasks.map((item) => item.id)).toEqual([task]);
+    expect(data.activities.some((activity) => activity.taskId === task)).toBe(true);
+    expect(database.getTaskConversation(task)).toBeNull();
+    expect(database.deleteConversation(id)).toBe(false);
+    database.close();
+  });
 });
