@@ -44,6 +44,8 @@ export const ctx = {
   quickShortcutOk: true,
   /** Shows the main window, creating it if it was closed. Set by main.ts. */
   openMainWindow: null as (() => Promise<void>) | null,
+  /** Rebuilds the menu bar menu (for example after the shortcut changed). Set by main.ts. */
+  refreshTray: null as (() => void) | null,
 };
 
 /**

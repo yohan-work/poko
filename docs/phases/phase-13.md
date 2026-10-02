@@ -149,4 +149,10 @@ Verified in the built app:
 - Esc hid the panel.
 - The close button hid the main window: the app and the shortcut kept working.
 
-Milestone 2, the menu bar icon, follows.
+**Milestone 2 is implemented.**
+- `electron/quick/tray.ts` shows a template image (`resources/tray/trayTemplate.png` and `@2x`, drawn by `scripts/tray-icon.swift` from the app icon's shapes) with three items: 포코에게 묻기, which shows the current shortcut, 포코 열기, and 종료. The menu is rebuilt when the shortcut changes.
+- The images ship through `extraResources` (`tray/`).
+- Verified in the **packaged** app (`pnpm dist`, opened with a separate data folder):
+  - the menu bar item appears with the three items;
+  - 포코에게 묻기 opens the panel (1 → 2 windows);
+  - 종료 quits the app.
