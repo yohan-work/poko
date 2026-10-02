@@ -57,7 +57,14 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
   - **Foreign handling:**
     - adds the conversation and task to the lists and tracks the task's status;
     - keeps its approval events aside, keyed by `requestId`, so nothing is added twice.
-  - **Adopting:** when the window switches to the conversation holding a foreign running task, it sets `activeTaskId`, `isSending`, and the streaming state, and moves the kept approval cards into `pendingApprovals`. From then on the same listener applies the task's events through `applyTaskEvent`, so streaming, new cards, and completion behave exactly as for the window's own send.
+  - **Adopting** (`adoptTask`) happens whenever the conversation holding a foreign running task is shown, not only on a switch:
+    - **When it runs:** at bootstrap, after `task:active`, on `app:focus-conversation`, on the banner's 보기, and after a switch. A request for the conversation already shown still adopts.
+    - **Order:** it sets `activeTaskId` **first**, before any await. From then on the listener applies that task's events through `applyTaskEvent`, with the same streaming, cards, and completion as the window's own send.
+      - While the conversation's messages load, that task's events are held, using the same mechanism as a starting send, and applied after the messages are in place. Nothing is dropped or shown in the wrong conversation.
+    - **Re-check:** before setting `isSending`, it re-checks with main (`task:active`) that the task is still running.
+      - If it already ended, the window stays idle and reloads the conversation, which then holds the final answer.
+      - Any held terminal event is applied normally.
+    - **Cards:** the kept approval cards move into `pendingApprovals`.
   - **Cards and the banner:** a foreign task's card is never shown in another conversation. When a card arrives, the window shows a banner in the open conversation: "다른 대화에서 확인이 필요해 · 보기". It switches to and adopts that conversation, which is allowed while busy because it holds the running task.
   - **One task at a time:** while a foreign task runs, the composer's send is disabled with "포코가 다른 작업 중이야", the same as during the window's own task, and main refuses a busy start before recording anything.
   - When the window is created or reloaded, it asks main for the active task and its pending approvals with a new `task:active` (main-window only), so a card raised while the window was hidden is still there.
@@ -103,6 +110,9 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
     - streaming and completion;
     - one listener routes every event: held events during a start are applied to the started task, or handed to foreign handling when the start is refused, and nothing is dropped;
     - an adopted task's later events, including streaming, new cards, and completion, are applied;
+    - adoption happens when the conversation is already shown (bootstrap, `task:active`, a focus on the same conversation);
+    - events during the conversation load are held, not dropped;
+    - a task that ended during adoption leaves the window idle;
   - a busy start (quick or main window) records nothing;
   - `conversation:open` while busy is allowed only for the running task's conversation;
   - the shared task start (no workspace, busy, setup not ready, success);
