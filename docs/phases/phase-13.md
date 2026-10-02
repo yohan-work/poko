@@ -47,12 +47,19 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
   - It calls the shared function with `null`, which means a new conversation.
 - **The main window adopts tasks it didn't start.**
   - Today the main window listens to task events only inside its own send, and drops other tasks' events, so it would never see a quick task's approval card.
-  - A new app-level listener in the store handles foreign tasks.
-    - It ignores **every** event while the window's own send is starting (`isSending` with no task id yet), because `runTask` replays those itself.
-    - After that, a task is foreign when its id isn't `activeTaskId`.
-  - For a foreign task, the listener adds the conversation and task to the lists, and keeps its approval events aside, keyed by `requestId` so nothing is added twice.
-  - When the window switches to that conversation, it **adopts** the task: `activeTaskId`, `isSending`, streaming, and the kept approval cards, exactly as if the window had sent the message.
-  - A foreign task's card is never shown in another conversation. When a card arrives, the window instead shows a banner in the open conversation: "다른 대화에서 확인이 필요해 · 보기". It switches to and adopts that conversation, which is allowed while busy because it holds the running task.
+  - **One listener for every task event.** The per-send subscription in `runTask` is replaced by a single app-level listener in the store, which routes each event:
+    - **To the shown task:** an event whose task is `activeTaskId` (the window's own send or an adopted task) goes to `applyTaskEvent`, as today.
+    - **Held during a send's start:** while the window's own send is starting (its task id not known yet), every event is held in arrival order.
+      - When the start reply arrives, the held events for that task id are applied in order, and the rest go to foreign handling.
+      - If the start is refused, all held events go to foreign handling.
+      - Nothing is dropped.
+    - **Otherwise:** foreign handling.
+  - **Foreign handling:**
+    - adds the conversation and task to the lists and tracks the task's status;
+    - keeps its approval events aside, keyed by `requestId`, so nothing is added twice.
+  - **Adopting:** when the window switches to the conversation holding a foreign running task, it sets `activeTaskId`, `isSending`, and the streaming state, and moves the kept approval cards into `pendingApprovals`. From then on the same listener applies the task's events through `applyTaskEvent`, so streaming, new cards, and completion behave exactly as for the window's own send.
+  - **Cards and the banner:** a foreign task's card is never shown in another conversation. When a card arrives, the window shows a banner in the open conversation: "다른 대화에서 확인이 필요해 · 보기". It switches to and adopts that conversation, which is allowed while busy because it holds the running task.
+  - **One task at a time:** while a foreign task runs, the composer's send is disabled with "포코가 다른 작업 중이야", the same as during the window's own task, and main refuses a busy start before recording anything.
   - When the window is created or reloaded, it asks main for the active task and its pending approvals with a new `task:active` (main-window only), so a card raised while the window was hidden is still there.
 - **Panel updates:**
   - `deliverTaskEvent` also sends a reduced view of the panel's own task to the panel: status, text deltas, the final answer or error, and "needs approval".
@@ -94,7 +101,8 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
     - approval cards are kept, never duplicated, and never shown in another conversation;
     - the banner;
     - streaming and completion;
-    - the window's own early events are not treated as foreign;
+    - one listener routes every event: held events during a start are applied to the started task, or handed to foreign handling when the start is refused, and nothing is dropped;
+    - an adopted task's later events, including streaming, new cards, and completion, are applied;
   - a busy start (quick or main window) records nothing;
   - `conversation:open` while busy is allowed only for the running task's conversation;
   - the shared task start (no workspace, busy, setup not ready, success);
