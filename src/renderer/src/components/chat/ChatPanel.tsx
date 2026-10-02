@@ -5,6 +5,8 @@ import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
 import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
+import { EditNoteItem } from "./EditNoteItem";
+import type { EditNote, PersistedMessage } from "../../../../../electron/shared";
 import { useNow } from "../../lib/useNow";
 
 function greeting(date = new Date()): string {
@@ -13,6 +15,14 @@ function greeting(date = new Date()): string {
   if (hour >= 11 && hour < 17) return "좋은 오후야";
   if (hour >= 17 && hour < 22) return "좋은 저녁이야";
   return "늦은 밤이네";
+}
+
+/** Messages and approved changes in time order; a change sits where it was approved. */
+export function timeline(
+  messages: PersistedMessage[],
+  notes: EditNote[],
+): Array<PersistedMessage | EditNote> {
+  return [...messages, ...notes].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 function Composer({ autoFocus }: { autoFocus: boolean }) {
@@ -137,6 +147,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
 
 export function ChatPanel() {
   const messages = useAppStore((state) => state.messages);
+  const editNotes = useAppStore((state) => state.editNotes);
   const characterState = useAppStore((state) => state.characterState);
   const isSending = useAppStore((state) => state.isSending);
   const progressMessage = useAppStore((state) => state.progressMessage);
@@ -195,18 +206,19 @@ export function ChatPanel() {
         }}
       >
         <ol className="message-list" aria-label="대화 기록">
-          {messages.map((message) =>
-            message.role === "user" ? (
-              <li className="message message--user" key={message.id}>
-                <p>{message.content}</p>
+          {timeline(messages, editNotes).map((entry) => {
+            if ("files" in entry) return <EditNoteItem key={entry.id} note={entry} />;
+            return entry.role === "user" ? (
+              <li className="message message--user" key={entry.id}>
+                <p>{entry.content}</p>
               </li>
             ) : (
-              <li className="message message--assistant" key={message.id}>
+              <li className="message message--assistant" key={entry.id}>
                 <Character state="idle" size={26} />
-                <Markdown>{message.content}</Markdown>
+                <Markdown>{entry.content}</Markdown>
               </li>
-            ),
-          )}
+            );
+          })}
           {isSending && streamingText && (
             <li className="message message--assistant message--streaming" aria-busy="true">
               <Character state={characterState} size={26} />

@@ -153,6 +153,16 @@ export function App() {
   const initializeWorkspace = useAppStore((state) => state.initializeWorkspace);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
+  // Approved changes settle (or are undone) in main; refresh the shown conversation's notes.
+  useEffect(
+    () =>
+      window.poko.edits.onChanged((conversationId) => {
+        const state = useAppStore.getState();
+        if (state.activeConversationId === conversationId) void state.loadEditNotes();
+      }),
+    [],
+  );
+
   useEffect(() => {
     void initializeWorkspace();
   }, [initializeWorkspace]);

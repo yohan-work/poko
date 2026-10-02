@@ -565,6 +565,18 @@ export class CodexAppServerProvider implements AgentProvider {
     return !pending.fileChange || getFileChanges(pending.fileChange, session.task.cwd) !== null;
   }
 
+  /** Absolute paths a pending file change writes, for the checkpoint taken before accepting. */
+  fileChangePaths(taskId: string, requestId: string): string[] | null {
+    const session = this.sessions.get(taskId);
+    const item = session?.pending.get(requestId)?.fileChange;
+    if (!session || !item) return null;
+    // A move or rename writes a destination the checkpoint wouldn't cover; refusing here makes
+    // main decline it even if it got past the approval card.
+    if (editRefusal(item)) return null;
+    const changes = getFileChanges(item, session.task.cwd);
+    return changes ? changes.map((change) => resolve(session.task.cwd, change.path)) : null;
+  }
+
   respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
     const session = this.sessions.get(taskId);
     const pending = session?.pending.get(requestId);

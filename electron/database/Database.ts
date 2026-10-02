@@ -10,6 +10,7 @@ import {
   approvals,
   activities,
   conversations,
+  edits,
   memories,
   messages,
   settings,
@@ -50,6 +51,19 @@ export interface ActivityRecord {
   message: string;
   createdAt: string;
 }
+export interface EditRecord {
+  id: string;
+  taskId: string;
+  requestId: string;
+  conversationId: string | null;
+  workspace: string;
+  /** JSON of EditFile[] (see electron/edits/checkpoint.ts). */
+  files: string;
+  status: "pending" | "applied" | "failed" | "undone" | "expired";
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ConversationRecord {
   id: string;
   title: string;
@@ -188,6 +202,94 @@ export class PokoDatabase {
       .values({ key: "activeConversationId", value: id, updatedAt: timestamp })
       .onConflictDoUpdate({ target: settings.key, set: { value: id, updatedAt: timestamp } })
       .run();
+  }
+
+  /** A pending edit row, created right before an approved file change is accepted. */
+  createEdit(row: {
+    id: string;
+    taskId: string;
+    requestId: string;
+    workspace: string;
+    files: string;
+  }): void {
+    const timestamp = now();
+    const conversationId =
+      this.db
+        .select({ conversationId: tasks.conversationId })
+        .from(tasks)
+        .where(eq(tasks.id, row.taskId))
+        .get()?.conversationId ?? null;
+    this.db
+      .insert(edits)
+      .values({
+        ...row,
+        conversationId,
+        status: "pending",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .run();
+  }
+
+  updateEdit(id: string, status: EditRecord["status"], files?: string): void {
+    this.db
+      .update(edits)
+      .set({ status, updatedAt: now(), ...(files !== undefined ? { files } : {}) })
+      .where(eq(edits.id, id))
+      .run();
+  }
+
+  getEdit(id: string): EditRecord | null {
+    return (
+      (this.db.select().from(edits).where(eq(edits.id, id)).get() as EditRecord | undefined) ?? null
+    );
+  }
+
+  pendingEdits(taskId: string): EditRecord[] {
+    return this.db
+      .select()
+      .from(edits)
+      .where(sql`${edits.taskId} = ${taskId} AND ${edits.status} = 'pending'`)
+      .all() as EditRecord[];
+  }
+
+  /** Edits shown in a conversation: applied, undone, and expired ones, oldest first. */
+  conversationEdits(conversationId: string): EditRecord[] {
+    return this.db
+      .select()
+      .from(edits)
+      .where(
+        sql`${edits.conversationId} = ${conversationId} AND ${edits.status} IN ('applied', 'undone', 'expired')`,
+      )
+      .orderBy(asc(edits.createdAt))
+      .all() as EditRecord[];
+  }
+
+  /** Ids of every edit in a conversation, so their checkpoints can be removed with it. */
+  conversationEditIds(conversationId: string): string[] {
+    return this.db
+      .select({ id: edits.id })
+      .from(edits)
+      .where(eq(edits.conversationId, conversationId))
+      .all()
+      .map((row) => row.id);
+  }
+
+  /**
+   * Edits older than `before`: applied ones become `expired` (still shown, without undo); ones
+   * that never applied (pending or failed) are deleted. Returns every id whose checkpoint goes.
+   */
+  expireEdits(before: string): string[] {
+    const applied = this.db
+      .select({ id: edits.id })
+      .from(edits)
+      .where(sql`${edits.status} = 'applied' AND ${edits.createdAt} < ${before}`)
+      .all();
+    for (const row of applied) this.updateEdit(row.id, "expired");
+    const stale = sql`${edits.status} IN ('pending', 'failed') AND ${edits.createdAt} < ${before}`;
+    const dropped = this.db.select({ id: edits.id }).from(edits).where(stale).all();
+    if (dropped.length) this.db.delete(edits).where(stale).run();
+    return [...applied, ...dropped].map((row) => row.id);
   }
 
   /** Whether edits are allowed in a workspace, keyed by its real path (the task's cwd). */
