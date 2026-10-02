@@ -97,7 +97,7 @@ function registerIpcHandlers(): void {
     return workspaceInfo(selectedPath);
   });
 
-  ipcMain.handle(IPC_CHANNELS.taskStart, async (event, raw: unknown) => {
+  handleTaskStart(IPC_CHANNELS.taskStart, async (event, raw: unknown) => {
     if (!isTrustedRenderer(event) || !agentCore) {
       throw new Error("Unknown renderer requested a task.");
     }
@@ -171,8 +171,9 @@ function registerIpcHandlers(): void {
       throw new Error("Unknown renderer deleted a conversation.");
     const id = readConversationId(raw);
     if (id === null) throw new TypeError("Invalid conversation id.");
-    // A running task's reply and approval card belong to its conversation.
-    if (database.hasRunningTask(id))
+    // A running task's reply and approval card belong to its conversation, and a task that is
+    // still starting (capturing the screen, checking the folder) is about to be recorded there.
+    if (database.hasRunningTask(id) || (startingConversations.get(id) ?? 0) > 0)
       return { error: "포코가 이 대화에서 작업 중이라 지금은 지울 수 없어." };
     return database.deleteConversation(id) ? { ok: true } : { error: CONVERSATION_GONE };
   });
@@ -248,7 +249,7 @@ function registerIpcHandlers(): void {
       throw new Error("Unknown renderer requested windows.");
     return screenService.listWindows();
   });
-  ipcMain.handle(IPC_CHANNELS.screenLook, async (event, raw: unknown) => {
+  handleTaskStart(IPC_CHANNELS.screenLook, async (event, raw: unknown) => {
     if (!isTrustedRenderer(event) || !database || !agentCore || !screenService)
       throw new Error("Unknown renderer requested a screen look.");
     const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
@@ -316,7 +317,7 @@ function registerIpcHandlers(): void {
     return started;
   });
 
-  ipcMain.handle(IPC_CHANNELS.screenAct, async (event, raw: unknown) => {
+  handleTaskStart(IPC_CHANNELS.screenAct, async (event, raw: unknown) => {
     if (!isTrustedRenderer(event) || !database || !agentCore || !screenService || !screenProvider)
       throw new Error("Unknown renderer requested a screen task.");
     const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
@@ -453,6 +454,33 @@ async function askCodex(
     if (event.type === "cancelled") throw new Error("cancelled");
   }
   throw new Error("Codex ended without an answer.");
+}
+
+/** Conversations a task is being started in, counted until the task is recorded or refused. */
+const startingConversations = new Map<string, number>();
+
+/** Registers a task-starting handler, marking its conversation as starting while it runs. */
+function handleTaskStart(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, raw: unknown) => Promise<unknown>,
+): void {
+  ipcMain.handle(channel, async (event, raw: unknown) => {
+    const id =
+      typeof raw === "object" && raw !== null && "conversationId" in raw
+        ? (raw as { conversationId: unknown }).conversationId
+        : null;
+    const key = typeof id === "string" ? id : null;
+    if (key) startingConversations.set(key, (startingConversations.get(key) ?? 0) + 1);
+    try {
+      return await handler(event, raw);
+    } finally {
+      if (key) {
+        const left = (startingConversations.get(key) ?? 1) - 1;
+        if (left > 0) startingConversations.set(key, left);
+        else startingConversations.delete(key);
+      }
+    }
+  });
 }
 
 const CONVERSATION_GONE = "이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘.";

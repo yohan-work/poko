@@ -233,7 +233,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       conversations: state.conversations.filter((item) => item.id !== id),
       // Main already cleared it; show the greeting screen for a new conversation.
-      ...(wasActive ? { activeConversationId: null, messages: [], conversationError: null } : {}),
+      ...(wasActive
+        ? {
+            activeConversationId: null,
+            messages: [],
+            streaming: null,
+            errorMessage: null,
+            conversationError: null,
+            characterState: "idle" as const,
+            progressMessage: null,
+          }
+        : {}),
     }));
     return null;
   },

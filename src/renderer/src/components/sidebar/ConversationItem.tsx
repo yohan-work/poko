@@ -161,6 +161,13 @@ export function ConversationItem({
                 type="button"
                 role="menuitem"
                 className="conversation-menu__danger"
+                // The conversation Poko is working in can't be deleted until it finishes.
+                disabled={active && isSending}
+                title={
+                  active && isSending
+                    ? "포코가 이 대화에서 작업 중이라 끝난 뒤에 지울 수 있어."
+                    : undefined
+                }
                 onClick={() => {
                   setMenuAt(null);
                   setError(null);
