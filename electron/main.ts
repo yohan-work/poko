@@ -739,7 +739,10 @@ app
     editManager = new EditManager(database, join(userDataDirectory, "checkpoints"));
     await editManager.expireOld().catch((error) => console.error("Could not expire edits.", error));
     screenService = new ScreenService(
-      join(app.getAppPath(), "native", "build", "poko-ax"),
+      // The helper ships beside app.asar in a packaged app (it can't run from inside it).
+      app.isPackaged
+        ? join(process.resourcesPath, "poko-ax")
+        : join(app.getAppPath(), "native", "build", "poko-ax"),
       join(userDataDirectory, "screen-tmp"),
     );
     await screenService.cleanupAll().catch(() => undefined);

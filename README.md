@@ -66,6 +66,17 @@ Safety:
 
 Details and test results are in [Phase 06](docs/phases/phase-06.md).
 
+## Install (macOS, Apple silicon)
+
+Poko runs on your Mac with the **Codex CLI** and your **ChatGPT** sign-in; it has no account or server of its own.
+
+1. Install Codex (`npm install -g @openai/codex`, or `brew install codex`) and sign in once (`codex login`).
+2. Build the app with `pnpm install && pnpm dist`, then open `release/Poko-<version>-arm64.dmg` and drag Poko to Applications.
+3. Open Poko. If Codex is missing, signed out, or too old, the setup screen names the problem and the fix: copy the install command, use **로그인하기** to sign in, or update. Codex 0.159.0 or newer is required.
+4. For 화면 보기, macOS asks for **Screen Recording** and **Accessibility** for Poko itself.
+
+Signing: without a certificate, `pnpm dist` signs the app ad hoc. It runs on the Mac that built it, and macOS asks for the screen permissions again after each new build. With a Developer ID certificate (`CSC_LINK` and `CSC_KEY_PASSWORD`, or `CSC_NAME`) the app is signed with it. With Apple credentials (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) it is also notarized, so it opens on other Macs without warnings. Pushing a `v*` tag builds the app in GitHub Actions.
+
 ## Development
 
 Requirements: Node.js 24+ and pnpm 10+. Codex CLI must be installed and authenticated for project analysis. The screen companion needs macOS with Xcode command line tools (`swiftc`); `pnpm dev` and `pnpm build` compile the small `poko-ax` accessibility helper first.
@@ -74,6 +85,8 @@ Requirements: Node.js 24+ and pnpm 10+. Codex CLI must be installed and authenti
 pnpm install
 pnpm dev
 ```
+
+`pnpm dist` packages the app into `release/` (see Install).
 
 Useful checks (the same ones run on every pull request in GitHub Actions, on macOS):
 
