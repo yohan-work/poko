@@ -217,8 +217,16 @@ interface TaskSession {
   approvalTimedOut: boolean;
 }
 
+/** Where Codex is and the environment to start it with (see codexEnvironment). */
+export interface CodexRuntime {
+  executable: string;
+  environment: NodeJS.ProcessEnv;
+}
+
 interface ProviderOptions {
   executable?: string;
+  /** Read at every start, so a Codex installed or fixed during setup is used right away. */
+  runtime?: () => CodexRuntime;
   spawnProcess?: AppServerSpawn;
   requestTimeoutMs?: number;
   approvalTimeoutMs?: number;
@@ -237,9 +245,10 @@ export function parseFeatureList(output: string): Set<string> {
   );
 }
 
-function listCodexFeatures(executable: string): Promise<ReadonlySet<string> | null> {
+function listCodexFeatures(runtime: CodexRuntime): Promise<ReadonlySet<string> | null> {
   return new Promise((resolve) => {
-    execFile(executable, ["features", "list"], { timeout: 15_000 }, (error, stdout) => {
+    const options = { timeout: 15_000, env: runtime.environment };
+    execFile(runtime.executable, ["features", "list"], options, (error, stdout) => {
       const features = error ? null : parseFeatureList(stdout);
       resolve(features?.size ? features : null);
     });
@@ -302,7 +311,7 @@ function permissionsToml(profile: "project" | "screen"): string {
 }
 
 export class CodexAppServerProvider implements AgentProvider {
-  private readonly executable: string;
+  private readonly runtime: () => CodexRuntime;
   private readonly spawnProcess: AppServerSpawn;
   private readonly requestTimeoutMs: number;
   private readonly approvalTimeoutMs: number;
@@ -310,9 +319,12 @@ export class CodexAppServerProvider implements AgentProvider {
   private sessions = new Map<string, TaskSession>();
   private readonly listFeatures: () => Promise<ReadonlySet<string> | null>;
   private features: Promise<ReadonlySet<string> | null> | null = null;
+  /** The executable the cached features belong to; a new Codex is listed again. */
+  private featuresFor: string | null = null;
 
   constructor(options: ProviderOptions = {}) {
-    this.executable = options.executable ?? "codex";
+    const fixed = { executable: options.executable ?? "codex", environment: process.env };
+    this.runtime = options.runtime ?? (() => fixed);
     this.spawnProcess =
       options.spawnProcess ??
       ((command, args, spawnOptions) =>
@@ -320,11 +332,16 @@ export class CodexAppServerProvider implements AgentProvider {
     this.requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
     this.approvalTimeoutMs = options.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
     this.taskTimeoutMs = options.taskTimeoutMs ?? TASK_TIMEOUT_MS;
-    this.listFeatures = options.listFeatures ?? (() => listCodexFeatures(this.executable));
+    this.listFeatures = options.listFeatures ?? (() => listCodexFeatures(this.runtime()));
   }
 
   /** Listed once per provider; a failed listing is retried next task. */
   private async knownFeatures(): Promise<ReadonlySet<string> | null> {
+    const executable = this.runtime().executable;
+    if (this.featuresFor !== executable) {
+      this.features = null;
+      this.featuresFor = executable;
+    }
     this.features ??= this.listFeatures();
     const features = await this.features;
     if (!features) this.features = null;
@@ -358,9 +375,10 @@ export class CodexAppServerProvider implements AgentProvider {
     }
 
     let connection: AppServerConnection;
+    const runtime = this.runtime();
     try {
       const child = this.spawnProcess(
-        this.executable,
+        runtime.executable,
         [
           "--strict-config",
           "--config",
@@ -376,7 +394,7 @@ export class CodexAppServerProvider implements AgentProvider {
         ],
         {
           cwd: input.cwd,
-          env: process.env,
+          env: runtime.environment,
           stdio: ["pipe", "pipe", "pipe"],
           detached: process.platform !== "win32",
           windowsHide: true,

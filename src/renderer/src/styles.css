@@ -1320,6 +1320,123 @@ button:disabled {
   font-size: 0.84rem;
 }
 
+/* ── Codex setup ─────────────────────────────────────── */
+
+.setup-screen {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  background: oklch(0% 0 0 / 50%);
+}
+
+.setup-screen__panel {
+  display: grid;
+  width: min(100%, 560px);
+  padding: 24px;
+  gap: 18px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-composer);
+}
+
+.setup-screen__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.setup-screen__title,
+.setup-screen__lead {
+  margin: 0;
+}
+
+.setup-screen__title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 400;
+}
+
+.setup-screen__lead {
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+}
+
+.setup-steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 10px;
+  list-style: none;
+}
+
+.setup-step {
+  display: flex;
+  padding: 12px 14px;
+  gap: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.setup-step__mark {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.setup-step[data-ok="true"] .setup-step__mark {
+  color: var(--color-success);
+  background: var(--color-surface-raised);
+}
+
+.setup-step__body {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 4px;
+}
+
+.setup-step__title,
+.setup-step__detail {
+  margin: 0;
+}
+
+.setup-step__title {
+  font-weight: 500;
+}
+
+.setup-step__detail {
+  overflow-wrap: anywhere;
+  color: var(--color-text-soft);
+  font-size: 0.86rem;
+}
+
+.setup-step__command {
+  display: flex;
+  margin-top: 4px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+}
+
+.setup-step__code {
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+}
+
 /* ── Approved change notes ─────────────────────────────── */
 
 .edit-note {

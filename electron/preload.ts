@@ -2,6 +2,7 @@ import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
 import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type AppBootstrap,
+  type CodexSetup,
   type EditNote,
   type EditsState,
   type ApprovalChoice,
@@ -88,6 +89,20 @@ const pokoApi = {
       ipcRenderer.invoke(IPC_CHANNELS.conversationRename, { conversationId, title }),
     delete: (conversationId: string): Promise<{ ok: true } | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.conversationDelete, conversationId),
+  },
+  setup: {
+    /** Re-checks Codex: install, version and features, and ChatGPT sign-in. */
+    status: (): Promise<CodexSetup> => ipcRenderer.invoke(IPC_CHANNELS.setupStatus),
+    login: (): Promise<"started" | "already" | "unavailable"> =>
+      ipcRenderer.invoke(IPC_CHANNELS.setupLogin),
+    cancelLogin: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.setupCancelLogin),
+    onChanged: (listener: (status: CodexSetup) => void) => {
+      const handler = (_event: IpcRendererEvent, status: CodexSetup) => listener(status);
+      ipcRenderer.on(IPC_CHANNELS.setupChanged, handler);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.setupChanged, handler);
+      };
+    },
   },
   edits: {
     /** Whether edits are allowed in the selected workspace. */
