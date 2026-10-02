@@ -34,6 +34,7 @@ export const IPC_CHANNELS = {
   screenResetNotice: "screen:reset-notice",
   settingsGet: "settings:get",
   settingsSet: "settings:set",
+  modelsList: "models:list",
   dataExport: "data:export",
   dataOpenFolder: "data:open-folder",
   dataDeleteAll: "data:delete-all",
@@ -103,6 +104,8 @@ export interface AgentTask {
   images?: string[];
   /** The user turned on edits for this workspace; otherwise every file change is declined. */
   editsEnabled?: boolean;
+  /** The model the user picked for this engine; absent means the CLI's default. */
+  model?: string;
 }
 
 export type AgentEvent =
@@ -272,6 +275,9 @@ export interface ClaudeSetup {
 /** Preferences on the 설정 page. */
 export interface AppSettings {
   engine: EngineId;
+  /** The model per engine; null uses the CLI's default. */
+  codexModel: string | null;
+  claudeModel: string | null;
   /** Saved memories go with each request. */
   memoriesInContext: boolean;
   checkpointDays: CheckpointDays;
@@ -289,3 +295,29 @@ export type DataExportResult = "saved" | "cancelled" | "failed";
 
 /** After deleting everything, the fresh start data, so the renderer can reset every page. */
 export type DeleteAllResponse = { ok: true; bootstrap: AppBootstrap } | { error: string };
+
+/** A model the user can pick for an engine. */
+export interface ModelOption {
+  id: string;
+  label: string;
+  /** The CLI's default model. */
+  isDefault?: boolean;
+}
+
+/**
+ * Model names are short identifiers (`gpt-6-astra`, `opus`, `openai/gpt-oss-120b`); anything
+ * else is ignored. The first character is never `-`, so a name can't read as a CLI option.
+ */
+export function isModelName(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/@\-[\]]{0,119}$/.test(value);
+}
+
+/** Whether an error says the picked model doesn't exist or the account can't use it. */
+export function isUnavailableModelError(text: string): boolean {
+  return (
+    /model/i.test(text) &&
+    /not found|does not exist|no access|do not have access|don't have access|invalid model|unknown model|model is not supported|not supported when using/i.test(
+      text,
+    )
+  );
+}

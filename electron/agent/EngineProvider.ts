@@ -12,14 +12,18 @@ export class EngineProvider implements AgentProvider {
   constructor(
     private readonly providers: Record<EngineId, AgentProvider>,
     private readonly engine: () => EngineId,
+    private readonly model: (engine: EngineId) => string | null = () => null,
   ) {}
 
   async *runTask(input: AgentTask, options?: { signal?: AbortSignal }): AsyncIterable<AgentEvent> {
-    // Screen tasks are tuned for Codex and always run there.
-    const provider = this.providers[input.profile === "screen" ? "codex" : this.engine()];
+    // Screen tasks are tuned for Codex's default model and always run there with it.
+    const screen = input.profile === "screen";
+    const engine = screen ? "codex" : this.engine();
+    const provider = this.providers[engine];
+    const model = screen ? null : this.model(engine);
     this.byTask.set(input.id, provider);
     try {
-      yield* provider.runTask(input, options);
+      yield* provider.runTask(model ? { ...input, model } : input, options);
     } finally {
       this.byTask.delete(input.id);
     }

@@ -117,6 +117,10 @@ app
           claude: new ClaudeCodeProvider({ runtime: ctx.claudeSetup.runtime }),
         },
         () => ctx.database?.getSettings().engine ?? "codex",
+        (engine) => {
+          const settings = ctx.database?.getSettings();
+          return (engine === "claude" ? settings?.claudeModel : settings?.codexModel) ?? null;
+        },
       ),
       deliverTaskEvent,
       codingSkill,

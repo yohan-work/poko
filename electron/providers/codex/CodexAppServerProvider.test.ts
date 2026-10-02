@@ -1,3 +1,4 @@
+import { isUnavailableModelError } from "../../shared";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -732,5 +733,96 @@ describe("CodexAppServerProvider", () => {
         ],
       }),
     ).toBeNull();
+  });
+
+  it("starts the thread with the picked model and explains a model the account can't use", async () => {
+    const server = new FakeAppServer();
+    const run = consume(providerFor(server).runTask({ ...task, model: "gpt-6-astra" }));
+    await turnStarted(server);
+    expect(server.received.find((message) => message.method === "thread/start")).toMatchObject({
+      params: { model: "gpt-6-astra" },
+    });
+    server.send({
+      method: "error",
+      params: {
+        error: {
+          message: "The model `gpt-6-astra` does not exist or you do not have access to it.",
+        },
+        willRetry: false,
+      },
+    });
+    await run.done;
+    expect(run.events.at(-1)).toEqual({
+      type: "error",
+      error: "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘.",
+    });
+  });
+
+  it("recognizes Codex's wording for a model the account can't use", () => {
+    expect(
+      isUnavailableModelError(
+        "The 'gpt-5-codex-mini' model is not supported when using Codex with a ChatGPT account.",
+      ),
+    ).toBe(true);
+    expect(isUnavailableModelError("Image input is not supported by this model")).toBe(false);
+  });
+
+  it("keeps the usual message for other errors, even with a model picked", async () => {
+    const server = new FakeAppServer();
+    const run = consume(providerFor(server).runTask({ ...task, model: "gpt-6-astra" }));
+    await turnStarted(server);
+    server.send({
+      method: "error",
+      params: { error: { message: "model stream disconnected" }, willRetry: true },
+    });
+    server.send({
+      method: "error",
+      params: {
+        error: { message: "Image input is not supported by this model" },
+        willRetry: false,
+      },
+    });
+    await run.done;
+    expect(run.events.at(-1)).toEqual({
+      type: "error",
+      error: "Codex App Server에서 오류가 발생했어. 다시 시도해 줘.",
+    });
+  });
+
+  it("leaves the model to Codex when none is picked", async () => {
+    const server = new FakeAppServer();
+    const run = consume(providerFor(server).runTask(task));
+    await turnStarted(server);
+    const start = server.received.find((message) => message.method === "thread/start");
+    expect((start?.params as Record<string, unknown> | undefined)?.model).toBeUndefined();
+    server.send({ method: "turn/completed", params: { turn: { status: "completed" } } });
+    await run.done;
+  });
+
+  it("lists the models Codex offers, without hidden ones", async () => {
+    const server = new FakeAppServer();
+    server.on("listing", () => undefined);
+    const original = server.send.bind(server);
+    server.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const message = JSON.parse(line) as Message;
+        if (message.method === "model/list")
+          original({
+            id: message.id,
+            result: {
+              data: [
+                { id: "a", model: "gpt-a", displayName: "GPT-A", isDefault: true, hidden: false },
+                { id: "b", model: "gpt-b", displayName: "GPT-B", hidden: true },
+                { id: "c", model: "gpt-c", hidden: false },
+              ],
+            },
+          });
+      }
+    });
+    expect(await providerFor(server).listModels()).toEqual([
+      { id: "gpt-a", label: "GPT-A", isDefault: true },
+      { id: "gpt-c", label: "gpt-c" },
+    ]);
+    expect(server.killed).toBe(true);
   });
 });

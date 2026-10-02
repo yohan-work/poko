@@ -6,6 +6,8 @@ import type {
   AppSettings,
   ClaudeSetup,
   DataExportResult,
+  EngineId,
+  ModelOption,
   DeleteAllResponse,
   ApprovalChoice,
   ApprovalOutcome,
@@ -72,6 +74,9 @@ interface AppState {
   /** Checks Codex again from 설정, showing the setup screen if something is missing. */
   recheckSetup: () => Promise<void>;
   settings: AppSettings | null;
+  /** Models per engine, loaded when the picker first needs them. */
+  models: Partial<Record<EngineId, ModelOption[]>>;
+  loadModels: (engine: EngineId) => Promise<void>;
   appVersion: string | null;
   settingsError: string | null;
   /** Loads preferences and the screen permissions for 설정. */
@@ -242,6 +247,9 @@ function fromBootstrap(data: AppBootstrap): Partial<AppState> {
   };
 }
 
+/** Engines whose model list is being fetched, so the picker never asks twice at once. */
+const modelLoads = new Set<EngineId>();
+
 /** Counts settings saves, so a load that started before one is dropped. */
 let settingsSaves = 0;
 
@@ -272,6 +280,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setupChecking: false,
   setupDismissed: false,
   settings: null,
+  models: {},
   appVersion: null,
   settingsError: null,
 
@@ -305,6 +314,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissSetup: () => set({ setupDismissed: true }),
 
   receiveSetup: (setup) => set({ setup }),
+
+  loadModels: async (engine) => {
+    if (modelLoads.has(engine)) return;
+    modelLoads.add(engine);
+    const models = await window.poko.settings.models(engine).catch(() => []);
+    modelLoads.delete(engine);
+    // An empty answer means Codex couldn't be asked; leave it unloaded so the picker retries.
+    if (models.length > 0) set({ models: { ...get().models, [engine]: models } });
+  },
 
   recheckSetup: async () => {
     set({ setupDismissed: false });

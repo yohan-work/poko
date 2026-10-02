@@ -5,6 +5,7 @@ import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
 import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
+import { ModelSelect } from "./ModelSelect";
 import { EditNoteItem } from "./EditNoteItem";
 import type { EditNote, PersistedMessage } from "../../../../../electron/shared";
 import { useNow } from "../../lib/useNow";
@@ -122,6 +123,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
           >
             {edits.enabled ? "수정 허용" : "읽기 전용"}
           </button>
+          <ModelSelect />
           <button
             className="send-button"
             type={isSending ? "button" : "submit"}
