@@ -96,6 +96,10 @@ export class AgentCore {
     for (const controller of this.activeTasks.values()) controller.abort();
   }
 
+  get activeTaskIds(): string[] {
+    return [...this.activeTasks.keys()];
+  }
+
   get hasActiveTasks(): boolean {
     return this.activeTasks.size > 0;
   }

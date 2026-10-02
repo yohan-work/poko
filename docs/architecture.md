@@ -16,6 +16,7 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   │   ├── tasks.ts         # tasks, approvals (with edit checkpoints), conversations
 │   │   ├── screen.ts        # 화면 보기 and 대신 해 줘
 │   │   ├── data.ts          # export, data folder, delete all
+│   │   ├── quick.ts         # quick panel channels and its global shortcut
 │   │   ├── edits.ts         # edit switch, approved changes, undo
 │   │   ├── settings.ts      # 설정 preferences and app version
 │   │   ├── setup.ts         # Codex setup check and sign-in
@@ -27,6 +28,7 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── database/            # SQLite connection, schema, and persistence
 │   ├── agent/               # Agent Core, provider contract, engine routing
 │   ├── export/              # private (0600) file writes for export
+│   ├── quick/               # the quick panel window and its reduced task view
 │   ├── edits/               # checkpoints and undo for approved changes
 │   ├── screen/              # window capture, accessibility helper, overlay, step loop
 │   ├── setup/               # Codex setup check

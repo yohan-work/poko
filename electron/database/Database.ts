@@ -23,6 +23,8 @@ import {
   CHECKPOINT_DAY_CHOICES,
   type CheckpointDays,
   isModelName,
+  QUICK_SHORTCUTS,
+  type QuickShortcut,
 } from "../shared";
 import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
 
@@ -488,13 +490,16 @@ export class PokoDatabase {
       .select()
       .from(settings)
       .where(
-        sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine', 'codexModel', 'claudeModel')`,
+        sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine', 'codexModel', 'claudeModel', 'quickShortcut')`,
       )
       .all();
     const value = (key: string) => rows.find((row) => row.key === key)?.value;
     const days = Number(value("checkpointDays"));
     return {
       engine: value("engine") === "claude" ? "claude" : "codex",
+      quickShortcut: (QUICK_SHORTCUTS as readonly string[]).includes(value("quickShortcut") ?? "")
+        ? (value("quickShortcut") as QuickShortcut)
+        : "Alt+Space",
       codexModel: isModelName(value("codexModel")) ? (value("codexModel") as string) : null,
       claudeModel: isModelName(value("claudeModel")) ? (value("claudeModel") as string) : null,
       memoriesInContext: value("memoriesInContext") !== "false",
@@ -509,6 +514,8 @@ export class PokoDatabase {
     const updates: [string, string][] = [];
     if (input.engine === "codex" || input.engine === "claude")
       updates.push(["engine", input.engine]);
+    if ((QUICK_SHORTCUTS as readonly unknown[]).includes(input.quickShortcut))
+      updates.push(["quickShortcut", input.quickShortcut as string]);
     if (typeof input.memoriesInContext === "boolean")
       updates.push(["memoriesInContext", String(input.memoriesInContext)]);
     if ((CHECKPOINT_DAY_CHOICES as readonly unknown[]).includes(input.checkpointDays))

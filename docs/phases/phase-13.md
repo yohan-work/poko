@@ -133,3 +133,20 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
 - Custom shortcut recording.
 - Continuing an existing conversation from the panel.
 - Approving inside the panel.
+
+## Status
+
+Milestone 1 is implemented: the quick panel, the shortcut, the shared start, adoption, and hide-on-close.
+
+Real runs found two things the plan didn't cover:
+- **Window height:** the panel window follows the panel's content height (`quick:resize`), because the transparent part of a fixed-size window still blocked clicks to the app below.
+- **Test-only failure:** the store's one-time subscriptions are guarded for environments without `window`, since a test that imports a component pulling in the store failed to load.
+
+Verified in the built app:
+- ⌥Space opened the panel over another app, and the question streamed an answer while the main window's send was disabled.
+- 앱에서 이어서 opened that conversation with the question and the answer.
+- The panel couldn't call main-window channels, and the main window couldn't call the panel's.
+- Esc hid the panel.
+- The close button hid the main window: the app and the shortcut kept working.
+
+Milestone 2, the menu bar icon, follows.

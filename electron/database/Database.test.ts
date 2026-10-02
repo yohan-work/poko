@@ -196,11 +196,17 @@ describe("PokoDatabase", () => {
     const database = await openDatabase();
     expect(database.getSettings()).toEqual({
       engine: "codex",
+      quickShortcut: "Alt+Space",
       codexModel: null,
       claudeModel: null,
       memoriesInContext: true,
       checkpointDays: 30,
     });
+    expect(database.setSettings({ quickShortcut: "off" }).quickShortcut).toBe("off");
+    expect(database.setSettings({ quickShortcut: "Cmd+Q" as unknown as "off" }).quickShortcut).toBe(
+      "off",
+    );
+    database.setSettings({ quickShortcut: "Alt+Space" });
     expect(
       database.setSettings({ engine: "claude", memoriesInContext: false, checkpointDays: 7 }),
     ).toMatchObject({

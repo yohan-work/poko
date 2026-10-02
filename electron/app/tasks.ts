@@ -1,14 +1,19 @@
 import { ipcMain } from "electron";
-import { IPC_CHANNELS, type ApprovalChoice, type ApprovalOutcome } from "../shared";
-import { resolveWorkspaceDirectory } from "../agent/workspace";
+import {
+  type ActiveTaskInfo,
+  IPC_CHANNELS,
+  type ApprovalChoice,
+  type ApprovalOutcome,
+} from "../shared";
 import {
   ctx,
   CONVERSATION_GONE,
   handleTaskStart,
   isTrustedRenderer,
+  pendingApprovalEvents,
   readConversationId,
-  recordTaskStart,
   settleEdits,
+  startConversationTask,
   startingConversations,
 } from "./context";
 
@@ -34,46 +39,34 @@ export function registerTaskHandlers(): void {
       throw new TypeError("The request is too long.");
     }
 
-    if (ctx.screenRun) throw new Error("Poko is busy with a screen task.");
-    const workspacePath = ctx.database?.getWorkspace() ?? null;
-    const cwd = await resolveWorkspaceDirectory(workspacePath);
-    // A screen task may have started while the folder was being checked.
-    if (ctx.screenRun) throw new Error("Poko is busy with a screen task.");
-    if (!ctx.database) throw new Error("Local storage is unavailable.");
-    const started = recordTaskStart(ctx.database, rawMessage.trim(), cwd, conversationId);
-    if ("error" in started) return started;
-    const { taskId } = started;
-    try {
-      const context = ctx.database?.getTaskContext(taskId);
-      ctx.agentCore.startTask({
-        prompt: rawMessage.trim(),
-        cwd,
-        taskId,
-        context,
-        editsEnabled: ctx.database.isEditsEnabled(cwd),
-      });
-    } catch (error) {
-      ctx.database?.recordTaskEvent(
-        taskId,
-        "error",
-        "작업을 시작하지 못했어.",
-        "작업을 시작하지 못했어.",
-      );
-      throw error;
-    }
-    return started;
+    return startConversationTask(rawMessage.trim(), conversationId);
   });
 
   ipcMain.handle(IPC_CHANNELS.conversationOpen, (event, raw: unknown) => {
     if (!isTrustedRenderer(event) || !ctx.database || !ctx.agentCore)
       throw new Error("Unknown renderer requested a conversation.");
     const id = readConversationId(raw);
-    // A running task's messages, stream, and approval card belong to its conversation.
-    if (ctx.agentCore.hasActiveTasks || ctx.screenRun)
+    // A running task's messages, stream, and approval card belong to its conversation, so only
+    // that conversation may be opened while it runs (the window adopts the task there).
+    const running = ctx.agentCore.activeTaskIds[0];
+    const runningConversation = running ? ctx.database.getTaskConversation(running)?.id : null;
+    if ((ctx.agentCore.hasActiveTasks && id !== runningConversation) || ctx.screenRun)
       return { error: "포코가 작업 중이라 다른 대화로 옮길 수 없어. 끝난 뒤에 다시 골라 줘." };
     if (id !== null && !ctx.database.getConversation(id)) return { error: CONVERSATION_GONE };
     ctx.database.setActiveConversation(id);
     return { messages: id === null ? [] : ctx.database.getConversationMessages(id) };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.taskActive, (event): ActiveTaskInfo | null => {
+    if (!isTrustedRenderer(event) || !ctx.database || !ctx.agentCore)
+      throw new Error("Unknown renderer requested the active task.");
+    const taskId = ctx.agentCore.activeTaskIds[0];
+    if (!taskId) return null;
+    return {
+      taskId,
+      conversationId: ctx.database.getTaskConversation(taskId)?.id ?? null,
+      approvals: [...(pendingApprovalEvents.get(taskId)?.values() ?? [])],
+    };
   });
 
   ipcMain.handle(IPC_CHANNELS.conversationRename, (event, raw: unknown) => {
@@ -201,6 +194,7 @@ export function registerTaskHandlers(): void {
       }
     }
     const choice: ApprovalChoice = declineInstead ? "decline" : request.choice;
+    pendingApprovalEvents.get(request.taskId)?.delete(request.requestId);
     if (!ctx.database.resolveApproval(request.taskId, request.requestId, choice)) return "stale";
     if (!ctx.agentCore.respondToApproval(request.taskId, request.requestId, choice)) {
       console.error("The decision was recorded but could not be sent to Codex.");

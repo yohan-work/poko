@@ -35,6 +35,19 @@ export const IPC_CHANNELS = {
   settingsGet: "settings:get",
   settingsSet: "settings:set",
   modelsList: "models:list",
+  quickAsk: "quick:ask",
+  quickHide: "quick:hide",
+  quickOpenInApp: "quick:open-in-app",
+  /** The panel's content height, so the window never covers more than the panel. */
+  quickResize: "quick:resize",
+  /** main → quick panel: what the panel shows. */
+  quickState: "quick:state",
+  /** The running task and its pending approval cards, for a main window that just opened. */
+  taskActive: "task:active",
+  /** main → main window: a task started elsewhere (the quick panel). */
+  taskStarted: "task:started",
+  /** main → main window: show this conversation (and adopt its running task). */
+  appFocusConversation: "app:focus-conversation",
   dataExport: "data:export",
   dataOpenFolder: "data:open-folder",
   dataDeleteAll: "data:delete-all",
@@ -275,6 +288,8 @@ export interface ClaudeSetup {
 /** Preferences on the 설정 page. */
 export interface AppSettings {
   engine: EngineId;
+  /** The global shortcut that opens the quick panel. */
+  quickShortcut: QuickShortcut;
   /** The model per engine; null uses the CLI's default. */
   codexModel: string | null;
   claudeModel: string | null;
@@ -286,6 +301,8 @@ export interface AppSettings {
 export interface SettingsView {
   settings: AppSettings;
   version: string;
+  /** False when another app already owns the chosen shortcut. */
+  quickShortcutOk: boolean;
 }
 
 /** The word the user types to confirm 모든 데이터 삭제. */
@@ -320,4 +337,38 @@ export function isUnavailableModelError(text: string): boolean {
       text,
     )
   );
+}
+
+export const QUICK_SHORTCUTS = ["Alt+Space", "Alt+Shift+Space", "off"] as const;
+export type QuickShortcut = (typeof QUICK_SHORTCUTS)[number];
+
+/** What the quick panel shows: its latest question and a reduced view of its task. */
+export interface QuickState {
+  phase: "idle" | "running" | "approval" | "done" | "error";
+  question: string;
+  /** The answer so far (streamed), or the final answer. */
+  answer: string;
+  /** A short status or a plain error. */
+  message: string | null;
+  conversationId: string | null;
+  taskId: string | null;
+}
+
+/** The running task, for a main window that opens while it runs. */
+export interface ActiveTaskInfo {
+  taskId: string;
+  conversationId: string | null;
+  approvals: PendingApprovalEvent[];
+}
+
+/** An approval card as the renderer shows it. */
+export type PendingApprovalEvent = Extract<AgentEvent, { type: "approvalRequired" }> & {
+  taskId: string;
+};
+
+/** A task started outside the main window, so its lists stay in sync. */
+export interface TaskStartedNotice {
+  taskId: string;
+  title: string;
+  conversation: PersistedConversation;
 }

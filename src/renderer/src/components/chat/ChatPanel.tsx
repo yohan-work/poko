@@ -40,6 +40,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   const edits = useAppStore((state) => state.edits);
   const setEdits = useAppStore((state) => state.setEdits);
   const openScreen = useAppStore((state) => state.openScreen);
+  const busyElsewhere = useAppStore((state) => state.busyElsewhere);
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
@@ -56,7 +57,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isSending) return;
+    if (!message || isSending || busyElsewhere) return;
     setDraft("");
     void sendMessage(message);
   }
@@ -128,10 +129,16 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             className="send-button"
             type={isSending ? "button" : "submit"}
             onClick={isSending ? () => void cancelTask() : undefined}
-            disabled={isSending ? !activeTaskId : !draft.trim()}
+            disabled={isSending ? !activeTaskId : !draft.trim() || busyElsewhere}
             data-state={isSending ? "cancel" : "send"}
             aria-label={isSending ? "작업 멈추기" : "메시지 보내기"}
-            title={isSending ? "작업 멈추기" : "보내기 (Enter)"}
+            title={
+              isSending
+                ? "작업 멈추기"
+                : busyElsewhere
+                  ? "포코가 다른 작업 중이야. 끝난 뒤에 보낼 수 있어."
+                  : "보내기 (Enter)"
+            }
           >
             <Icon name={isSending ? "stop" : "send"} />
           </button>
@@ -144,6 +151,21 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
       )}
       <ScreenPicker question={draft} onPicked={() => setDraft("")} />
     </form>
+  );
+}
+
+/** A task started from the quick panel waits for approval in another conversation. */
+function ForeignBanner() {
+  const foreignApproval = useAppStore((state) => state.foreignApproval);
+  const showForeignTask = useAppStore((state) => state.showForeignTask);
+  if (!foreignApproval) return null;
+  return (
+    <div className="foreign-banner" role="status">
+      <span>다른 대화에서 확인이 필요해.</span>
+      <button className="secondary-button" type="button" onClick={() => void showForeignTask()}>
+        보기
+      </button>
+    </div>
   );
 }
 
@@ -184,6 +206,7 @@ export function ChatPanel() {
             <Character state={characterState} size={44} />
             <span>{greeting(now)}</span>
           </h1>
+          <ForeignBanner />
           <Composer autoFocus />
           <p className="welcome__hint">
             포코가 고른 폴더의 파일을 읽고 구조와 개선점을 살펴볼게. 명령 실행이나 파일 변경은 항상
@@ -244,6 +267,7 @@ export function ChatPanel() {
         <div ref={endRef} />
       </div>
       <div className="chat-panel__composer">
+        <ForeignBanner />
         <Composer autoFocus={false} />
       </div>
     </section>
