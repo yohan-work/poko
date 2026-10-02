@@ -35,8 +35,8 @@ function fakePoko() {
       calls.push({ method, args });
       return result(...args);
     };
-  let startReply = deferred<unknown>();
-  let openReply = deferred<unknown>();
+  const startReply = deferred<unknown>();
+  const openReply = deferred<unknown>();
   const poko = {
     tasks: {
       start: record("tasks.start", () => startReply.promise),
@@ -60,10 +60,6 @@ function fakePoko() {
       })),
     },
     approvals: { respond: record("approvals.respond", async () => "applied") },
-    screen: {
-      act: record("screen.act", () => startReply.promise),
-      look: record("screen.look", () => startReply.promise),
-    },
   };
   return {
     poko,
@@ -73,10 +69,6 @@ function fakePoko() {
     },
     replyToStart: (value: unknown) => startReply.resolve(value),
     replyToOpen: (value: unknown) => openReply.resolve(value),
-    resetReplies: () => {
-      startReply = deferred();
-      openReply = deferred();
-    },
   };
 }
 
