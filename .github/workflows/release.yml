@@ -1,0 +1,36 @@
+name: Release build
+
+# Builds an ad-hoc signed macOS app for a version tag (v*). Signing with a Developer ID and
+# notarization need repository secrets (see README "Install"); without them the artifact runs
+# only after the user allows it in System Settings → Privacy & Security.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: poko-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error

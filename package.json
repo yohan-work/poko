@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "pnpm native && electron-vite dev",
     "build": "pnpm native && electron-vite build",
+    "dist": "pnpm build && node scripts/dist.mjs",
     "preview": "electron-vite preview",
     "native": "node scripts/build-native.mjs",
     "typecheck": "tsc --noEmit",
@@ -34,6 +35,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "drizzle-kit": "1.0.0-rc.4",
     "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",

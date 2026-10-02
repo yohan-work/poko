@@ -1,0 +1,33 @@
+# Poko's macOS app. `pnpm dist` builds it; see README "Install" for signing.
+appId: dev.poko.app
+productName: Poko
+copyright: Copyright © Poko contributors
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - drizzle/**
+  - skills/**
+  - package.json
+# The Swift helper can't run from inside app.asar, so it ships beside it.
+extraResources:
+  - from: native/build/poko-ax
+    to: poko-ax
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  category: public.app-category.productivity
+  icon: build/icon.png
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Signing is chosen by scripts/dist.mjs: Developer ID when certificates are configured,
+  # otherwise ad-hoc.
+  extendInfo:
+    NSScreenCaptureUsageDescription: 포코가 고른 창을 보고 설명하려면 화면 기록 권한이 필요해.
+dmg:
+  title: Poko

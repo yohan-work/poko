@@ -78,6 +78,20 @@ Other engines (Claude Code, API keys) are a later phase. This phase keeps the Co
 1. **Codex setup check:** the GUI-safe `PATH` when spawning Codex, `setup:status` and `setup:login`, the setup screen in the app, and tests for the version and login parsing and for building `PATH`.
 2. **Packaging:** the electron-builder config, the helper in resources and its packaged path, `pnpm dist`, ad-hoc signing by default with optional Developer ID signing and notarization, and README install docs.
 
+## Milestone 2 notes (implemented)
+
+- `electron-builder.yml` builds a `.dmg` and a `.zip` for arm64, with an icon made from Poko's character (`build/icon.svg` rendered to `build/icon.png`). The helper ships in `extraResources`, and main uses `process.resourcesPath/poko-ax` when packaged.
+- `scripts/dist.mjs` picks the signing:
+  - Developer ID signing when `CSC_LINK` or `CSC_NAME` is set, plus notarization when Apple credentials are set;
+  - otherwise ad-hoc (`identity: "-"`) without the hardened runtime, because an ad-hoc build with it can fail to launch. The hardened runtime is only needed for notarization.
+- `.github/workflows/release.yml` builds the app on `v*` tags and uploads the `.dmg` and `.zip`.
+- Real run: `pnpm dist`, then `codesign --verify --deep --strict` passed. The packaged app was opened with `open -n` (LaunchServices, like Finder) and a separate data folder:
+  - migrations ran from `app.asar`;
+  - setup reported ready (nvm Codex 0.160.0, ChatGPT);
+  - a question was answered;
+  - `screen.status()` reported the helper as found, with both permissions not yet granted — they now belong to Poko itself.
+- **Not verified here:** 화면 보기 in the packaged app after granting those permissions. That needs the user to allow Poko in System Settings.
+
 ## Acceptance criteria
 
 - With Codex missing, not signed in (including "Not logged in" and API-key sign-in), older than 0.159.0, lacking the needed features, or missing `node`, the setup screen names the problem and the fix. 다시 확인 updates it. Unit tests run with fake executables: login output on stderr, the version parse, and the order of the built `PATH`.
