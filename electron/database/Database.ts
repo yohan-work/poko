@@ -275,17 +275,21 @@ export class PokoDatabase {
       .map((row) => row.id);
   }
 
-  /** Applied edits older than `before`: their checkpoints are removed and undo is no longer offered. */
+  /**
+   * Edits older than `before`: applied ones become `expired` (still shown, without undo); ones
+   * that never applied (pending or failed) are deleted. Returns every id whose checkpoint goes.
+   */
   expireEdits(before: string): string[] {
-    const rows = this.db
+    const applied = this.db
       .select({ id: edits.id })
       .from(edits)
-      .where(
-        sql`${edits.status} IN ('applied', 'pending', 'failed') AND ${edits.createdAt} < ${before}`,
-      )
+      .where(sql`${edits.status} = 'applied' AND ${edits.createdAt} < ${before}`)
       .all();
-    for (const row of rows) this.updateEdit(row.id, "expired");
-    return rows.map((row) => row.id);
+    for (const row of applied) this.updateEdit(row.id, "expired");
+    const stale = sql`${edits.status} IN ('pending', 'failed') AND ${edits.createdAt} < ${before}`;
+    const dropped = this.db.select({ id: edits.id }).from(edits).where(stale).all();
+    if (dropped.length) this.db.delete(edits).where(stale).run();
+    return [...applied, ...dropped].map((row) => row.id);
   }
 
   /** Whether edits are allowed in a workspace, keyed by its real path (the task's cwd). */

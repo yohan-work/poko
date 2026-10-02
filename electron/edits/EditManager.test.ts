@@ -92,4 +92,14 @@ describe("EditManager", () => {
     await manager.forgetConversation(conversation);
     expect(await readdir(checkpoints)).toEqual([]);
   });
+
+  it("drops old edits that never applied instead of showing them as changes", async () => {
+    const task = database.createTask("제목 바꿔 줘", project);
+    const conversation = database.getTaskConversation(task)?.id as string;
+    await manager.checkpoint(task, "7", project, [readme()]); // left pending
+    const later = new Date(Date.now() + (KEEP_DAYS + 1) * 24 * 60 * 60 * 1000);
+    await manager.expireOld(later);
+    expect(manager.notes(conversation)).toEqual([]);
+    expect(await readdir(checkpoints)).toEqual([]);
+  });
 });

@@ -570,6 +570,9 @@ export class CodexAppServerProvider implements AgentProvider {
     const session = this.sessions.get(taskId);
     const item = session?.pending.get(requestId)?.fileChange;
     if (!session || !item) return null;
+    // A move or rename writes a destination the checkpoint wouldn't cover; refusing here makes
+    // main decline it even if it got past the approval card.
+    if (editRefusal(item)) return null;
     const changes = getFileChanges(item, session.task.cwd);
     return changes ? changes.map((change) => resolve(session.task.cwd, change.path)) : null;
   }
