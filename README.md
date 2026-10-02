@@ -75,7 +75,7 @@ pnpm install
 pnpm dev
 ```
 
-Useful checks:
+Useful checks (the same ones run on every pull request in GitHub Actions, on macOS):
 
 ```sh
 pnpm typecheck
