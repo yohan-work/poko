@@ -2,6 +2,7 @@ import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
 import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type AppBootstrap,
+  type AppSettings,
   type CodexSetup,
   type EditNote,
   type EditsState,
@@ -15,6 +16,7 @@ import {
   type ScreenLookResponse,
   type ScreenStatus,
   type ScreenWindow,
+  type SettingsView,
   type TaskEventPayload,
   type TaskStartResponse,
   type WorkspaceInfo,
@@ -22,6 +24,11 @@ import {
 
 const pokoApi = {
   app: { bootstrap: (): Promise<AppBootstrap> => ipcRenderer.invoke(IPC_CHANNELS.appBootstrap) },
+  settings: {
+    get: (): Promise<SettingsView> => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
+    set: (settings: Partial<AppSettings>): Promise<AppSettings> =>
+      ipcRenderer.invoke(IPC_CHANNELS.settingsSet, settings),
+  },
   workspace: {
     get: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceGet),
     select: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceSelect),
@@ -45,6 +52,8 @@ const pokoApi = {
     openSettings: (kind: "screen" | "accessibility"): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.screenOpenSettings, kind),
     acceptNotice: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.screenAcceptNotice),
+    /** Shows the data-use notice again before the next screen task. */
+    resetNotice: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.screenResetNotice),
     listWindows: (): Promise<ScreenWindow[]> => ipcRenderer.invoke(IPC_CHANNELS.screenListWindows),
     look: (
       windowId: number,

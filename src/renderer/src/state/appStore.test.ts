@@ -37,6 +37,8 @@ function fakePoko() {
     };
   const startReply = deferred<unknown>();
   const openReply = deferred<unknown>();
+  const settingsReply = deferred<unknown>();
+  const screenReply = deferred<unknown>();
   const poko = {
     tasks: {
       start: record("tasks.start", () => startReply.promise),
@@ -60,6 +62,15 @@ function fakePoko() {
       })),
     },
     approvals: { respond: record("approvals.respond", async () => "applied") },
+    settings: {
+      get: record("settings.get", () => settingsReply.promise),
+      set: record("settings.set", async (change) => ({
+        memoriesInContext: true,
+        checkpointDays: 30,
+        ...(change as object),
+      })),
+    },
+    screen: { status: record("screen.status", () => screenReply.promise) },
   };
   return {
     poko,
@@ -69,6 +80,8 @@ function fakePoko() {
     },
     replyToStart: (value: unknown) => startReply.resolve(value),
     replyToOpen: (value: unknown) => openReply.resolve(value),
+    replyToSettings: (value: unknown) => settingsReply.resolve(value),
+    failScreen: () => screenReply.resolve(Promise.reject(new Error("helper"))),
   };
 }
 
@@ -240,5 +253,34 @@ describe("deleting the active conversation", () => {
       conversations: [],
     });
     await flush();
+  });
+});
+
+describe("settings", () => {
+  it("keeps a save made while an older load was still on its way", async () => {
+    const loading = store.getState().loadSettings();
+    await store.getState().updateSettings({ memoriesInContext: false });
+    world.replyToSettings({
+      settings: { memoriesInContext: true, checkpointDays: 30 },
+      version: "0.1.0",
+    });
+    await loading;
+    expect(store.getState().settings?.memoriesInContext).toBe(false);
+  });
+
+  it("shows the preferences even when the screen check fails, and clears an old error", async () => {
+    store.setState({ settingsError: "설정을 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
+    world.failScreen();
+    const loading = store.getState().loadSettings();
+    world.replyToSettings({
+      settings: { memoriesInContext: true, checkpointDays: 7 },
+      version: "0.1.0",
+    });
+    await loading;
+    await flush();
+    expect(store.getState()).toMatchObject({
+      settings: { checkpointDays: 7 },
+      settingsError: null,
+    });
   });
 });

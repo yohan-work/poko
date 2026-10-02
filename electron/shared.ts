@@ -30,6 +30,9 @@ export const IPC_CHANNELS = {
   screenListWindows: "screen:list-windows",
   screenLook: "screen:look",
   screenAct: "screen:act",
+  screenResetNotice: "screen:reset-notice",
+  settingsGet: "settings:get",
+  settingsSet: "settings:set",
   overlayScene: "overlay:scene",
   overlayHide: "overlay:hide",
 } as const;
@@ -75,7 +78,7 @@ export type CharacterState =
   | "error"
   | "approval";
 
-export type AppView = "conversation" | "memory" | "tasks" | "activity";
+export type AppView = "conversation" | "memory" | "tasks" | "activity" | "settings";
 
 export interface WorkspaceInfo {
   path: string;
@@ -241,4 +244,20 @@ export interface MemoryInput {
   type: PersistedMemory["type"];
   content: string;
   importance: number;
+}
+
+/** How long undo data for approved changes is kept, in days. */
+export const CHECKPOINT_DAY_CHOICES = [7, 30, 90] as const;
+export type CheckpointDays = (typeof CHECKPOINT_DAY_CHOICES)[number];
+
+/** Preferences on the 설정 page. */
+export interface AppSettings {
+  /** Saved memories go with each request. */
+  memoriesInContext: boolean;
+  checkpointDays: CheckpointDays;
+}
+
+export interface SettingsView {
+  settings: AppSettings;
+  version: string;
 }

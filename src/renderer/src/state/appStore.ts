@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { applyDeltas, createDeltaBuffer, type StreamingAnswer } from "../lib/streaming";
 import type {
   AgentEvent,
+  AppSettings,
   ApprovalChoice,
   ApprovalOutcome,
   AppView,
@@ -63,6 +64,16 @@ interface AppState {
   dismissSetup: () => void;
   /** A login finished or another change arrived from main. */
   receiveSetup: (setup: CodexSetup) => void;
+  /** Checks Codex again from 설정, showing the setup screen if something is missing. */
+  recheckSetup: () => Promise<void>;
+  settings: AppSettings | null;
+  appVersion: string | null;
+  settingsError: string | null;
+  /** Loads preferences and the screen permissions for 설정. */
+  loadSettings: () => Promise<void>;
+  updateSettings: (change: Partial<AppSettings>) => Promise<void>;
+  /** Shows the screen data-use notice again before the next screen task. */
+  resetScreenNotice: () => Promise<void>;
   edits: EditsState;
   /** Approved changes in the active conversation. */
   editNotes: EditNote[];
@@ -202,6 +213,9 @@ function addActivity(state: AppState, taskId: string, message: string): Activity
   ].slice(-MAX_ACTIVITIES);
 }
 
+/** Counts settings saves, so a load that started before one is dropped. */
+let settingsSaves = 0;
+
 export const useAppStore = create<AppState>((set, get) => ({
   activeView: "conversation",
   characterState: "idle",
@@ -227,6 +241,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setup: null,
   setupChecking: false,
   setupDismissed: false,
+  settings: null,
+  appVersion: null,
+  settingsError: null,
 
   checkSetup: async () => {
     set({ setupChecking: true });
@@ -251,6 +268,49 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissSetup: () => set({ setupDismissed: true }),
 
   receiveSetup: (setup) => set({ setup }),
+
+  recheckSetup: async () => {
+    set({ setupDismissed: false });
+    await get().checkSetup();
+  },
+
+  loadSettings: async () => {
+    // Preferences and screen status load separately, so a failed screen check can't lock
+    // the switches; a reply that started before a save is dropped, so it can't undo it.
+    const saves = settingsSaves;
+    void window.poko.screen
+      .status()
+      .then((status) => set({ screen: { ...get().screen, status } }))
+      .catch(() => undefined);
+    try {
+      const { settings, version } = await window.poko.settings.get();
+      if (saves !== settingsSaves) return;
+      set({ settings, appVersion: version, settingsError: null });
+    } catch {
+      set({ settingsError: "설정을 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
+    }
+  },
+
+  updateSettings: async (change) => {
+    settingsSaves += 1;
+    set({ settingsError: null });
+    try {
+      set({ settings: await window.poko.settings.set(change) });
+    } catch {
+      set({ settingsError: "설정을 저장하지 못했어. 다시 시도해 줘." });
+    }
+  },
+
+  resetScreenNotice: async () => {
+    set({ settingsError: null });
+    try {
+      await window.poko.screen.resetNotice();
+      const status = await window.poko.screen.status();
+      set({ screen: { ...get().screen, status } });
+    } catch {
+      set({ settingsError: "안내 설정을 바꾸지 못했어. 다시 시도해 줘." });
+    }
+  },
   editNotes: [],
   undoingEdit: null,
 

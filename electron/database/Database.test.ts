@@ -139,6 +139,26 @@ describe("PokoDatabase", () => {
     database.close();
   });
 
+  it("keeps valid settings and ignores invalid ones", async () => {
+    const database = await openDatabase();
+    expect(database.getSettings()).toEqual({ memoriesInContext: true, checkpointDays: 30 });
+    expect(database.setSettings({ memoriesInContext: false, checkpointDays: 7 })).toEqual({
+      memoriesInContext: false,
+      checkpointDays: 7,
+    });
+    expect(
+      database.setSettings({
+        memoriesInContext: "no" as unknown as boolean,
+        checkpointDays: 365 as unknown as 30,
+      }),
+    ).toEqual({ memoriesInContext: false, checkpointDays: 7 });
+
+    database.acceptScreenNotice();
+    database.resetScreenNotice();
+    expect(database.isScreenNoticeAccepted()).toBe(false);
+    database.close();
+  });
+
   it("builds context from saved memories and completed exchanges in the same conversation", async () => {
     const database = await openDatabase();
     database.saveMemory({ type: "fact", content: "덜 중요한 기억", importance: 2 });
@@ -159,6 +179,13 @@ describe("PokoDatabase", () => {
       "덜 중요한 기억",
     ]);
     expect(context.history).toEqual([{ request: "구조 설명해 줘", answer: "Electron 앱이야." }]);
+
+    // With memories turned off, none go with requests; they stay saved, and history is kept.
+    database.setSettings({ memoriesInContext: false });
+    expect(database.getTaskContext(current).memories).toEqual([]);
+    expect(database.getTaskContext(current).history).toHaveLength(1);
+    expect(database.listMemories()).toHaveLength(2);
+    database.setSettings({ memoriesInContext: true });
     database.close();
 
     // A task in another conversation must not see this conversation's history.

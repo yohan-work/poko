@@ -123,9 +123,9 @@ export class EditManager {
       await rm(this.dir(id), { recursive: true, force: true });
   }
 
-  /** Expires edits older than KEEP_DAYS and removes their checkpoints. */
-  async expireOld(now = new Date()): Promise<void> {
-    const before = new Date(now.getTime() - KEEP_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  /** Expires edits older than `days` and removes their checkpoints. */
+  async expireOld(days = KEEP_DAYS, now = new Date()): Promise<void> {
+    const before = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
     for (const id of this.database.expireEdits(before))
       await rm(this.dir(id), { recursive: true, force: true });
   }
