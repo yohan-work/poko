@@ -42,12 +42,17 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
   - The renderer's `#quick` page uses only `window.poko.quick`.
 - **Starting a task:**
   - The task start in `electron/app/tasks.ts` moves into a shared function, `startConversationTask(message, conversationId | null)`. It does the workspace and setup checks, records the start, and calls `agentCore.startTask`, so both entry points behave the same.
+  - The shared function refuses **before recording anything** while a task is running or starting (`anyTaskBusy()`), like `screen.ts` does. A busy refusal never creates a conversation, a task row, or a new active conversation. This also covers the main window, which is no longer "sending" while a quick task runs.
   - `quick:ask` is registered through `handleTaskStart`, like `task:start`, so it gets the same start guards: refusal while 모든 데이터 삭제 runs, and the starting counts that `anyTaskBusy()` relies on.
   - It calls the shared function with `null`, which means a new conversation.
 - **The main window adopts tasks it didn't start.**
   - Today the main window listens to task events only inside its own send, and drops other tasks' events, so it would never see a quick task's approval card.
-  - A new app-level listener in the store handles any task that isn't the window's own. It adds the conversation and task to the lists. When the window switches to that conversation, it **adopts** the task: `activeTaskId`, `isSending`, streaming, and approval cards, exactly as if the window had sent the message.
-  - Approval events are added to `pendingApprovals` even before adoption, so a card is never lost.
+  - A new app-level listener in the store handles foreign tasks.
+    - It ignores **every** event while the window's own send is starting (`isSending` with no task id yet), because `runTask` replays those itself.
+    - After that, a task is foreign when its id isn't `activeTaskId`.
+  - For a foreign task, the listener adds the conversation and task to the lists, and keeps its approval events aside, keyed by `requestId` so nothing is added twice.
+  - When the window switches to that conversation, it **adopts** the task: `activeTaskId`, `isSending`, streaming, and the kept approval cards, exactly as if the window had sent the message.
+  - A foreign task's card is never shown in another conversation. When a card arrives, the window instead shows a banner in the open conversation: "다른 대화에서 확인이 필요해 · 보기". It switches to and adopts that conversation, which is allowed while busy because it holds the running task.
   - When the window is created or reloaded, it asks main for the active task and its pending approvals with a new `task:active` (main-window only), so a card raised while the window was hidden is still there.
 - **Panel updates:**
   - `deliverTaskEvent` also sends a reduced view of the panel's own task to the panel: status, text deltas, the final answer or error, and "needs approval".
@@ -85,7 +90,12 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
 
 - **Unit tests:**
   - the panel's channels refuse the main window and other senders, and existing channels refuse the panel;
-  - the store adopting a foreign task: approval cards before and after adoption, streaming, and completion;
+  - the store adopting a foreign task:
+    - approval cards are kept, never duplicated, and never shown in another conversation;
+    - the banner;
+    - streaming and completion;
+    - the window's own early events are not treated as foreign;
+  - a busy start (quick or main window) records nothing;
   - `conversation:open` while busy is allowed only for the running task's conversation;
   - the shared task start (no workspace, busy, setup not ready, success);
   - the shortcut setting validation;
