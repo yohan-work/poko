@@ -51,7 +51,26 @@ describe("planEdit", () => {
       new_string: "ONE\nTWO",
     });
     expect("after" in plan && plan.after).toBe("ONE\r\nTWO\r\nthree\r\n");
-    expect("change" in plan && plan.change).toBe("update:\n@@\n-one\n-two\n+ONE\n+TWO\n three");
+    expect("change" in plan && plan.change).toBe(
+      "update:\n@@\n-one\r\n-two\r\n+ONE\r\n+TWO\r\n three\r",
+    );
+  });
+
+  it("refuses an Edit that only matches after guessing line endings in a mixed file", () => {
+    writeFileSync(join(root, "mixed.txt"), "one\r\ntwo\nthree\n");
+    expect(
+      planEdit(root, "Edit", {
+        file_path: join(root, "mixed.txt"),
+        old_string: "one\ntwo",
+        new_string: "x",
+      }),
+    ).toHaveProperty("refusal");
+  });
+
+  it("shows a Write that only changes line endings", () => {
+    writeFileSync(join(root, "win.txt"), "a\r\nb\r\n");
+    const plan = planEdit(root, "Write", { file_path: join(root, "win.txt"), content: "a\nb\n" });
+    expect("change" in plan && plan.change).toBe("update:\n@@\n-a\r\n-b\r\n+a\n+b");
   });
 
   it("shows a change to only the final newline", () => {

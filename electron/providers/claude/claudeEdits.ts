@@ -78,9 +78,12 @@ export function planEdit(
     if (typeof oldText !== "string" || typeof newText !== "string" || oldText === "")
       return { refusal: "바꿀 내용을 알 수 없어서 거절했어." };
     if (before === null) return { refusal: "없는 파일은 고칠 수 없어서 거절했어." };
-    // Claude Code matches CRLF files with plain newlines and writes CRLF back, so do the same.
-    const crlf = before.includes("\r\n");
-    const toLf = (text: string) => (crlf ? text.replace(/\r\n/g, "\n") : text);
+    // Claude Code matches a CRLF file with plain newlines and writes CRLF back. Do the same,
+    // but only for a file that is CRLF throughout and only when the text as sent doesn't match;
+    // a file with mixed endings is refused rather than guessed.
+    const allCrlf = before.includes("\r\n") && !/(^|[^\r])\n/.test(before);
+    const crlf = allCrlf && count(before, oldText) === 0;
+    const toLf = (value: string) => (crlf ? value.replace(/\r\n/g, "\n") : value);
     const text = toLf(before);
     const search = toLf(oldText);
     const replacement = toLf(newText);
@@ -105,7 +108,7 @@ export function planEdit(
 }
 
 function lines(text: string): string[] {
-  const parts = text.replace(/\r\n/g, "\n").split("\n");
+  const parts = text.split("\n");
   if (parts.at(-1) === "") parts.pop();
   return parts;
 }
@@ -187,5 +190,8 @@ export function unifiedDiff(before: string, after: string): string {
   // A change to only the final newline has no changed lines; say so instead of an empty diff.
   if (before.endsWith("\n") !== after.endsWith("\n"))
     out.push(after.endsWith("\n") ? "+(파일 끝 줄바꿈 추가)" : "-(파일 끝 줄바꿈 삭제)");
+  // A card must never look empty while asking to change the file.
+  if (before !== after && !out.some((line) => line.startsWith("+") || line.startsWith("-")))
+    out.push("+(보이지 않는 문자나 줄바꿈 형식이 바뀌어)");
   return out.join("\n");
 }
