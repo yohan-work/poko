@@ -40,7 +40,7 @@ All privileged work stays in the Electron main process. The renderer only shows 
   - After each action, the tree is read again to check the result.
 - **Overlay character:** a transparent, always-on-top, click-through `BrowserWindow` per display. It renders the Poko orb: flying to an element's frame, the satellite pointing, a highlight ring, and a speech bubble. It follows reduced motion.
   - Window capture records only the picked window, so the overlay isn't in the image.
-  - The overlay still hides while Poko captures or measures, so it never covers the target. `setContentProtection` is only an extra layer, because macOS doesn't always honor it.
+  - The overlay still hides while Poko captures or measures, so it never covers the target. The overlay doesn't use `setContentProtection`, so screen recordings and screenshots show Poko. Poko's captures record only the picked window and hide the overlay first.
 - **Stop:** a global shortcut, the only global shortcut, stops the task. After stop, no accessibility action runs: the executor checks the stop flag right before each helper call, and a stop that arrives later cancels the step before it is sent. The overlay and the main window show that Poko is in control.
 - **Approval only on the card:** an action can be approved only from the card in Poko's window, which shows the target crop. The overlay bubble is narration built from untrusted labels, so it is never an approval surface, and there is no approve shortcut.
 
@@ -68,7 +68,7 @@ All privileged work stays in the Electron main process. The renderer only shows 
 Each milestone is its own PR with review.
 
 1. **Permissions and look.** Permission onboarding (check and explain Screen Recording and Accessibility), the window picker, capture, the Swift helper (window identity and snapshot), and a Codex turn with `localImage` and the element list. Poko describes the window, and no actions exist yet.
-2. **Overlay character.** The transparent overlay window. Poko flies to and circles elements referenced in the look answer. It hides while Poko captures or measures (content protection is only an extra layer) and respects reduced motion.
+2. **Overlay character.** The transparent overlay window. Poko flies to and circles elements referenced in the look answer. It hides while Poko captures or measures (it has no content protection, so recordings show it) and respects reduced motion.
 3. **One approved step at a time.** The action schema and validation, the approval card with a target crop, the stop shortcut, AX execution with re-check, the step loop, and the safety rules above.
 
 ### Milestone 1 notes (implemented)
