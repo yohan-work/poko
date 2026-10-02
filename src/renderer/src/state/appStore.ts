@@ -10,6 +10,7 @@ import type {
   WorkspaceInfo,
   PersistedMemory,
   MemoryInput,
+  CodexSetup,
   EditNote,
   EditsState,
   PersistedConversation,
@@ -53,6 +54,15 @@ export interface SessionTask {
 }
 
 interface AppState {
+  setup: CodexSetup | null;
+  setupChecking: boolean;
+  setupDismissed: boolean;
+  checkSetup: () => Promise<void>;
+  startLogin: () => Promise<void>;
+  cancelLogin: () => Promise<void>;
+  dismissSetup: () => void;
+  /** A login finished or another change arrived from main. */
+  receiveSetup: (setup: CodexSetup) => void;
   edits: EditsState;
   /** Approved changes in the active conversation. */
   editNotes: EditNote[];
@@ -214,6 +224,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   memoryQuery: "",
   edits: { available: false, enabled: false },
   editsConfirmOpen: false,
+  setup: null,
+  setupChecking: false,
+  setupDismissed: false,
+
+  checkSetup: async () => {
+    set({ setupChecking: true });
+    try {
+      set({ setup: await window.poko.setup.status() });
+    } catch {
+      // Keep the last status; the screen still offers 다시 확인.
+    } finally {
+      set({ setupChecking: false });
+    }
+  },
+
+  startLogin: async () => {
+    const result = await window.poko.setup.login().catch(() => "unavailable" as const);
+    if (result === "unavailable") await get().checkSetup();
+  },
+
+  cancelLogin: async () => {
+    await window.poko.setup.cancelLogin().catch(() => false);
+  },
+
+  dismissSetup: () => set({ setupDismissed: true }),
+
+  receiveSetup: (setup) => set({ setup }),
   editNotes: [],
   undoingEdit: null,
 

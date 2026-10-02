@@ -9,6 +9,7 @@ import { Character, stateLabels } from "./components/character/Character";
 import { Icon, type IconName } from "./components/Icon";
 import { ConversationItem } from "./components/sidebar/ConversationItem";
 import { EditsConfirm } from "./components/edits/EditsConfirm";
+import { SetupScreen } from "./components/setup/SetupScreen";
 import { useNow } from "./lib/useNow";
 
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
@@ -153,6 +154,12 @@ export function App() {
   const initializeWorkspace = useAppStore((state) => state.initializeWorkspace);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
 
+  // Codex must be installed and signed in; the setup screen explains what is missing.
+  useEffect(() => {
+    void useAppStore.getState().checkSetup();
+    return window.poko.setup.onChanged((status) => useAppStore.getState().receiveSetup(status));
+  }, []);
+
   // Approved changes settle (or are undone) in main; refresh the shown conversation's notes.
   useEffect(
     () =>
@@ -170,6 +177,7 @@ export function App() {
   return (
     <div className="app-shell" data-sidebar={isSidebarOpen ? "open" : "closed"}>
       <EditsConfirm />
+      <SetupScreen />
       {/* One live region announces Poko's state; the drawn characters stay silent. */}
       <p className="sr-only" aria-live="polite">
         포코: {stateLabels[characterState]}

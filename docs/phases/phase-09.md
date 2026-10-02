@@ -62,6 +62,17 @@ Other engines (Claude Code, API keys) are a later phase. This phase keeps the Co
   - No credentials go in the repository.
 - **CI:** an optional workflow builds an unsigned `.dmg` on tags as an artifact. It is not part of the PR checks.
 
+## Milestone 1 notes (implemented)
+
+- `codexEnvironment` builds the `PATH` for every Codex start. The App Server spawn, `features list`, the setup probes, `codex login`, and the legacy CLI provider all use it. The providers read the current runtime at each start, so a Codex installed or fixed during setup is used without restarting, and the feature cache is per executable.
+- `SetupService` resolves Codex, finds a `node` folder, flags a node script that has no `node`, and runs `--version`, `login status`, and `features list` with a 10 s timeout. `checkCodexSetup` decides readiness: version ≥ 0.159.0, `shell_tool` and `unified_exec` present, and ChatGPT sign-in read from stdout or stderr with exit code 0.
+- `codex login` runs once at a time, stops after 5 minutes or on 취소, then re-checks and pushes the new status to the window.
+- The setup screen opens on start when Codex isn't ready. It lists the three steps with fixes and offers 다시 확인 and 나중에.
+- Real runs of the built app with a Finder-like environment (`env -i HOME=… PATH=/usr/bin:/bin`):
+  - **ready:** nvm's Codex 0.160.0 was found, and a question got an answer ("안녕!");
+  - **signed out** (`CODEX_HOME` set to an empty folder): only the sign-in step failed, with 로그인하기;
+  - **not installed** (an empty `HOME`): the install step with the copy button; the other steps wait for the install.
+
 ## Milestones
 
 1. **Codex setup check:** the GUI-safe `PATH` when spawning Codex, `setup:status` and `setup:login`, the setup screen in the app, and tests for the version and login parsing and for building `PATH`.

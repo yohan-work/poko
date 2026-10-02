@@ -20,7 +20,6 @@ import {
 } from "./shared";
 import { AgentCore } from "./agent/AgentCore";
 import { resolveWorkspaceDirectory } from "./agent/workspace";
-import { resolveCodexExecutable } from "./providers/codex/CodexProvider";
 import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
 import { ConversationGoneError, PokoDatabase } from "./database/Database";
 import { ScreenService } from "./screen/ScreenService";
@@ -30,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import { ScreenOverlay } from "./screen/ScreenOverlay";
 import { ScreenAgent } from "./screen/ScreenAgent";
 import { EditManager } from "./edits/EditManager";
+import { SetupService } from "./setup/SetupService";
 import { buildOverlayScene, citedElements, replaceCitations } from "./screen/overlayScene";
 
 let mainWindow: BrowserWindow | null = null;
@@ -155,6 +155,25 @@ function registerIpcHandlers(): void {
     if (id !== null && !database.getConversation(id)) return { error: CONVERSATION_GONE };
     database.setActiveConversation(id);
     return { messages: id === null ? [] : database.getConversationMessages(id) };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.setupStatus, async (event) => {
+    if (!isTrustedRenderer(event) || !setupService)
+      throw new Error("Unknown renderer asked for setup.");
+    return setupService.refresh();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.setupLogin, (event) => {
+    if (!isTrustedRenderer(event) || !setupService)
+      throw new Error("Unknown renderer started a login.");
+    return setupService.startLogin();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.setupCancelLogin, (event) => {
+    if (!isTrustedRenderer(event) || !setupService)
+      throw new Error("Unknown renderer cancelled a login.");
+    setupService.cancelLogin();
+    return true;
   });
 
   ipcMain.handle(IPC_CHANNELS.editsGet, async (event) => {
@@ -587,6 +606,7 @@ function handleTaskStart(
 /** Approval answers in progress, so a double click can't checkpoint or answer twice. */
 const answering = new Set<string>();
 let editManager: EditManager | null = null;
+let setupService: SetupService | null = null;
 
 /** Settles a task's pending edits and tells the renderer when its conversation's edits changed. */
 async function settleEdits(taskId: string): Promise<void> {
@@ -728,10 +748,17 @@ app
       process.env.ELECTRON_RENDERER_URL,
       join(__dirname, "../renderer/index.html"),
     );
-    const executable = await resolveCodexExecutable();
-    screenProvider = new CodexAppServerProvider({ executable });
+    setupService = new SetupService((status) => {
+      if (mainWindow && !mainWindow.isDestroyed())
+        mainWindow.webContents.send(IPC_CHANNELS.setupChanged, status);
+    });
+    await setupService
+      .refresh()
+      .catch((error) => console.error("Codex setup check failed.", error));
+    const { runtime } = setupService;
+    screenProvider = new CodexAppServerProvider({ runtime });
     agentCore = new AgentCore(
-      new CodexAppServerProvider({ executable }),
+      new CodexAppServerProvider({ runtime }),
       deliverTaskEvent,
       codingSkill,
     );

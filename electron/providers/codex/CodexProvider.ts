@@ -24,6 +24,8 @@ export type SpawnProcess = (
 
 interface CodexProviderOptions {
   executable?: string;
+  /** The environment to start Codex with (see codexEnvironment). */
+  environment?: NodeJS.ProcessEnv;
   timeoutMs?: number;
   spawnProcess?: SpawnProcess;
 }
@@ -109,10 +111,12 @@ export class CodexProvider implements AgentProvider {
   private readonly executable: string;
   private readonly timeoutMs: number;
   private readonly spawnProcess: SpawnProcess;
+  private readonly environment: NodeJS.ProcessEnv;
 
   constructor(options: CodexProviderOptions = {}) {
     this.executable = options.executable ?? "codex";
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.environment = options.environment ?? process.env;
     this.spawnProcess =
       options.spawnProcess ??
       ((command, args, spawnOptions) =>
@@ -155,7 +159,7 @@ export class CodexProvider implements AgentProvider {
     try {
       child = this.spawnProcess(this.executable, args, {
         cwd: input.cwd,
-        env: process.env,
+        env: this.environment,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32",
         windowsHide: true,

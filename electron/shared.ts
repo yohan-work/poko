@@ -3,6 +3,11 @@ export const IPC_CHANNELS = {
   workspaceSelect: "workspace:select",
   taskStart: "task:start",
   conversationOpen: "conversation:open",
+  setupStatus: "setup:status",
+  setupLogin: "setup:login",
+  setupCancelLogin: "setup:cancel-login",
+  /** main → renderer: the setup changed (a login finished). */
+  setupChanged: "setup:changed",
   editsGet: "edits:get",
   editsSet: "edits:set",
   editsList: "edits:list",
@@ -160,6 +165,21 @@ export interface EditNote {
   /** Paths relative to the workspace. */
   files: string[];
   status: "applied" | "undone" | "expired";
+}
+
+/** The Codex setup Poko depends on, checked on first run and from the setup screen. */
+export interface CodexSetup {
+  installed: boolean;
+  path: string | null;
+  version: string | null;
+  /** `codex` is a node script and no `node` was found to start it. */
+  missingNode: boolean;
+  login: "chatgpt" | "api_key" | "signed_out" | "unknown";
+  /** Version and features are new enough. */
+  featuresOk: boolean;
+  ready: boolean;
+  /** A `codex login` started from Poko is still open. */
+  loggingIn?: boolean;
 }
 
 export interface EditsState {
