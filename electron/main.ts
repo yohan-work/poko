@@ -12,7 +12,9 @@ import { SetupService } from "./setup/SetupService";
 import { ClaudeSetupService } from "./setup/claudeSetup";
 import { EngineProvider } from "./agent/EngineProvider";
 import { ClaudeCodeProvider } from "./providers/claude/ClaudeCodeProvider";
-import { ctx } from "./app/context";
+import { ctx, showMainWindow } from "./app/context";
+import { applyQuickShortcut, registerQuickHandlers } from "./app/quick";
+import { QuickPanel } from "./quick/QuickPanel";
 import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
 import { registerEditsHandlers } from "./app/edits";
@@ -22,6 +24,15 @@ import { registerSetupHandlers } from "./app/setup";
 import { registerTaskHandlers } from "./app/tasks";
 import { registerWorkspaceHandlers } from "./app/workspace";
 
+/** Set when the app is quitting, so closing the main window really closes it. */
+let quitting = false;
+
+/** Shows the main window, creating it again if it was destroyed. */
+async function openMainWindow(): Promise<void> {
+  if (ctx.mainWindow && !ctx.mainWindow.isDestroyed()) showMainWindow();
+  else await createWindow();
+}
+
 function registerIpcHandlers(): void {
   registerWorkspaceHandlers();
   registerTaskHandlers();
@@ -30,6 +41,7 @@ function registerIpcHandlers(): void {
   registerScreenHandlers();
   registerSettingsHandlers();
   registerDataHandlers();
+  registerQuickHandlers();
 }
 
 async function createWindow(): Promise<void> {
@@ -48,6 +60,12 @@ async function createWindow(): Promise<void> {
     },
   });
   ctx.mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // On macOS, closing hides the window: tasks, the shortcut, and the quick panel keep working.
+  ctx.mainWindow.on("close", (event) => {
+    if (process.platform !== "darwin" || quitting) return;
+    event.preventDefault();
+    ctx.mainWindow?.hide();
+  });
   ctx.mainWindow.webContents.on("will-navigate", (event, url) => {
     const devServerUrl = process.env.ELECTRON_RENDERER_URL;
     if (!devServerUrl || !url.startsWith(devServerUrl)) event.preventDefault();
@@ -134,12 +152,19 @@ app
       deliverTaskEvent,
       codingSkill,
     );
+    ctx.quickPanel = new QuickPanel(
+      join(__dirname, "../preload/preload.js"),
+      process.env.ELECTRON_RENDERER_URL,
+      join(__dirname, "../renderer/index.html"),
+    );
+    ctx.openMainWindow = openMainWindow;
     registerIpcHandlers();
     await createWindow();
+    applyQuickShortcut(ctx.database.getSettings().quickShortcut);
 
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) void createWindow();
-    });
+    // The hidden main window, the quick panel, and the overlay all count as windows, so a Dock
+    // click shows the main window instead of checking whether any window exists.
+    app.on("activate", () => void openMainWindow());
   })
   .catch(() => {
     dialog.showErrorBox(
@@ -155,6 +180,7 @@ app.on("window-all-closed", () => {
 
 let quitAfterTasks = false;
 app.on("before-quit", (event) => {
+  quitting = true;
   globalShortcut.unregisterAll();
   if (ctx.screenRun) {
     // Let the stopped task record that it was cancelled before the ctx.database closes.

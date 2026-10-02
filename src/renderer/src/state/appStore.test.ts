@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ActiveTaskInfo,
   AgentEvent,
   PersistedConversation,
   TaskEventPayload,
+  TaskStartedNotice,
 } from "../../../../electron/shared";
 
 /**
@@ -28,6 +30,8 @@ const conversation = (id: string, title = id): PersistedConversation => ({
 
 function fakePoko() {
   const listeners = new Set<(payload: TaskEventPayload) => void>();
+  const startedListeners = new Set<(notice: TaskStartedNotice) => void>();
+  let activeReply: ActiveTaskInfo | null = null;
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const record =
     <T>(method: string, result: (...args: unknown[]) => T) =>
@@ -46,6 +50,11 @@ function fakePoko() {
       onEvent: (listener: (payload: TaskEventPayload) => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
+      },
+      active: record("tasks.active", async () => activeReply),
+      onStarted: (listener: (notice: TaskStartedNotice) => void) => {
+        startedListeners.add(listener);
+        return () => startedListeners.delete(listener);
       },
     },
     conversations: {
@@ -93,6 +102,12 @@ function fakePoko() {
     },
     replyToStart: (value: unknown) => startReply.resolve(value),
     replyToOpen: (value: unknown) => openReply.resolve(value),
+    startElsewhere: (notice: TaskStartedNotice) => {
+      for (const listener of [...startedListeners]) listener(notice);
+    },
+    setActive: (value: ActiveTaskInfo | null) => {
+      activeReply = value;
+    },
     replyToSettings: (value: unknown) => settingsReply.resolve(value),
     failScreen: () => screenReply.resolve(Promise.reject(new Error("helper"))),
   };
@@ -340,5 +355,106 @@ describe("deleting all data", () => {
     void store.getState().sendMessage("질문");
     expect(await store.getState().deleteAllData("삭제")).toContain("작업 중");
     expect(world.calls.some((call) => call.method === "data.deleteAll")).toBe(false);
+  });
+});
+
+describe("a task started elsewhere (the quick panel)", () => {
+  const card = {
+    type: "approvalRequired",
+    requestId: "q1",
+    kind: "file_change",
+    summary: "변경",
+    cwd: "/w/project",
+    reason: null,
+    canApprove: true,
+  } as const;
+
+  it("keeps its card out of the shown conversation, blocks sending, and adopts it on request", async () => {
+    world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
+    world.emit("qt", card);
+    expect(store.getState()).toMatchObject({
+      busyElsewhere: true,
+      pendingApprovals: [],
+      foreignApproval: { conversationId: "q" },
+    });
+    expect(store.getState().conversations[0].id).toBe("q");
+    expect(await store.getState().sendMessage("다른 질문")).toBeUndefined();
+    expect(world.calls.some((call) => call.method === "tasks.start")).toBe(false);
+
+    world.setActive({ taskId: "qt", conversationId: "q", approvals: [] });
+    const adopting = store.getState().showForeignTask();
+    // Events while the conversation loads are held, then applied in order.
+    world.emit("qt", { type: "output", content: "답변", itemId: "m" });
+    world.replyToOpen({
+      messages: [{ id: "u", role: "user", content: "빠른 질문", createdAt: "x" }],
+    });
+    await adopting;
+    expect(store.getState()).toMatchObject({
+      activeConversationId: "q",
+      activeTaskId: "qt",
+      isSending: true,
+      busyElsewhere: false,
+      foreignApproval: null,
+    });
+    expect(store.getState().pendingApprovals.map((item) => item.requestId)).toEqual(["q1"]);
+    world.emit("qt", { type: "completed", result: "끝" });
+    expect(store.getState()).toMatchObject({ isSending: false, activeTaskId: null });
+    expect(store.getState().messages.at(-1)?.content).toBe("끝");
+  });
+
+  it("stays idle when the task ended while its conversation loaded", async () => {
+    world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
+    world.setActive(null);
+    const adopting = store.getState().openConversation("q");
+    world.emit("qt", { type: "completed", result: "끝" });
+    world.replyToOpen({ messages: [] });
+    await adopting;
+    expect(store.getState()).toMatchObject({
+      activeConversationId: "q",
+      isSending: false,
+      activeTaskId: null,
+      busyElsewhere: false,
+    });
+  });
+
+  it("hands events held during a refused start to foreign handling", async () => {
+    world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
+    world.emit("qt", { type: "completed", result: "끝" }); // ends: nothing runs elsewhere now
+    const sending = store.getState().sendMessage("질문");
+    world.emit("qt2", card); // another foreign task's card arrives while the start is pending
+    world.replyToStart({ error: "포코가 이미 다른 작업을 하고 있어." });
+    await sending;
+    expect(store.getState().pendingApprovals).toEqual([]);
+    expect(store.getState().foreignApproval).not.toBeNull();
+  });
+
+  it("gives held events back when adoption fails, so the window doesn't stay busy", async () => {
+    world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
+    const adopting = store.getState().openConversation("q");
+    world.emit("qt", { type: "completed", result: "끝" }); // held during the failed adoption
+    world.replyToOpen({ error: "포코가 작업 중이라 다른 대화로 옮길 수 없어." });
+    await adopting;
+    expect(store.getState()).toMatchObject({ busyElsewhere: false, activeTaskId: null });
+  });
+
+  it("continues the answer written before the take-over", async () => {
+    world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
+    world.setActive({
+      taskId: "qt",
+      conversationId: "q",
+      approvals: [],
+      answer: { text: "앞부분", itemId: "m1" },
+    });
+    const adopting = store.getState().openConversation("q");
+    // Already in the snapshot, so it isn't added again.
+    world.emit("qt", { type: "output", content: "부분", itemId: "m1" });
+    world.replyToOpen({ messages: [] });
+    await adopting;
+    expect(store.getState().streaming).toEqual({ taskId: "qt", itemId: "m1", text: "앞부분" });
+    // The take-over happened once: no reload of the conversation for the held text.
+    expect(world.calls.filter((call) => call.method === "conversations.open")).toHaveLength(1);
+    world.emit("qt", { type: "output", content: " 뒷부분", itemId: "m1" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(store.getState().streaming?.text).toBe("앞부분 뒷부분");
   });
 });

@@ -113,6 +113,46 @@ function EngineSection() {
   );
 }
 
+const shortcuts = [
+  { id: "Alt+Space", label: "⌥ Space" },
+  { id: "Alt+Shift+Space", label: "⌥⇧ Space" },
+  { id: "off", label: "끄기" },
+] as const;
+
+function QuickSection() {
+  const settings = useAppStore((state) => state.settings);
+  const quickShortcutOk = useAppStore((state) => state.quickShortcutOk);
+  const updateSettings = useAppStore((state) => state.updateSettings);
+  return (
+    <Section id="settings-quick" title="빠른 질문">
+      <Row
+        label="어디서든 포코 부르기"
+        detail={
+          settings?.quickShortcut !== "off" && !quickShortcutOk
+            ? "다른 앱이 이 단축키를 쓰고 있어. 다른 단축키를 골라 줘."
+            : "다른 앱을 쓰다가도 단축키를 누르면 작은 창에서 바로 물어볼 수 있어."
+        }
+      >
+        <fieldset className="segmented">
+          <legend className="sr-only">빠른 질문 단축키</legend>
+          {shortcuts.map((shortcut) => (
+            <button
+              key={shortcut.id}
+              type="button"
+              aria-pressed={settings?.quickShortcut === shortcut.id}
+              className={`segmented__item${settings?.quickShortcut === shortcut.id ? " is-active" : ""}`}
+              disabled={!settings}
+              onClick={() => void updateSettings({ quickShortcut: shortcut.id })}
+            >
+              {shortcut.label}
+            </button>
+          ))}
+        </fieldset>
+      </Row>
+    </Section>
+  );
+}
+
 function MemorySection() {
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
@@ -377,6 +417,7 @@ export function SettingsPanel() {
         </p>
       )}
       <EngineSection />
+      <QuickSection />
       <MemorySection />
       <ScreenSection />
       <EditsSection />

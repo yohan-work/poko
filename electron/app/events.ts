@@ -1,6 +1,6 @@
 import { IPC_CHANNELS, type ApprovalRequest, type TaskEventPayload } from "../shared";
 import { replaceCitations } from "../screen/overlayScene";
-import { ctx, settleEdits } from "./context";
+import { ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { pointAt, screenTasks } from "./screen";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
@@ -23,9 +23,15 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
     }
   }
   const event = payload.event;
+  const finished =
+    event.type === "completed" || event.type === "error" || event.type === "cancelled";
   // When a task finishes, its last approved change is on disk (or never happened).
-  if (event.type === "completed" || event.type === "error" || event.type === "cancelled")
+  if (finished) {
     void settleEdits(payload.taskId);
+    pendingApprovalEvents.delete(payload.taskId);
+  }
+  // The quick panel follows only its own task, in a reduced form.
+  if (ctx.quickPanel && ctx.quickPanel.taskId === payload.taskId) ctx.quickPanel.update(event);
   let rendererPayload = payload;
   if (event.type === "approvalRequired") {
     const request: ApprovalRequest = { taskId: payload.taskId, ...event };
@@ -74,6 +80,13 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
     }
   } catch (error) {
     console.error("Could not persist task event.", error);
+  }
+  // Kept for a main window that opens while the card waits (see task:active).
+  const shown = rendererPayload.event;
+  if (shown.type === "approvalRequired" && shown.canApprove) {
+    const cards = pendingApprovalEvents.get(payload.taskId) ?? new Map();
+    cards.set(shown.requestId, { taskId: payload.taskId, ...shown });
+    pendingApprovalEvents.set(payload.taskId, cards);
   }
   if (!ctx.mainWindow || ctx.mainWindow.isDestroyed() || ctx.mainWindow.webContents.isDestroyed())
     return;

@@ -2,6 +2,7 @@ import { app, ipcMain } from "electron";
 import { CLAUDE_MODELS } from "../providers/claude/ClaudeCodeProvider";
 import { type AppSettings, IPC_CHANNELS, type ModelOption, type SettingsView } from "../shared";
 import { ctx, isTrustedRenderer } from "./context";
+import { applyQuickShortcut } from "./quick";
 
 const MODEL_CACHE_MS = 10 * 60 * 1000;
 /** A failed listing is remembered briefly, so a busy picker doesn't keep starting Codex. */
@@ -35,19 +36,32 @@ export function registerSettingsHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.settingsGet, (event): SettingsView => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer requested settings.");
-    return { settings: ctx.database.getSettings(), version: app.getVersion() };
+    return {
+      settings: ctx.database.getSettings(),
+      version: app.getVersion(),
+      quickShortcutOk: ctx.quickShortcutOk,
+    };
   });
 
   ipcMain.handle(IPC_CHANNELS.settingsSet, (event, raw: unknown): AppSettings => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer changed settings.");
     const input = typeof raw === "object" && raw !== null ? (raw as Partial<AppSettings>) : {};
-    return ctx.database.setSettings({
+    const before = ctx.database.getSettings().quickShortcut;
+    const saved = ctx.database.setSettings({
       engine: input.engine,
+      quickShortcut: input.quickShortcut,
       codexModel: input.codexModel,
       claudeModel: input.claudeModel,
       memoriesInContext: input.memoriesInContext,
       checkpointDays: input.checkpointDays,
     });
+    // Picking the same shortcut again retries it, for example after another app freed it.
+    if (
+      input.quickShortcut !== undefined &&
+      (saved.quickShortcut !== before || !ctx.quickShortcutOk)
+    )
+      applyQuickShortcut(saved.quickShortcut);
+    return saved;
   });
 }

@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import {
   type AppBootstrap,
   IPC_CHANNELS,
+  type PendingApprovalEvent,
   type PersistedConversation,
   type WorkspaceInfo,
 } from "../shared";
@@ -14,6 +15,8 @@ import type { ScreenOverlay } from "../screen/ScreenOverlay";
 import type { ScreenAgent } from "../screen/ScreenAgent";
 import type { EditManager } from "../edits/EditManager";
 import type { SetupService } from "../setup/SetupService";
+import type { QuickPanel } from "../quick/QuickPanel";
+import { resolveWorkspaceDirectory } from "../agent/workspace";
 import type { ClaudeSetupService } from "../setup/claudeSetup";
 
 /**
@@ -36,7 +39,67 @@ export const ctx = {
   startingTasks: 0,
   /** 모든 데이터 삭제 is in progress; no task may start. */
   deletingData: false,
+  quickPanel: null as QuickPanel | null,
+  /** False when another app already owns the quick panel shortcut. */
+  quickShortcutOk: true,
+  /** Shows the main window, creating it if it was closed. Set by main.ts. */
+  openMainWindow: null as (() => Promise<void>) | null,
 };
+
+/**
+ * Approval cards still waiting, per running task, so a main window that opens (or reloads)
+ * while a task waits can show them. Removed when answered or when the task ends.
+ */
+export const pendingApprovalEvents = new Map<string, Map<string, PendingApprovalEvent>>();
+
+/** Whether an IPC call came from the quick panel's own page. */
+export function isQuickPanel(event: IpcMainInvokeEvent): boolean {
+  return ctx.quickPanel?.owns(event) ?? false;
+}
+
+export const BUSY_MESSAGE = "포코가 이미 다른 작업을 하고 있어. 끝난 뒤에 다시 물어봐 줘.";
+
+/**
+ * Starts a conversation task from either the main window or the quick panel. Refuses before
+ * recording anything while another task runs or starts, so a busy refusal never leaves an empty
+ * conversation behind. Call only from a `handleTaskStart` handler (it counts this start).
+ */
+export async function startConversationTask(
+  message: string,
+  conversationId: string | null,
+  /** Runs after the task is recorded and before it starts, so its first event finds it known. */
+  onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
+): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
+  if (!ctx.agentCore || !ctx.database) throw new Error("Local storage is unavailable.");
+  // This start is already counted in startingTasks, so another start makes it more than one.
+  const busy = () => ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1;
+  if (busy()) return { error: BUSY_MESSAGE };
+  const cwd = await resolveWorkspaceDirectory(ctx.database.getWorkspace());
+  // Another task may have started while the folder was being checked.
+  if (busy()) return { error: BUSY_MESSAGE };
+  const started = recordTaskStart(ctx.database, message, cwd, conversationId);
+  if ("error" in started) return started;
+  const { taskId } = started;
+  onRecorded?.(started);
+  try {
+    ctx.agentCore.startTask({
+      prompt: message,
+      cwd,
+      taskId,
+      context: ctx.database.getTaskContext(taskId),
+      editsEnabled: ctx.database.isEditsEnabled(cwd),
+    });
+  } catch (error) {
+    ctx.database.recordTaskEvent(
+      taskId,
+      "error",
+      "작업을 시작하지 못했어.",
+      "작업을 시작하지 못했어.",
+    );
+    throw error;
+  }
+  return started;
+}
 
 /** Whether any task is running or starting, so nothing it uses may be deleted. */
 export function anyTaskBusy(): boolean {

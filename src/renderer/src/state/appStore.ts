@@ -8,6 +8,7 @@ import type {
   DataExportResult,
   EngineId,
   ModelOption,
+  PendingApprovalEvent,
   DeleteAllResponse,
   ApprovalChoice,
   ApprovalOutcome,
@@ -40,9 +41,7 @@ export interface ActivityEntry {
   createdAt: string;
 }
 
-export type PendingApproval = Extract<AgentEvent, { type: "approvalRequired" }> & {
-  taskId: string;
-};
+export type PendingApproval = PendingApprovalEvent;
 
 export interface ScreenState {
   open: boolean;
@@ -74,6 +73,8 @@ interface AppState {
   /** Checks Codex again from 설정, showing the setup screen if something is missing. */
   recheckSetup: () => Promise<void>;
   settings: AppSettings | null;
+  /** False when another app already owns the quick panel shortcut. */
+  quickShortcutOk: boolean;
   /** Models per engine, loaded when the picker first needs them. */
   models: Partial<Record<EngineId, ModelOption[]>>;
   loadModels: (engine: EngineId) => Promise<void>;
@@ -121,6 +122,12 @@ interface AppState {
   streaming: StreamingAnswer | null;
   /** Oldest first; Codex may ask again before the user answers. */
   pendingApprovals: PendingApproval[];
+  /** A task started elsewhere (the quick panel) is running, so this window can't start one. */
+  busyElsewhere: boolean;
+  /** A task started elsewhere waits for approval in this conversation (null: unknown yet). */
+  foreignApproval: { conversationId: string | null } | null;
+  /** Shows the conversation of a task started elsewhere and takes it over, cards included. */
+  showForeignTask: () => Promise<void>;
   isRespondingToApproval: boolean;
   progressMessage: string | null;
   workspace: WorkspaceInfo | null;
@@ -264,6 +271,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeTaskId: null,
   streaming: null,
   pendingApprovals: [],
+  busyElsewhere: false,
+  foreignApproval: null,
+  showForeignTask: async () => {
+    const [taskId, foreign] = [...foreignTasks.entries()].at(-1) ?? [];
+    if (!taskId || !foreign) return;
+    const conversationId =
+      foreign.conversationId ??
+      (await window.poko.tasks.active().catch(() => null))?.conversationId;
+    if (conversationId) await adoptTask(taskId, conversationId);
+  },
   isRespondingToApproval: false,
   screen: { open: false, loading: false, status: null, windows: [], error: null },
   progressMessage: null,
@@ -280,6 +297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setupChecking: false,
   setupDismissed: false,
   settings: null,
+  quickShortcutOk: true,
   models: {},
   appVersion: null,
   settingsError: null,
@@ -338,9 +356,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       .then((status) => set({ screen: { ...get().screen, status } }))
       .catch(() => undefined);
     try {
-      const { settings, version } = await window.poko.settings.get();
+      const { settings, version, quickShortcutOk } = await window.poko.settings.get();
       if (saves !== settingsSaves) return;
-      set({ settings, appVersion: version, settingsError: null });
+      set({ settings, appVersion: version, quickShortcutOk, settingsError: null });
     } catch {
       set({ settingsError: "설정을 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
     }
@@ -351,6 +369,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ settingsError: null });
     try {
       set({ settings: await window.poko.settings.set(change) });
+      // A new shortcut may be taken by another app; main knows after registering it.
+      if (change.quickShortcut !== undefined) {
+        const { quickShortcutOk } = await window.poko.settings.get();
+        set({ quickShortcutOk });
+      }
     } catch {
       set({ settingsError: "설정을 저장하지 못했어. 다시 시도해 줘." });
     }
@@ -531,6 +554,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       set(fromBootstrap(await window.poko.app.bootstrap()));
       void get().loadEdits();
       void get().loadEditNotes();
+      // A task may already be running (started from the quick panel, or before a reload).
+      const live = await window.poko.tasks.active().catch(() => null);
+      if (live) {
+        trackForeign(live.taskId, live.conversationId, live.approvals);
+        if (live.conversationId) await adoptTask(live.taskId, live.conversationId);
+      }
     } catch {
       set({ workspaceError: "저장된 대화와 폴더를 불러오지 못했어. 앱을 다시 시작해 줘." });
     }
@@ -742,6 +771,205 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearError: () => set({ errorMessage: null, workspaceError: null }),
 }));
 
+/** A running task this window didn't start, kept until the window takes it over or it ends. */
+interface ForeignTask {
+  conversationId: string | null;
+  approvals: Map<string, PendingApproval>;
+}
+const foreignTasks = new Map<string, ForeignTask>();
+/** Events held while this window's own send waits for its task id (null: not starting). */
+let startingSend: TaskEventPayload[] | null = null;
+/** A task being taken over: its events are held until its conversation is on screen. */
+let adopting: { taskId: string; held: TaskEventPayload[] } | null = null;
+
+/** The only task-event listener: each event goes to the shown task or to foreign handling. */
+function routeTaskEvent(payload: TaskEventPayload): void {
+  if (startingSend) {
+    startingSend.push(payload);
+    return;
+  }
+  if (adopting && payload.taskId === adopting.taskId) {
+    adopting.held.push(payload);
+    return;
+  }
+  if (payload.taskId === useAppStore.getState().activeTaskId) {
+    applyTaskEvent(payload);
+    return;
+  }
+  applyForeignEvent(payload);
+}
+
+function trackForeign(
+  taskId: string,
+  conversationId: string | null,
+  approvals: PendingApproval[] = [],
+): ForeignTask {
+  const task = foreignTasks.get(taskId) ?? { conversationId, approvals: new Map() };
+  task.conversationId ??= conversationId;
+  for (const approval of approvals) task.approvals.set(approval.requestId, approval);
+  foreignTasks.set(taskId, task);
+  useAppStore.setState({
+    busyElsewhere: true,
+    ...(task.approvals.size > 0
+      ? { foreignApproval: { conversationId: task.conversationId } }
+      : {}),
+  });
+  return task;
+}
+
+/** A task this window doesn't show: lists, Activity, and its cards kept aside (never shown). */
+function applyForeignEvent(payload: TaskEventPayload): void {
+  const { taskId, event } = payload;
+  if (event.type === "output") {
+    trackForeign(taskId, null);
+    return;
+  }
+  const status = sessionTaskStatus(event);
+  const waitingForUser = event.type === "approvalRequired" && event.canApprove;
+  if (status === null) trackForeign(taskId, null, waitingForUser ? [{ ...event, taskId }] : []);
+  else foreignTasks.delete(taskId);
+  const message = activityText(event);
+  const timestamp = new Date().toISOString();
+  useAppStore.setState((state) => ({
+    tasks: state.tasks.map((task) =>
+      task.id !== taskId
+        ? task
+        : status
+          ? { ...task, status, completedAt: timestamp }
+          : waitingForUser
+            ? { ...task, status: "waiting_approval" as const }
+            : task,
+    ),
+    activities: message ? addActivity(state, taskId, message) : state.activities,
+    busyElsewhere: foreignTasks.size > 0,
+    foreignApproval: [...foreignTasks.values()].some((task) => task.approvals.size > 0)
+      ? state.foreignApproval
+      : null,
+  }));
+}
+
+/**
+ * Takes over a running task started elsewhere: its conversation is shown and its stream,
+ * cards, and end apply here as if this window had sent it. The task id is set first and its
+ * events are held while the conversation loads; if it ended meanwhile, the window stays idle.
+ */
+async function adoptTask(taskId: string, conversationId: string): Promise<void> {
+  if (adopting || startingSend) return;
+  const set = useAppStore.setState;
+  const foreign = trackForeign(taskId, conversationId);
+  // This call's own hold: a later take-over must never have its hold cleared by this one.
+  const mine: { taskId: string; held: TaskEventPayload[] } = { taskId, held: [] };
+  adopting = mine;
+  const release = (): void => {
+    if (adopting === mine) adopting = null;
+  };
+  set({ activeTaskId: taskId });
+  // On failure the task stays foreign, and the events held meanwhile go to it, not away.
+  const giveBack = (): void => {
+    release();
+    for (const payload of mine.held) applyForeignEvent(payload);
+  };
+  try {
+    const response = await window.poko.conversations.open(conversationId);
+    if ("error" in response) {
+      set({ conversationError: response.error, activeTaskId: null });
+      giveBack();
+      return;
+    }
+    const live = await window.poko.tasks.active().catch(() => null);
+    const running = live?.taskId === taskId;
+    const answerSoFar = running ? live?.answer : undefined;
+    for (const approval of live?.approvals ?? [])
+      foreign.approvals.set(approval.requestId, approval);
+    foreignTasks.delete(taskId);
+    const approvals = running ? [...foreign.approvals.values()] : [];
+    set({
+      activeView: "conversation",
+      activeConversationId: conversationId,
+      messages: response.messages,
+      editNotes: [],
+      // The answer written before the take-over, so the stream continues it.
+      streaming: answerSoFar
+        ? { taskId, itemId: answerSoFar.itemId, text: answerSoFar.text }
+        : null,
+      errorMessage: null,
+      conversationError: null,
+      activeTaskId: running ? taskId : null,
+      isSending: running,
+      pendingApprovals: approvals,
+      characterState: running ? (approvals.length > 0 ? "approval" : "working") : "idle",
+      progressMessage: running
+        ? approvals.length > 0
+          ? "네 확인을 기다리고 있어."
+          : "포코가 작업하고 있어."
+        : null,
+      busyElsewhere: foreignTasks.size > 0,
+      foreignApproval: null,
+    });
+    // Taken out before replaying, so a failure while replaying can't give them back twice.
+    const held = mine.held.splice(0);
+    release();
+    // Text held during the take-over is already in the answer snapshot (main sent it before
+    // answering task:active), so only the other events are replayed then.
+    if (running) {
+      for (const payload of held) {
+        if (!answerSoFar || payload.event.type !== "output") routeTaskEvent(payload);
+      }
+    } else {
+      // It ended while loading: the saved conversation now holds its final answer.
+      const again = await window.poko.conversations.open(conversationId).catch(() => null);
+      if (again && !("error" in again)) set({ messages: again.messages });
+      for (const payload of held) {
+        if (sessionTaskStatus(payload.event) !== null) applyForeignEvent(payload);
+      }
+    }
+    void useAppStore.getState().loadEditNotes();
+  } catch {
+    set({
+      conversationError: "대화를 불러오지 못했어. 잠시 뒤 다시 시도해 줘.",
+      activeTaskId: null,
+    });
+    giveBack();
+  } finally {
+    release();
+  }
+}
+
+/** A conversation main asked to show: adopt its running task, or just switch to it. */
+async function focusConversation(conversationId: string): Promise<void> {
+  const live = await window.poko.tasks.active().catch(() => null);
+  if (
+    live &&
+    live.conversationId === conversationId &&
+    live.taskId !== useAppStore.getState().activeTaskId
+  ) {
+    trackForeign(live.taskId, live.conversationId, live.approvals);
+    await adoptTask(live.taskId, conversationId);
+    return;
+  }
+  await switchConversation(conversationId);
+  useAppStore.setState({ activeView: "conversation" });
+}
+
+// Subscribed once for the app's lifetime; absent where there is no preload (Node tests).
+const poko = typeof window === "undefined" ? undefined : window.poko;
+poko?.tasks?.onEvent?.(routeTaskEvent);
+poko?.tasks?.onStarted?.((notice) => {
+  trackForeign(notice.taskId, notice.conversation.id);
+  const createdAt = new Date().toISOString();
+  useAppStore.setState((state) => ({
+    conversations: [
+      notice.conversation,
+      ...state.conversations.filter((item) => item.id !== notice.conversation.id),
+    ],
+    tasks: [
+      { id: notice.taskId, title: notice.title, status: "running" as const, createdAt },
+      ...state.tasks.filter((task) => task.id !== notice.taskId),
+    ].slice(0, 50),
+  }));
+});
+poko?.app?.onFocusConversation?.((id) => void focusConversation(id));
+
 /**
  * Shows a conversation (null: a new, empty one). Main refuses while a task runs, so a running
  * task's messages, stream, and approval card stay in their own conversation.
@@ -749,6 +977,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 async function switchConversation(id: string | null): Promise<void> {
   const set = useAppStore.setState;
   const state = useAppStore.getState();
+  // The conversation of a task started elsewhere: show it and take the task over.
+  const foreign = [...foreignTasks.entries()].find(([, task]) => task.conversationId === id);
+  if (foreign && id !== null) {
+    await adoptTask(foreign[0], id);
+    return;
+  }
   // Going back to the conversation already shown is always fine, even while Poko works.
   if (id === state.activeConversationId && id !== null) {
     set({ activeView: "conversation", conversationError: null });
@@ -803,7 +1037,11 @@ async function runTask(
   failure: string,
 ): Promise<boolean> {
   const set = useAppStore.setState;
-  if (switching) return false;
+  if (switching || adopting) return false;
+  if (useAppStore.getState().busyElsewhere) {
+    set({ conversationError: "포코가 다른 작업 중이야. 끝난 뒤에 다시 보내 줘." });
+    return false;
+  }
   const userMessage = createMessage("user", content);
   set((state) => ({
     activeView: "conversation",
@@ -815,21 +1053,16 @@ async function runTask(
     messages: [...state.messages, userMessage],
   }));
 
-  let taskId: string | null = null;
-  let unsubscribe = (): void => {};
-  const pendingEvents: TaskEventPayload[] = [];
-  const onTaskEvent = (payload: TaskEventPayload): void => {
-    if (!taskId) {
-      pendingEvents.push(payload);
-      return;
-    }
-    if (payload.taskId !== taskId) return;
-    applyTaskEvent(payload);
-    if (sessionTaskStatus(payload.event) !== null) unsubscribe();
+  // Until the start reply names the task, every event is held (see routeTaskEvent), then each
+  // goes where it belongs: this task's to the window, any other to foreign handling.
+  startingSend = [];
+  const release = (): void => {
+    const held = startingSend ?? [];
+    startingSend = null;
+    for (const payload of held) routeTaskEvent(payload);
   };
 
   const fail = (error: string) => {
-    unsubscribe();
     set((state) => ({
       characterState: "error",
       errorMessage: error,
@@ -841,14 +1074,13 @@ async function runTask(
   };
 
   try {
-    unsubscribe = window.poko.tasks.onEvent(onTaskEvent);
     const response = await start();
     if ("error" in response) {
       fail(response.error);
+      release();
       return false;
     }
     const startedTaskId = response.taskId;
-    taskId = startedTaskId;
     const createdAt = new Date().toISOString();
     const { conversation } = response;
     set((state) => ({
@@ -864,11 +1096,11 @@ async function runTask(
         ...state.tasks.filter((task) => task.id !== startedTaskId),
       ].slice(0, 50),
     }));
-    const queued = pendingEvents.splice(0);
-    for (const payload of queued) onTaskEvent(payload);
+    release();
     return true;
   } catch {
     fail(failure);
+    release();
     return false;
   }
 }
@@ -930,8 +1162,13 @@ function applyTaskEvent(payload: TaskEventPayload): void {
             ? { ...task, status: "waiting_approval" as const }
             : task,
     );
+    const known = state.pendingApprovals.some(
+      (item) => item.taskId === taskId && item.requestId === (event as PendingApproval).requestId,
+    );
     const pendingApprovals = waitingForUser
-      ? [...state.pendingApprovals, { ...event, taskId }]
+      ? known
+        ? state.pendingApprovals
+        : [...state.pendingApprovals, { ...event, taskId }]
       : status === null
         ? state.pendingApprovals
         : state.pendingApprovals.filter((item) => item.taskId !== taskId);

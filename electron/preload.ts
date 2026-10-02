@@ -1,7 +1,10 @@
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
 import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
+  type ActiveTaskInfo,
   type AppBootstrap,
+  type QuickState,
+  type TaskStartedNotice,
   type AppSettings,
   type EngineId,
   type ModelOption,
@@ -28,7 +31,19 @@ import {
 } from "./shared";
 
 const pokoApi = {
-  app: { bootstrap: (): Promise<AppBootstrap> => ipcRenderer.invoke(IPC_CHANNELS.appBootstrap) },
+  app: {
+    bootstrap: (): Promise<AppBootstrap> => ipcRenderer.invoke(IPC_CHANNELS.appBootstrap),
+    /** main asks to show a conversation (and adopt its running task). */
+    onFocusConversation: (listener: (conversationId: string) => void) => {
+      const handler = (_event: IpcRendererEvent, id: unknown) => {
+        if (typeof id === "string") listener(id);
+      };
+      ipcRenderer.on(IPC_CHANNELS.appFocusConversation, handler);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.appFocusConversation, handler);
+      };
+    },
+  },
   settings: {
     get: (): Promise<SettingsView> => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
     set: (settings: Partial<AppSettings>): Promise<AppSettings> =>
@@ -60,6 +75,32 @@ const pokoApi = {
       };
       ipcRenderer.on(IPC_CHANNELS.taskEvent, listener);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.taskEvent, listener);
+    },
+    /** The running task and its waiting approval cards, or null. */
+    active: (): Promise<ActiveTaskInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.taskActive),
+    /** A task started outside this window (the quick panel). */
+    onStarted: (listener: (notice: TaskStartedNotice) => void) => {
+      const handler = (_event: IpcRendererEvent, notice: TaskStartedNotice) => listener(notice);
+      ipcRenderer.on(IPC_CHANNELS.taskStarted, handler);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.taskStarted, handler);
+      };
+    },
+  },
+  quick: {
+    ask: (question: string): Promise<{ ok: true } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.quickAsk, question),
+    hide: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickHide),
+    resize: (height: number): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.quickResize, height),
+    openInApp: (conversationId: string | null): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.quickOpenInApp, conversationId),
+    onState: (listener: (state: QuickState) => void) => {
+      const handler = (_event: IpcRendererEvent, state: QuickState) => listener(state);
+      ipcRenderer.on(IPC_CHANNELS.quickState, handler);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.quickState, handler);
+      };
     },
   },
   screen: {

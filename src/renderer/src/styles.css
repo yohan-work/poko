@@ -2564,3 +2564,99 @@ html.is-overlay body {
   outline: 2px solid var(--color-focus-border);
   outline-offset: 1px;
 }
+
+/* Quick panel */
+
+html.is-quick,
+html.is-quick body {
+  background: transparent;
+}
+
+.quick {
+  display: flex;
+  /* The window follows the panel, so the cap is fixed rather than the window's height. */
+  max-height: 424px;
+  margin: 8px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: 0 12px 40px -12px oklch(0% 0 0 / 50%);
+}
+
+.quick__ask {
+  display: flex;
+  padding: 14px 16px;
+  align-items: center;
+  gap: 12px;
+}
+
+.quick__input {
+  flex: 1;
+  max-height: 120px;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 1.05rem;
+  resize: none;
+  outline: none;
+}
+
+.quick__result {
+  display: grid;
+  min-height: 0;
+  padding: 0 16px 14px;
+  gap: 10px;
+  overflow: auto;
+  border-top: 1px solid var(--color-border);
+}
+
+.quick__question {
+  margin: 12px 0 0;
+  color: var(--color-text-faint);
+  font-size: 0.86rem;
+}
+
+.quick__answer {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.quick__status {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 0.86rem;
+}
+
+.quick__status[data-tone="error"] {
+  color: var(--color-error);
+}
+
+.quick__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quick__hint {
+  color: var(--color-text-faint);
+  font-size: 0.78rem;
+}
+
+.foreign-banner {
+  display: flex;
+  margin: 0 auto 12px;
+  padding: 10px 14px;
+  width: min(100% - 48px, var(--column-width));
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: var(--color-accent-soft);
+  font-size: 0.9rem;
+}
