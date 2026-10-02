@@ -26,6 +26,8 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   const sendMessage = useAppStore((state) => state.sendMessage);
   const cancelTask = useAppStore((state) => state.cancelTask);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
+  const edits = useAppStore((state) => state.edits);
+  const setEdits = useAppStore((state) => state.setEdits);
   const openScreen = useAppStore((state) => state.openScreen);
 
   useEffect(() => {
@@ -96,9 +98,20 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             <Icon name="screen" />
             <span>화면 보기</span>
           </button>
-          <span className="composer__mode" title="포코는 확인 없이 파일을 바꾸지 않아">
-            읽기 전용
-          </span>
+          <button
+            className="composer__mode"
+            type="button"
+            data-state={edits.enabled ? "edit" : "read"}
+            onClick={() => void setEdits(!edits.enabled)}
+            disabled={!edits.available}
+            title={
+              edits.enabled
+                ? "포코가 변경을 제안할 수 있어. 변경마다 확인을 받아. 누르면 읽기 전용으로 돌아가."
+                : "포코는 파일을 바꾸지 않아. 누르면 수정을 허용할 수 있어."
+            }
+          >
+            {edits.enabled ? "수정 허용" : "읽기 전용"}
+          </button>
           <button
             className="send-button"
             type={isSending ? "button" : "submit"}

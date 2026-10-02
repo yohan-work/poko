@@ -24,6 +24,10 @@
   --color-accent-border: oklch(68% 0.13 42 / 45%);
   --color-on-accent: oklch(18% 0.02 42);
   --color-success: oklch(72% 0.12 150);
+  --color-diff-add: oklch(78% 0.12 150);
+  --color-diff-add-bg: oklch(72% 0.12 150 / 12%);
+  --color-diff-remove: oklch(74% 0.13 25);
+  --color-diff-remove-bg: oklch(65% 0.15 25 / 13%);
   --color-error: oklch(70% 0.15 25);
   --color-error-soft: oklch(70% 0.15 25 / 14%);
   --color-character: oklch(14% 0.003 75);
@@ -72,6 +76,10 @@
     --color-accent-border: oklch(60% 0.15 40 / 40%);
     --color-on-accent: oklch(100% 0 0);
     --color-success: oklch(50% 0.12 150);
+    --color-diff-add: oklch(42% 0.12 150);
+    --color-diff-add-bg: oklch(72% 0.12 150 / 16%);
+    --color-diff-remove: oklch(48% 0.16 25);
+    --color-diff-remove-bg: oklch(65% 0.15 25 / 14%);
     --color-error: oklch(52% 0.17 25);
     --color-error-soft: oklch(52% 0.17 25 / 10%);
     --color-character: oklch(15% 0.003 75);
@@ -1208,8 +1216,66 @@ button:disabled {
 
 .composer__mode {
   margin-left: auto;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
   color: var(--color-text-faint);
+  background: transparent;
   font-size: 0.82rem;
+}
+
+.composer__mode:hover:not(:disabled) {
+  border-color: var(--color-border);
+  color: var(--color-text-soft);
+}
+
+.composer__mode[data-state="edit"] {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.edits-confirm__list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.diff-line {
+  display: block;
+  min-width: max-content;
+  padding: 0 6px;
+}
+
+.diff-line--add {
+  color: var(--color-diff-add);
+  background: var(--color-diff-add-bg);
+}
+
+.diff-line--remove {
+  color: var(--color-diff-remove);
+  background: var(--color-diff-remove-bg);
+}
+
+.diff-line--hunk {
+  color: var(--color-text-faint);
+}
+
+.approval-card__counts {
+  margin-left: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+}
+
+.approval-card__counts-add {
+  color: var(--color-diff-add);
+}
+
+.approval-card__counts-remove {
+  margin-left: 4px;
+  color: var(--color-diff-remove);
 }
 
 .send-button {

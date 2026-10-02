@@ -190,6 +190,62 @@ export class PokoDatabase {
       .run();
   }
 
+  /** Whether edits are allowed in a workspace, keyed by its real path (the task's cwd). */
+  isEditsEnabled(realPath: string): boolean {
+    return (
+      this.db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, `editsEnabled:${realPath}`))
+        .get()?.value === "true"
+    );
+  }
+
+  setEditsEnabled(realPath: string, enabled: boolean): void {
+    const key = `editsEnabled:${realPath}`;
+    if (!enabled) {
+      this.db.delete(settings).where(eq(settings.key, key)).run();
+      return;
+    }
+    const timestamp = now();
+    this.db
+      .insert(settings)
+      .values({ key, value: "true", updatedAt: timestamp })
+      .onConflictDoUpdate({ target: settings.key, set: { value: "true", updatedAt: timestamp } })
+      .run();
+  }
+
+  /** The workspace (real path) a task ran in, or null. */
+  getTaskWorkspace(taskId: string): string | null {
+    return (
+      this.db.select({ workspace: tasks.workspace }).from(tasks).where(eq(tasks.id, taskId)).get()
+        ?.workspace ?? null
+    );
+  }
+
+  /** Pending file-change approvals of tasks in a workspace, to decline when edits are turned off. */
+  pendingFileChanges(realPath: string): Array<{ taskId: string; requestId: string }> {
+    return this.db
+      .select({ taskId: approvals.taskId, requestId: approvals.requestId })
+      .from(approvals)
+      .innerJoin(tasks, eq(tasks.id, approvals.taskId))
+      .where(
+        sql`${approvals.decision} = 'pending' AND ${approvals.kind} = 'file_change' AND ${tasks.workspace} = ${realPath}`,
+      )
+      .all();
+  }
+
+  /** The kind of a recorded approval request, or null when unknown. */
+  getApprovalKind(taskId: string, requestId: string): string | null {
+    return (
+      this.db
+        .select({ kind: approvals.kind })
+        .from(approvals)
+        .where(sql`${approvals.taskId} = ${taskId} AND ${approvals.requestId} = ${requestId}`)
+        .get()?.kind ?? null
+    );
+  }
+
   /** Returns false when the conversation doesn't exist. The title is 1–80 characters. */
   renameConversation(id: string, title: string): boolean {
     const clean = title.replace(/\s+/g, " ").trim();

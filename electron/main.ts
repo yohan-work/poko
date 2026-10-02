@@ -125,7 +125,13 @@ function registerIpcHandlers(): void {
     const { taskId } = started;
     try {
       const context = database?.getTaskContext(taskId);
-      agentCore.startTask({ prompt: rawMessage.trim(), cwd, taskId, context });
+      agentCore.startTask({
+        prompt: rawMessage.trim(),
+        cwd,
+        taskId,
+        context,
+        editsEnabled: database.isEditsEnabled(cwd),
+      });
     } catch (error) {
       database?.recordTaskEvent(
         taskId,
@@ -148,6 +154,37 @@ function registerIpcHandlers(): void {
     if (id !== null && !database.getConversation(id)) return { error: CONVERSATION_GONE };
     database.setActiveConversation(id);
     return { messages: id === null ? [] : database.getConversationMessages(id) };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.editsGet, async (event) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer asked for edits.");
+    const workspacePath = database.getWorkspace();
+    if (!workspacePath) return { available: false, enabled: false };
+    const realPath = await resolveWorkspaceDirectory(workspacePath);
+    return { available: true, enabled: database.isEditsEnabled(realPath) };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.editsSet, async (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !database || !agentCore)
+      throw new Error("Unknown renderer changed edits.");
+    if (typeof raw !== "boolean") throw new TypeError("Invalid edits setting.");
+    const workspacePath = database.getWorkspace();
+    if (!workspacePath) return { error: "먼저 작업할 폴더를 선택해 줘." };
+    const realPath = await resolveWorkspaceDirectory(workspacePath);
+    database.setEditsEnabled(realPath, raw);
+    const declined: Array<{ taskId: string; requestId: string }> = [];
+    if (!raw) {
+      // A change shown before edits were turned off must not apply afterwards. Only this
+      // folder's changes are withdrawn; the renderer removes exactly these cards.
+      for (const pending of database.pendingFileChanges(realPath)) {
+        if (database.resolveApproval(pending.taskId, pending.requestId, "decline")) {
+          agentCore.respondToApproval(pending.taskId, pending.requestId, "decline");
+          declined.push(pending);
+        }
+      }
+    }
+    return { available: true, enabled: raw, declined };
   });
 
   ipcMain.handle(IPC_CHANNELS.conversationRename, (event, raw: unknown) => {
@@ -214,9 +251,15 @@ function registerIpcHandlers(): void {
       return agent.respond(request.requestId, choice) ? "applied" : "stale";
     }
     if (!agentCore.hasPendingApproval(request.taskId, request.requestId)) return "stale";
-    // Decide before recording, so the audit row always matches what Codex receives.
+    // Decide before recording, so the audit row always matches what Codex receives. A file change
+    // also needs edits still on for its workspace: turning them off withdraws earlier cards.
+    const workspace = database.getTaskWorkspace(request.taskId);
+    const editsWithdrawn =
+      database.getApprovalKind(request.taskId, request.requestId) === "file_change" &&
+      !(workspace && database.isEditsEnabled(workspace));
     const unsafe =
-      request.choice === "approve" && !agentCore.canStillApprove(request.taskId, request.requestId);
+      request.choice === "approve" &&
+      (editsWithdrawn || !agentCore.canStillApprove(request.taskId, request.requestId));
     const choice: ApprovalChoice = unsafe ? "decline" : (request.choice as ApprovalChoice);
     if (!database.resolveApproval(request.taskId, request.requestId, choice)) return "stale";
     if (!agentCore.respondToApproval(request.taskId, request.requestId, choice)) {

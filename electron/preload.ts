@@ -2,6 +2,7 @@ import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
 import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type AppBootstrap,
+  type EditsState,
   type ApprovalChoice,
   type ApprovalOutcome,
   IPC_CHANNELS,
@@ -86,6 +87,12 @@ const pokoApi = {
       ipcRenderer.invoke(IPC_CHANNELS.conversationRename, { conversationId, title }),
     delete: (conversationId: string): Promise<{ ok: true } | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.conversationDelete, conversationId),
+  },
+  edits: {
+    /** Whether edits are allowed in the selected workspace. */
+    get: (): Promise<EditsState> => ipcRenderer.invoke(IPC_CHANNELS.editsGet),
+    set: (enabled: boolean): Promise<EditsState | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.editsSet, enabled),
   },
   memory: {
     list: (): Promise<PersistedMemory[]> => ipcRenderer.invoke(IPC_CHANNELS.memoryList),

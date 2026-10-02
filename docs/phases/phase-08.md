@@ -57,6 +57,17 @@ So the safest design keeps Codex in the read-only sandbox and adds safety around
 - **Storage:** an `edits` table `{ id, taskId, requestId, conversationId, files (JSON: path, before: bytes-on-disk | absent, after: hash | absent), status: pending | applied | failed | undone | expired, createdAt }`. Checkpoints are removed when their conversation is deleted, or after 30 days, which sets the row to `expired` and hides 되돌리기.
 - **Out of scope:** running tests or builds (shell commands stay declined), editing outside the selected workspace, moves and renames, and binary files.
 
+## Milestone 1 notes (implemented)
+
+- The composer's mode label is now a toggle, "읽기 전용" or "수정 허용". The folder button shows the same state. Turning edits on asks once; turning them off is immediate.
+- The setting is stored per real path. The provider declines every file change while edits are off, and declines moves and binary diffs while they are on. Main re-reads the switch when the user approves a file change. Turning edits off also declines the pending file changes in that folder, and their cards disappear.
+- The edits-on prompt tells Codex to propose changes with the patch tool even if earlier messages said the workspace was read-only. Without that line, a real run declined to propose a second change after an earlier "read-only" answer in the same conversation.
+- The card shows each file relative to the workspace, labeled 새 파일, 수정, or 삭제, with `+n −m` counts and a colored diff. Three or fewer files open right away.
+- Real run (Codex 0.159.3, a test git repository):
+  - edits off: no change, with an explanation;
+  - turned on: a card appeared, and approving changed `README.md`'s title;
+  - a second change was proposed, and turning edits off while its card was pending declined it, leaving the file unchanged.
+
 ## Milestones
 
 1. **Edit switch and a better diff card:** the per-workspace setting and confirm, prompt and gate wiring, the colored diff with counts, and clear "수정 꺼짐" declines.
