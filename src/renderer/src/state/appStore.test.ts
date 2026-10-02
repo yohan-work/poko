@@ -451,6 +451,8 @@ describe("a task started elsewhere (the quick panel)", () => {
     world.replyToOpen({ messages: [] });
     await adopting;
     expect(store.getState().streaming).toEqual({ taskId: "qt", itemId: "m1", text: "앞부분" });
+    // The take-over happened once: no reload of the conversation for the held text.
+    expect(world.calls.filter((call) => call.method === "conversations.open")).toHaveLength(1);
     world.emit("qt", { type: "output", content: " 뒷부분", itemId: "m1" });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(store.getState().streaming?.text).toBe("앞부분 뒷부분");

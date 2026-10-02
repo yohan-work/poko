@@ -906,16 +906,18 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
     adopting = null;
     // Text held during the take-over is already in the answer snapshot (main sent it before
     // answering task:active), so only the other events are replayed then.
-    if (running)
-      for (const payload of held)
+    if (running) {
+      for (const payload of held) {
         if (!answerSoFar || payload.event.type !== "output") routeTaskEvent(payload);
-        else {
-          // It ended while loading: the saved conversation now holds its final answer.
-          const again = await window.poko.conversations.open(conversationId).catch(() => null);
-          if (again && !("error" in again)) set({ messages: again.messages });
-          for (const payload of held)
-            if (sessionTaskStatus(payload.event) !== null) applyForeignEvent(payload);
-        }
+      }
+    } else {
+      // It ended while loading: the saved conversation now holds its final answer.
+      const again = await window.poko.conversations.open(conversationId).catch(() => null);
+      if (again && !("error" in again)) set({ messages: again.messages });
+      for (const payload of held) {
+        if (sessionTaskStatus(payload.event) !== null) applyForeignEvent(payload);
+      }
+    }
     void useAppStore.getState().loadEditNotes();
   } catch {
     set({
