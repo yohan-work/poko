@@ -2,6 +2,7 @@ import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
 import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type AppBootstrap,
+  type EditNote,
   type EditsState,
   type ApprovalChoice,
   type ApprovalOutcome,
@@ -93,6 +94,21 @@ const pokoApi = {
     get: (): Promise<EditsState> => ipcRenderer.invoke(IPC_CHANNELS.editsGet),
     set: (enabled: boolean): Promise<EditsState | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.editsSet, enabled),
+    /** Approved changes in a conversation, with undo while it is still possible. */
+    list: (conversationId: string): Promise<EditNote[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.editsList, conversationId),
+    undo: (editId: string): Promise<{ ok: true } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.editsUndo, editId),
+    /** A conversation's changes were settled or undone. */
+    onChanged: (listener: (conversationId: string) => void) => {
+      const handler = (_event: IpcRendererEvent, id: unknown) => {
+        if (typeof id === "string") listener(id);
+      };
+      ipcRenderer.on(IPC_CHANNELS.editsChanged, handler);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.editsChanged, handler);
+      };
+    },
   },
   memory: {
     list: (): Promise<PersistedMemory[]> => ipcRenderer.invoke(IPC_CHANNELS.memoryList),

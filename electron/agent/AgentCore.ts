@@ -68,6 +68,12 @@ export class AgentCore {
     return this.provider.respondToApproval?.(taskId, requestId, choice) ?? false;
   }
 
+  fileChangePaths(taskId: string, requestId: string): string[] | null {
+    return this.activeTasks.has(taskId)
+      ? (this.provider.fileChangePaths?.(taskId, requestId) ?? null)
+      : null;
+  }
+
   canStillApprove(taskId: string, requestId: string): boolean {
     return (
       this.activeTasks.has(taskId) && (this.provider.canStillApprove?.(taskId, requestId) ?? true)

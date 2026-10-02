@@ -5,6 +5,10 @@ export const IPC_CHANNELS = {
   conversationOpen: "conversation:open",
   editsGet: "edits:get",
   editsSet: "edits:set",
+  editsList: "edits:list",
+  editsUndo: "edits:undo",
+  /** main → renderer: a conversation's edits changed (settled or undone). */
+  editsChanged: "edits:changed",
   conversationRename: "conversation:rename",
   conversationDelete: "conversation:delete",
   taskCancel: "task:cancel",
@@ -148,6 +152,15 @@ export interface TaskEventPayload {
 }
 
 export type TaskStartResponse = ScreenLookResponse;
+
+/** An approved change shown in its conversation, with undo while it is still possible. */
+export interface EditNote {
+  id: string;
+  createdAt: string;
+  /** Paths relative to the workspace. */
+  files: string[];
+  status: "applied" | "undone" | "expired";
+}
 
 export interface EditsState {
   /** A workspace is selected. */

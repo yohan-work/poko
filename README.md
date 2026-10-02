@@ -36,7 +36,7 @@ Screenshots use sample data.
 - [x] Saved memories and recent conversation as context, Markdown answers, and streaming replies (Phase 05)
 - [x] Screen companion: Poko looks at a window you pick and acts in it one approved step at a time, on screen (Phase 06, macOS)
 - [x] Multiple conversations: new, switch, rename, and delete, each with its own context (Phase 07)
-- [ ] Approval-gated file writes in a workspace-write sandbox (later)
+- [x] Approved edits with undo: edits are off by default per folder; each change is shown as a diff, approved once, and can be undone (Phase 08)
 
 ## What Poko is aiming for
 
@@ -88,7 +88,7 @@ Poko analyzes a selected workspace through the locally installed Codex CLI with 
 
 ## Security direction
 
-Poko keeps tool execution and SQLite out of the UI renderer. Codex runs through its App Server in a read-only sandbox. When Codex asks to run a command or change files, Poko shows the concrete action and lets you approve it once or decline. Requests whose working directory or file paths leave the workspace, that ask for network access, or that would widen permissions are declined automatically. In v0.1 Poko is effectively read-only. It never approves shell commands, because an approved command would run outside the sandbox, and these requests are declined automatically. File-change approvals are supported: Poko shows the diff, keeps paths inside the selected folder and outside `.git`, and an approval covers only that one change. In practice, Codex in the read-only sandbox doesn't ask to change files, so Poko doesn't edit your project yet. A broader write mode, where Poko edits files as part of a task, stays off until it has been verified on each supported OS. SQLite content is local and unencrypted in v0.1; credentials are not stored in the database. With each request, Poko also sends your saved memories and the last few completed exchanges of the conversation to Codex, so it can follow up and respect your preferences. Nothing else from the database is sent.
+Poko keeps tool execution and SQLite out of the UI renderer. Codex runs through its App Server in a read-only sandbox. When Codex asks to run a command or change files, Poko shows the concrete action and lets you approve it once or decline. Requests whose working directory or file paths leave the workspace, that ask for network access, or that would widen permissions are declined automatically. Poko never approves shell commands, because an approved command would run outside the sandbox; these requests are declined automatically. Editing is **off by default** for every folder. When you turn it on (the 읽기 전용 / 수정 허용 button under the message box), Codex proposes changes as diffs and each one needs your approval. Changes must stay inside the selected folder and outside `.git`, and moves, renames, and binary files are declined. Right before applying a change, Poko saves the files' current contents. **되돌리기** restores them exactly, and refuses if a file changed afterwards, so newer work is never overwritten. Saved copies are kept for 30 days. SQLite content is local and unencrypted in v0.1; credentials are not stored in the database. With each request, Poko also sends your saved memories and the last few completed exchanges of the conversation to Codex, so it can follow up and respect your preferences. Nothing else from the database is sent.
 
 ## Contributing
 

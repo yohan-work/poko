@@ -68,6 +68,24 @@ So the safest design keeps Codex in the read-only sandbox and adds safety around
   - turned on: a card appeared, and approving changed `README.md`'s title;
   - a second change was proposed, and turning edits off while its card was pending declined it, leaving the file unchanged.
 
+## Milestone 2 notes (implemented)
+
+- `electron/edits/checkpoint.ts` handles the file work and is tested against a real temp folder:
+  - updates, adds, and deletes restore exactly;
+  - an undo is refused after a later change, including a file recreated after a delete;
+  - a failure partway leaves every file as it was;
+  - paths outside the folder and symbolic links are refused.
+- `EditManager`:
+  - takes a checkpoint right before main accepts an approved change; if that fails, the change is declined;
+  - settles pending edits when the same task asks again or ends: `applied` with each file's after-state, or `failed` with the checkpoint removed;
+  - undoes an edit and records it in Activity;
+  - removes a deleted conversation's checkpoints, and expires edits after 30 days.
+- Approval answers are serialized per request, so a double click can't checkpoint twice. Undo is refused while Poko works.
+- The conversation shows a note per applied change, in time order, with 되돌리기. An undone note reads "되돌렸어", and an expired one says the undo window has passed.
+- Real run (Codex 0.159.3, a test git repository):
+  - approved a README change, then 되돌리기 restored `# Sample`;
+  - approved a `greet.js` change, edited the file by hand, and 되돌리기 was refused with "‘greet.js’이(가) 그 뒤에 바뀌어서 되돌리지 않았어", keeping the hand edit.
+
 ## Milestones
 
 1. **Edit switch and a better diff card:** the per-workspace setting and confirm, prompt and gate wiring, the colored diff with counts, and clear "수정 꺼짐" declines.

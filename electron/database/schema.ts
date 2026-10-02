@@ -109,3 +109,30 @@ export const approvals = sqliteTable(
 );
 
 export const schema = { settings, conversations, messages, tasks, activities, memories, approvals };
+
+/**
+ * An approved file change and its checkpoint (Phase 08). `files` is JSON: for each file its real
+ * path, whether it existed before (its bytes are in the checkpoint folder), and its state after
+ * the change (a SHA-256, "absent", or null until known).
+ */
+export const edits = sqliteTable(
+  "edits",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull(),
+    conversationId: text("conversation_id").references(() => conversations.id, {
+      onDelete: "cascade",
+    }),
+    workspace: text("workspace").notNull(),
+    files: text("files").notNull(),
+    status: text("status", {
+      enum: ["pending", "applied", "failed", "undone", "expired"],
+    }).notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("edits_conversation_created_idx").on(table.conversationId, table.createdAt)],
+);

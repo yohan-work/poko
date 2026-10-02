@@ -10,6 +10,7 @@ import type {
   WorkspaceInfo,
   PersistedMemory,
   MemoryInput,
+  EditNote,
   EditsState,
   PersistedConversation,
   ScreenStatus,
@@ -53,6 +54,12 @@ export interface SessionTask {
 
 interface AppState {
   edits: EditsState;
+  /** Approved changes in the active conversation. */
+  editNotes: EditNote[];
+  undoingEdit: string | null;
+  loadEditNotes: () => Promise<void>;
+  /** Resolves to an error message, or null when undone. */
+  undoEdit: (id: string) => Promise<string | null>;
   editsConfirmOpen: boolean;
   loadEdits: () => Promise<void>;
   /** Turning edits on asks first; turning them off happens at once. */
@@ -207,6 +214,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   memoryQuery: "",
   edits: { available: false, enabled: false },
   editsConfirmOpen: false,
+  editNotes: [],
+  undoingEdit: null,
+
+  loadEditNotes: async () => {
+    const id = get().activeConversationId;
+    if (!id) {
+      set({ editNotes: [] });
+      return;
+    }
+    try {
+      const notes = await window.poko.edits.list(id);
+      // Ignore a late answer for a conversation that is no longer shown.
+      if (get().activeConversationId === id) set({ editNotes: notes });
+    } catch {
+      // Keep the notes already shown.
+    }
+  },
+
+  undoEdit: async (id) => {
+    if (get().undoingEdit) return null;
+    set({ undoingEdit: id });
+    try {
+      const response = await window.poko.edits.undo(id);
+      if ("error" in response) return response.error;
+      await get().loadEditNotes();
+      return null;
+    } catch {
+      return "되돌리지 못했어. 잠시 뒤 다시 시도해 줘.";
+    } finally {
+      set({ undoingEdit: null });
+    }
+  },
 
   loadEdits: async () => {
     try {
@@ -289,6 +328,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? {
             activeConversationId: null,
             messages: [],
+            editNotes: [],
             streaming: null,
             errorMessage: null,
             conversationError: null,
@@ -320,6 +360,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         activities: [...data.activities].reverse(),
       });
       void get().loadEdits();
+      void get().loadEditNotes();
     } catch {
       set({ workspaceError: "저장된 대화와 폴더를 불러오지 못했어. 앱을 다시 시작해 줘." });
     }
@@ -563,6 +604,7 @@ async function switchConversation(id: string | null): Promise<void> {
     set({
       activeView: "conversation",
       activeConversationId: id,
+      editNotes: [],
       messages: response.messages,
       streaming: null,
       errorMessage: null,
@@ -570,6 +612,7 @@ async function switchConversation(id: string | null): Promise<void> {
       characterState: "idle",
       progressMessage: null,
     });
+    void useAppStore.getState().loadEditNotes();
   } catch {
     set({ conversationError: "대화를 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
   } finally {

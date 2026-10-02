@@ -29,6 +29,7 @@ import type { Capture } from "./screen/ScreenAgent";
 import { randomUUID } from "node:crypto";
 import { ScreenOverlay } from "./screen/ScreenOverlay";
 import { ScreenAgent } from "./screen/ScreenAgent";
+import { EditManager } from "./edits/EditManager";
 import { buildOverlayScene, citedElements, replaceCitations } from "./screen/overlayScene";
 
 let mainWindow: BrowserWindow | null = null;
@@ -203,7 +204,7 @@ function registerIpcHandlers(): void {
     return database.renameConversation(id, title) ? { ok: true } : { error: CONVERSATION_GONE };
   });
 
-  ipcMain.handle(IPC_CHANNELS.conversationDelete, (event, raw: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.conversationDelete, async (event, raw: unknown) => {
     if (!isTrustedRenderer(event) || !database)
       throw new Error("Unknown renderer deleted a conversation.");
     const id = readConversationId(raw);
@@ -212,7 +213,29 @@ function registerIpcHandlers(): void {
     // still starting (capturing the screen, checking the folder) is about to be recorded there.
     if (database.hasRunningTask(id) || (startingConversations.get(id) ?? 0) > 0)
       return { error: "포코가 이 대화에서 작업 중이라 지금은 지울 수 없어." };
+    await editManager?.forgetConversation(id);
     return database.deleteConversation(id) ? { ok: true } : { error: CONVERSATION_GONE };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.editsList, (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !editManager)
+      throw new Error("Unknown renderer asked for edits.");
+    const id = readConversationId(raw);
+    return id === null ? [] : editManager.notes(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.editsUndo, async (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !database || !agentCore || !editManager)
+      throw new Error("Unknown renderer asked to undo.");
+    if (typeof raw !== "string" || raw.length > 100) throw new TypeError("Invalid edit id.");
+    // Codex may be changing the same files right now.
+    if (agentCore.hasActiveTasks || screenRun)
+      return { error: "포코가 작업 중이라 끝난 뒤에 되돌릴 수 있어." };
+    const edit = database.getEdit(raw);
+    const failure = await editManager.undo(raw);
+    if (failure) return { error: failure };
+    if (edit?.conversationId) notifyEditsChanged(edit.conversationId);
+    return { ok: true };
   });
 
   ipcMain.handle(IPC_CHANNELS.taskCancel, (event, rawTaskId: unknown) => {
@@ -229,7 +252,7 @@ function registerIpcHandlers(): void {
     return agentCore.cancelTask(rawTaskId);
   });
 
-  ipcMain.handle(IPC_CHANNELS.approvalRespond, (event, rawRequest: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.approvalRespond, async (event, rawRequest: unknown) => {
     if (!isTrustedRenderer(event) || !database || !agentCore)
       throw new Error("Unknown renderer requested an approval decision.");
     if (typeof rawRequest !== "object" || rawRequest === null)
@@ -251,24 +274,59 @@ function registerIpcHandlers(): void {
       return agent.respond(request.requestId, choice) ? "applied" : "stale";
     }
     if (!agentCore.hasPendingApproval(request.taskId, request.requestId)) return "stale";
+    const key = `${request.taskId}:${request.requestId}`;
+    if (answering.has(key)) return "stale";
+    answering.add(key);
+    try {
+      return await answerApproval(
+        request.taskId,
+        request.requestId,
+        request.choice as ApprovalChoice,
+      );
+    } finally {
+      answering.delete(key);
+    }
+  });
+
+  /** Decides, checkpoints an approved file change, records, and answers Codex. */
+  async function answerApproval(
+    taskId: string,
+    requestId: string,
+    requested: ApprovalChoice,
+  ): Promise<ApprovalOutcome> {
+    if (!database || !agentCore) return "stale";
+    const request = { taskId, requestId, choice: requested };
     // Decide before recording, so the audit row always matches what Codex receives. A file change
     // also needs edits still on for its workspace: turning them off withdraws earlier cards.
     const workspace = database.getTaskWorkspace(request.taskId);
-    const editsWithdrawn =
-      database.getApprovalKind(request.taskId, request.requestId) === "file_change" &&
-      !(workspace && database.isEditsEnabled(workspace));
+    const fileChange =
+      database.getApprovalKind(request.taskId, request.requestId) === "file_change";
+    const editsWithdrawn = fileChange && !(workspace && database.isEditsEnabled(workspace));
     const unsafe =
       request.choice === "approve" &&
       (editsWithdrawn || !agentCore.canStillApprove(request.taskId, request.requestId));
-    const choice: ApprovalChoice = unsafe ? "decline" : (request.choice as ApprovalChoice);
+    let declineInstead = unsafe;
+    if (!unsafe && request.choice === "approve" && workspace && fileChange) {
+      // The change Codex made before this one is on disk by now; settle it first so each
+      // edit's "after" state is its own. Then save the files this change will touch.
+      try {
+        await settleEdits(request.taskId);
+        const paths = agentCore.fileChangePaths(request.taskId, request.requestId);
+        if (!paths || !editManager) throw new Error("No file change to checkpoint.");
+        await editManager.checkpoint(request.taskId, request.requestId, workspace, paths);
+      } catch (error) {
+        console.error("Could not checkpoint a file change; declining it.", error);
+        declineInstead = true;
+      }
+    }
+    const choice: ApprovalChoice = declineInstead ? "decline" : request.choice;
     if (!database.resolveApproval(request.taskId, request.requestId, choice)) return "stale";
     if (!agentCore.respondToApproval(request.taskId, request.requestId, choice)) {
       console.error("The decision was recorded but could not be sent to Codex.");
       return "stale";
     }
-    const outcome: ApprovalOutcome = unsafe ? "declined_unsafe" : "applied";
-    return outcome;
-  });
+    return declineInstead ? "declined_unsafe" : "applied";
+  }
 
   ipcMain.handle(IPC_CHANNELS.screenStatus, (event) => {
     if (!isTrustedRenderer(event) || !database || !screenService)
@@ -526,6 +584,24 @@ function handleTaskStart(
   });
 }
 
+/** Approval answers in progress, so a double click can't checkpoint or answer twice. */
+const answering = new Set<string>();
+let editManager: EditManager | null = null;
+
+/** Settles a task's pending edits and tells the renderer when its conversation's edits changed. */
+async function settleEdits(taskId: string): Promise<void> {
+  if (!editManager || !database) return;
+  if (await editManager.settle(taskId)) {
+    const conversation = database.getTaskConversation(taskId);
+    if (conversation) notifyEditsChanged(conversation.id);
+  }
+}
+
+function notifyEditsChanged(conversationId: string): void {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send(IPC_CHANNELS.editsChanged, conversationId);
+}
+
 const CONVERSATION_GONE = "이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘.";
 
 /** A conversation id from the renderer: a short string, or null for a new conversation. */
@@ -640,6 +716,8 @@ app
       join(app.getAppPath(), "skills/coding/SKILL.md"),
       "utf8",
     ).catch(() => "");
+    editManager = new EditManager(database, join(userDataDirectory, "checkpoints"));
+    await editManager.expireOld().catch((error) => console.error("Could not expire edits.", error));
     screenService = new ScreenService(
       join(app.getAppPath(), "native", "build", "poko-ax"),
       join(userDataDirectory, "screen-tmp"),
@@ -692,6 +770,9 @@ function deliverTaskEvent(incoming: TaskEventPayload): void {
     }
   }
   const event = payload.event;
+  // When a task finishes, its last approved change is on disk (or never happened).
+  if (event.type === "completed" || event.type === "error" || event.type === "cancelled")
+    void settleEdits(payload.taskId);
   let rendererPayload = payload;
   if (event.type === "approvalRequired") {
     const request: ApprovalRequest = { taskId: payload.taskId, ...event };
