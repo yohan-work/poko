@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain, shell } from "electron";
 import { join } from "node:path";
-import { localDate, writePrivateFile } from "../data/privateFile";
+import { localDate, writePrivateFile } from "../export/privateFile";
 import {
   type DataExportResult,
   DELETE_ALL_CONFIRMATION,

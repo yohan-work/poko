@@ -26,7 +26,7 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── shared.ts            # IPC channels and domain types
 │   ├── database/            # SQLite connection, schema, and persistence
 │   ├── agent/               # Agent Core and provider contract
-│   ├── data/                # private (0600) file writes for export
+│   ├── export/              # private (0600) file writes for export
 │   ├── edits/               # checkpoints and undo for approved changes
 │   ├── screen/              # window capture, accessibility helper, overlay, step loop
 │   ├── setup/               # Codex setup check
