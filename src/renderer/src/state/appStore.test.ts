@@ -53,7 +53,11 @@ function fakePoko() {
     },
     edits: {
       list: record("edits.list", async () => []),
-      set: record("edits.set", async () => ({ available: true, enabled: false, declined: [] })),
+      set: record("edits.set", async () => ({
+        available: true,
+        enabled: false,
+        declined: [] as Array<{ taskId: string; requestId: string }>,
+      })),
     },
     approvals: { respond: record("approvals.respond", async () => "applied") },
     screen: {
