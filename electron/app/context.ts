@@ -1,6 +1,11 @@
 import { app, type BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { basename } from "node:path";
-import { IPC_CHANNELS, type PersistedConversation, type WorkspaceInfo } from "../shared";
+import {
+  type AppBootstrap,
+  IPC_CHANNELS,
+  type PersistedConversation,
+  type WorkspaceInfo,
+} from "../shared";
 import type { AgentCore } from "../agent/AgentCore";
 import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
 import { ConversationGoneError, type PokoDatabase } from "../database/Database";
@@ -25,7 +30,23 @@ export const ctx = {
   screenRun: null as { taskId: string; agent: ScreenAgent; done: Promise<void> } | null,
   editManager: null as EditManager | null,
   setupService: null as SetupService | null,
+  /** Task-starting handlers still running (a start isn't an active task yet). */
+  startingTasks: 0,
+  /** 모든 데이터 삭제 is in progress; no task may start. */
+  deletingData: false,
 };
+
+/** Whether any task is running or starting, so nothing it uses may be deleted. */
+export function anyTaskBusy(): boolean {
+  return Boolean(ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 0);
+}
+
+/** What the renderer starts from: the workspace, conversations, tasks, and Activity. */
+export function bootstrapData(): AppBootstrap {
+  if (!ctx.database) throw new Error("The database is not open.");
+  const { workspacePath, ...data } = ctx.database.getBootstrapData();
+  return { ...data, workspace: workspaceInfo(workspacePath) };
+}
 
 export function workspaceInfo(workspacePath: string | null): WorkspaceInfo | null {
   if (!workspacePath) return null;
@@ -55,10 +76,13 @@ export function handleTaskStart(
         ? (raw as { conversationId: unknown }).conversationId
         : null;
     const key = typeof id === "string" ? id : null;
+    if (ctx.deletingData) return { error: "데이터를 지우는 중이야. 잠시 뒤에 다시 보내 줘." };
     if (key) startingConversations.set(key, (startingConversations.get(key) ?? 0) + 1);
+    ctx.startingTasks += 1;
     try {
       return await handler(event, raw);
     } finally {
+      ctx.startingTasks -= 1;
       if (key) {
         const left = (startingConversations.get(key) ?? 1) - 1;
         if (left > 0) startingConversations.set(key, left);

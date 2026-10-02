@@ -2,7 +2,10 @@ import { create } from "zustand";
 import { applyDeltas, createDeltaBuffer, type StreamingAnswer } from "../lib/streaming";
 import type {
   AgentEvent,
+  AppBootstrap,
   AppSettings,
+  DataExportResult,
+  DeleteAllResponse,
   ApprovalChoice,
   ApprovalOutcome,
   AppView,
@@ -74,6 +77,10 @@ interface AppState {
   updateSettings: (change: Partial<AppSettings>) => Promise<void>;
   /** Shows the screen data-use notice again before the next screen task. */
   resetScreenNotice: () => Promise<void>;
+  exportData: () => Promise<DataExportResult>;
+  openDataFolder: () => Promise<void>;
+  /** Deletes all history; resolves an error message, or null when every page was reset. */
+  deleteAllData: (confirm: string) => Promise<string | null>;
   edits: EditsState;
   /** Approved changes in the active conversation. */
   editNotes: EditNote[];
@@ -213,6 +220,26 @@ function addActivity(state: AppState, taskId: string, message: string): Activity
   ].slice(-MAX_ACTIVITIES);
 }
 
+/** The store's view of the data main starts from. */
+function fromBootstrap(data: AppBootstrap): Partial<AppState> {
+  return {
+    workspace: data.workspace,
+    conversations: data.conversations,
+    activeConversationId: data.conversationId,
+    messages: data.messages,
+    tasks: data.tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      // Startup recovery already closed interrupted tasks; anything else is treated as running.
+      status: task.status === "queued" ? "running" : task.status,
+      createdAt: task.createdAt,
+      completedAt: task.completedAt ?? undefined,
+    })),
+    // Storage returns newest first; the store appends new entries, so keep it oldest first.
+    activities: [...data.activities].reverse(),
+  };
+}
+
 /** Counts settings saves, so a load that started before one is dropped. */
 let settingsSaves = 0;
 
@@ -299,6 +326,40 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       set({ settingsError: "설정을 저장하지 못했어. 다시 시도해 줘." });
     }
+  },
+
+  exportData: () => window.poko.data.export().catch(() => "failed" as const),
+
+  openDataFolder: async () => {
+    await window.poko.data.openFolder().catch(() => false);
+  },
+
+  deleteAllData: async (confirm) => {
+    if (get().isSending)
+      return "포코가 작업 중이라 지금은 지울 수 없어. 작업이 끝난 뒤 다시 시도해 줘.";
+    let response: DeleteAllResponse;
+    try {
+      response = await window.poko.data.deleteAll(confirm);
+    } catch {
+      return "데이터를 모두 지우지 못했어. 다시 시도해 줘.";
+    }
+    if ("error" in response) return response.error;
+    // Every page starts over: nothing deleted may stay visible anywhere.
+    set({
+      ...fromBootstrap(response.bootstrap),
+      memories: [],
+      memoryQuery: "",
+      memoryError: null,
+      editNotes: [],
+      pendingApprovals: [],
+      streaming: null,
+      activeTaskId: null,
+      errorMessage: null,
+      conversationError: null,
+      characterState: "idle",
+      progressMessage: null,
+    });
+    return null;
   },
 
   resetScreenNotice: async () => {
@@ -439,23 +500,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   initializeWorkspace: async () => {
     try {
-      const data = await window.poko.app.bootstrap();
-      set({
-        workspace: data.workspace,
-        conversations: data.conversations,
-        activeConversationId: data.conversationId,
-        messages: data.messages,
-        tasks: data.tasks.map((task) => ({
-          id: task.id,
-          title: task.title,
-          // Startup recovery already closed interrupted tasks; anything else is treated as running.
-          status: task.status === "queued" ? "running" : task.status,
-          createdAt: task.createdAt,
-          completedAt: task.completedAt ?? undefined,
-        })),
-        // Storage returns newest first; the store appends new entries, so keep it oldest first.
-        activities: [...data.activities].reverse(),
-      });
+      set(fromBootstrap(await window.poko.app.bootstrap()));
       void get().loadEdits();
       void get().loadEditNotes();
     } catch {

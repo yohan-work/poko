@@ -11,6 +11,7 @@ import { EditManager } from "./edits/EditManager";
 import { SetupService } from "./setup/SetupService";
 import { ctx } from "./app/context";
 import { deliverTaskEvent } from "./app/events";
+import { registerDataHandlers } from "./app/data";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
 import { registerSettingsHandlers } from "./app/settings";
@@ -25,6 +26,7 @@ function registerIpcHandlers(): void {
   registerEditsHandlers();
   registerScreenHandlers();
   registerSettingsHandlers();
+  registerDataHandlers();
 }
 
 async function createWindow(): Promise<void> {

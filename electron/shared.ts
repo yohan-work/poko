@@ -33,6 +33,9 @@ export const IPC_CHANNELS = {
   screenResetNotice: "screen:reset-notice",
   settingsGet: "settings:get",
   settingsSet: "settings:set",
+  dataExport: "data:export",
+  dataOpenFolder: "data:open-folder",
+  dataDeleteAll: "data:delete-all",
   overlayScene: "overlay:scene",
   overlayHide: "overlay:hide",
 } as const;
@@ -261,3 +264,11 @@ export interface SettingsView {
   settings: AppSettings;
   version: string;
 }
+
+/** The word the user types to confirm 모든 데이터 삭제. */
+export const DELETE_ALL_CONFIRMATION = "삭제";
+
+export type DataExportResult = "saved" | "cancelled" | "failed";
+
+/** After deleting everything, the fresh start data, so the renderer can reset every page. */
+export type DeleteAllResponse = { ok: true; bootstrap: AppBootstrap } | { error: string };

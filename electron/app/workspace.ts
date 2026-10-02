@@ -1,6 +1,6 @@
 import { dialog, ipcMain } from "electron";
 import { IPC_CHANNELS, type MemoryInput } from "../shared";
-import { ctx, isTrustedRenderer, workspaceInfo } from "./context";
+import { bootstrapData, ctx, isTrustedRenderer, workspaceInfo } from "./context";
 
 /** Workspace, app data, and memories. */
 export function registerWorkspaceHandlers(): void {
@@ -35,8 +35,7 @@ export function registerWorkspaceHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.appBootstrap, (event) => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer requested app data.");
-    const { workspacePath, ...data } = ctx.database.getBootstrapData();
-    return { ...data, workspace: workspaceInfo(workspacePath) };
+    return bootstrapData();
   });
   ipcMain.handle(IPC_CHANNELS.memoryList, (event) => {
     if (!isTrustedRenderer(event) || !ctx.database)
