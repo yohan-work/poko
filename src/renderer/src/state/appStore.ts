@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   AppBootstrap,
   AppSettings,
+  ClaudeSetup,
   DataExportResult,
   DeleteAllResponse,
   ApprovalChoice,
@@ -59,6 +60,7 @@ export interface SessionTask {
 
 interface AppState {
   setup: CodexSetup | null;
+  claudeSetup: ClaudeSetup | null;
   setupChecking: boolean;
   setupDismissed: boolean;
   checkSetup: () => Promise<void>;
@@ -266,6 +268,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   edits: { available: false, enabled: false },
   editsConfirmOpen: false,
   setup: null,
+  claudeSetup: null,
   setupChecking: false,
   setupDismissed: false,
   settings: null,
@@ -274,13 +277,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   checkSetup: async () => {
     set({ setupChecking: true });
-    try {
-      set({ setup: await window.poko.setup.status() });
-    } catch {
-      // Keep the last status; the screen still offers 다시 확인.
-    } finally {
-      set({ setupChecking: false });
-    }
+    // The setup screen follows the chosen engine, so the preferences load with the checks.
+    if (!get().settings) void get().loadSettings();
+    // Keep the last status on a failure; the screen still offers 다시 확인.
+    await Promise.all([
+      window.poko.setup
+        .status()
+        .then((setup) => set({ setup }))
+        .catch(() => undefined),
+      window.poko.setup
+        .claudeStatus()
+        .then((claudeSetup) => set({ claudeSetup }))
+        .catch(() => undefined),
+    ]);
+    set({ setupChecking: false });
   },
 
   startLogin: async () => {

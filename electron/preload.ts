@@ -3,6 +3,7 @@ import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type AppBootstrap,
   type AppSettings,
+  type ClaudeSetup,
   type DataExportResult,
   type DeleteAllResponse,
   type CodexSetup,
@@ -111,6 +112,8 @@ const pokoApi = {
   setup: {
     /** Re-checks Codex: install, version and features, and ChatGPT sign-in. */
     status: (): Promise<CodexSetup> => ipcRenderer.invoke(IPC_CHANNELS.setupStatus),
+    /** Checks the user's Claude Code CLI: install, options, and sign-in. */
+    claudeStatus: (): Promise<ClaudeSetup> => ipcRenderer.invoke(IPC_CHANNELS.setupClaudeStatus),
     login: (): Promise<"started" | "already" | "unavailable"> =>
       ipcRenderer.invoke(IPC_CHANNELS.setupLogin),
     cancelLogin: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.setupCancelLogin),

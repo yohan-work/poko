@@ -80,8 +80,9 @@ The probe ran in a temp folder.
   - Symlinks and `..` are resolved with `realpath` against the workspace, as the Codex path already does.
 - **Engine setting:**
   - `settings.engine` is `"codex"` (the default) or `"claude"`.
-  - Main builds `ctx.agentCore` with the matching provider.
-  - Changing the engine while a task runs is refused, and the new engine applies to the next task.
+  - `EngineProvider` (`electron/agent/`) picks the provider when each task starts and routes that task's approvals back to it, so a change applies to the next task and can't affect one in flight.
+  - The 설정 control is disabled while a task runs.
+- **Status:** milestone 1 is done.
 - **Setup:**
   - `SetupService` gains a Claude check: find `claude` in the same known places (`~/.local/bin`, Homebrew, npm global, nvm), then run `claude --version` and `claude auth status --json`.
   - `CodexSetup` generalizes to an `EngineSetup` with an `engine` field. The renderer's setup steps use engine-specific copy.

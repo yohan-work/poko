@@ -4,6 +4,7 @@ export const IPC_CHANNELS = {
   taskStart: "task:start",
   conversationOpen: "conversation:open",
   setupStatus: "setup:status",
+  setupClaudeStatus: "setup:claude-status",
   setupLogin: "setup:login",
   setupCancelLogin: "setup:cancel-login",
   /** main → renderer: the setup changed (a login finished). */
@@ -253,8 +254,24 @@ export interface MemoryInput {
 export const CHECKPOINT_DAY_CHOICES = [7, 30, 90] as const;
 export type CheckpointDays = (typeof CHECKPOINT_DAY_CHOICES)[number];
 
+/** The CLI that runs conversations and edits. Screen tasks always use Codex. */
+export type EngineId = "codex" | "claude";
+
+/** Whether the user's Claude Code CLI can run Poko's tasks. */
+export interface ClaudeSetup {
+  installed: boolean;
+  path: string | null;
+  version: string | null;
+  /** How `claude auth status` reports the sign-in; Poko never sees a key or token. */
+  login: "signed_in" | "signed_out" | "unknown";
+  /** The options Poko relies on (stream-json, safe mode, setting sources) are present. */
+  featuresOk: boolean;
+  ready: boolean;
+}
+
 /** Preferences on the 설정 page. */
 export interface AppSettings {
+  engine: EngineId;
   /** Saved memories go with each request. */
   memoriesInContext: boolean;
   checkpointDays: CheckpointDays;

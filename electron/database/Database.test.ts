@@ -194,8 +194,15 @@ describe("PokoDatabase", () => {
 
   it("keeps valid settings and ignores invalid ones", async () => {
     const database = await openDatabase();
-    expect(database.getSettings()).toEqual({ memoriesInContext: true, checkpointDays: 30 });
-    expect(database.setSettings({ memoriesInContext: false, checkpointDays: 7 })).toEqual({
+    expect(database.getSettings()).toEqual({
+      engine: "codex",
+      memoriesInContext: true,
+      checkpointDays: 30,
+    });
+    expect(
+      database.setSettings({ engine: "claude", memoriesInContext: false, checkpointDays: 7 }),
+    ).toEqual({
+      engine: "claude",
       memoriesInContext: false,
       checkpointDays: 7,
     });
@@ -203,8 +210,9 @@ describe("PokoDatabase", () => {
       database.setSettings({
         memoriesInContext: "no" as unknown as boolean,
         checkpointDays: 365 as unknown as 30,
+        engine: "gpt" as unknown as "codex",
       }),
-    ).toEqual({ memoriesInContext: false, checkpointDays: 7 });
+    ).toEqual({ engine: "claude", memoriesInContext: false, checkpointDays: 7 });
 
     database.acceptScreenNotice();
     database.resetScreenNotice();

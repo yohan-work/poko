@@ -1,16 +1,18 @@
 import { useState } from "react";
-import type { CodexSetup } from "../../../../../electron/shared";
+import type { ClaudeSetup, CodexSetup } from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 
 const INSTALL_COMMAND = "npm install -g @openai/codex";
 const BREW_UPDATE = "brew upgrade codex";
+const CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code";
+const CLAUDE_UPDATE = "claude update";
 
 type Step = {
   title: string;
   ok: boolean;
   detail: string;
-  action?: "install" | "login" | "update";
+  action?: "install" | "login" | "update" | "terminal";
   /** The command to copy for install or update. */
   command?: string;
 };
@@ -57,9 +59,49 @@ export function setupSteps(setup: CodexSetup): Step[] {
   ];
 }
 
-/** Shown on start while Codex isn't ready: what is missing and how to fix it. */
+/** What Claude Code is missing; sign-in happens in the user's terminal, never in Poko. */
+export function claudeSteps(setup: ClaudeSetup): Step[] {
+  return [
+    {
+      title: "Claude Code 설치",
+      ok: setup.installed,
+      detail: setup.installed
+        ? `${setup.path}${setup.version ? ` · v${setup.version}` : ""}`
+        : "Claude Code가 설치되어 있지 않아. 터미널에서 아래 명령으로 설치해 줘.",
+      action: setup.installed ? undefined : "install",
+      command: CLAUDE_INSTALL,
+    },
+    {
+      title: "Claude 로그인",
+      ok: setup.login === "signed_in",
+      detail:
+        setup.login === "signed_in"
+          ? "Claude Code에 로그인되어 있어."
+          : !setup.installed
+            ? "Claude Code를 설치하면 로그인할 수 있어."
+            : "터미널에서 claude를 실행한 뒤 /login으로 로그인해 줘. 끝나면 다시 확인을 눌러 줘.",
+      action: setup.login === "signed_in" || !setup.installed ? undefined : "terminal",
+    },
+    {
+      title: "사용 가능 버전",
+      ok: setup.featuresOk,
+      detail: setup.featuresOk
+        ? "포코가 쓰는 기능이 모두 있어."
+        : !setup.installed
+          ? "Claude Code를 설치하면 확인할게."
+          : "지금 쓰는 Claude Code를 최신 버전으로 업데이트해 줘.",
+      action: setup.featuresOk || !setup.installed ? undefined : "update",
+      command: CLAUDE_UPDATE,
+    },
+  ];
+}
+
+/** Shown on start while the chosen engine isn't ready: what is missing and how to fix it. */
 export function SetupScreen() {
-  const setup = useAppStore((state) => state.setup);
+  const codexSetup = useAppStore((state) => state.setup);
+  const claudeSetup = useAppStore((state) => state.claudeSetup);
+  const engine = useAppStore((state) => state.settings?.engine ?? "codex");
+  const updateSettings = useAppStore((state) => state.updateSettings);
   const dismissed = useAppStore((state) => state.setupDismissed);
   const checking = useAppStore((state) => state.setupChecking);
   const checkSetup = useAppStore((state) => state.checkSetup);
@@ -67,7 +109,18 @@ export function SetupScreen() {
   const cancelLogin = useAppStore((state) => state.cancelLogin);
   const dismiss = useAppStore((state) => state.dismissSetup);
   const [copied, setCopied] = useState(false);
-  if (!setup || setup.ready || dismissed) return null;
+  const current = engine === "claude" ? claudeSetup : codexSetup;
+  if (!current || current.ready || dismissed) return null;
+  const steps =
+    engine === "claude" && claudeSetup
+      ? claudeSteps(claudeSetup)
+      : setupSteps(current as CodexSetup);
+  const setup = engine === "codex" ? codexSetup : null;
+  // Offer the other engine when it is ready, so someone with only one CLI isn't stuck.
+  const other =
+    engine === "claude"
+      ? codexSetup?.ready && { engine: "codex" as const, label: "Codex로 쓰기" }
+      : claudeSetup?.ready && { engine: "claude" as const, label: "Claude Code로 쓰기" };
 
   const copy = async (command: string) => {
     try {
@@ -86,15 +139,17 @@ export function SetupScreen() {
           <Character state="listening" size={36} />
           <div>
             <h2 id="setup-title" className="setup-screen__title">
-              포코를 쓰려면 Codex 준비가 필요해
+              포코를 쓰려면 {engine === "claude" ? "Claude Code" : "Codex"} 준비가 필요해
             </h2>
             <p className="setup-screen__lead">
-              포코는 이 컴퓨터의 Codex CLI와 ChatGPT 계정으로 동작해.
+              {engine === "claude"
+                ? "포코는 이 컴퓨터의 Claude Code와 로그인한 Claude 계정으로 동작해."
+                : "포코는 이 컴퓨터의 Codex CLI와 ChatGPT 계정으로 동작해."}
             </p>
           </div>
         </header>
         <ol className="setup-steps">
-          {setupSteps(setup).map((step) => (
+          {steps.map((step) => (
             <li key={step.title} className="setup-step" data-ok={step.ok}>
               <span className="setup-step__mark" aria-hidden="true">
                 {step.ok ? "✓" : "!"}
@@ -117,7 +172,7 @@ export function SetupScreen() {
                     </button>
                   </div>
                 )}
-                {step.action === "login" && !step.ok && setup.installed && !setup.missingNode && (
+                {step.action === "login" && !step.ok && setup?.installed && !setup.missingNode && (
                   <div className="setup-step__command">
                     {setup.loggingIn ? (
                       <>
@@ -149,6 +204,15 @@ export function SetupScreen() {
           <button className="secondary-button" type="button" onClick={dismiss}>
             나중에
           </button>
+          {other && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void updateSettings({ engine: other.engine })}
+            >
+              {other.label}
+            </button>
+          )}
           <button
             className="primary-button"
             type="button"
