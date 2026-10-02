@@ -2,6 +2,9 @@ import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 import { parseChange, relativePath } from "../../lib/diff";
 
+/** How the provider marks Claude's own description of a command. */
+const CLAIM = "Claude 설명: ";
+
 const changeLabels = { add: "새 파일", update: "수정", delete: "삭제", unknown: "변경" } as const;
 
 export function ApprovalCard() {
@@ -13,6 +16,7 @@ export function ApprovalCard() {
   const laterCount = waitingCount - 1;
 
   const isCommand = approval.kind === "command";
+  const claimed = isCommand && approval.reason?.startsWith(CLAIM) === true;
   const screen = approval.kind === "screen_action" ? approval.screen : undefined;
   const actionWords = { click: "누르기", type: "입력하기", reveal: "보이게 스크롤하기" } as const;
 
@@ -52,7 +56,13 @@ export function ApprovalCard() {
           <p className="approval-card__queue">⌘⇧Esc를 누르면 언제든 바로 멈춰.</p>
         </div>
       ) : isCommand ? (
-        <pre className="approval-card__code">{approval.summary}</pre>
+        <>
+          <pre className="approval-card__code">{approval.summary}</pre>
+          <p className="approval-card__queue">
+            작업 폴더에만 쓸 수 있고, 작업 폴더와 개발 도구 말고는 읽지 못하고, 인터넷은 쓸 수 없어.
+            명령이 바꾼 파일은 되돌리기로 복구되지 않아.
+          </p>
+        </>
       ) : (
         <p className="approval-card__summary">{approval.summary}</p>
       )}
@@ -64,9 +74,10 @@ export function ApprovalCard() {
           </>
         )}
         {approval.reason && (
+          // Claude's own words about a command are its claim, not something Poko checked.
           <>
-            <dt>이유</dt>
-            <dd>{approval.reason}</dd>
+            <dt>{claimed ? "Claude 설명" : "이유"}</dt>
+            <dd>{claimed ? approval.reason.slice(CLAIM.length) : approval.reason}</dd>
           </>
         )}
       </dl>

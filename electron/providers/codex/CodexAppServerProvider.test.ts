@@ -263,7 +263,7 @@ describe("CodexAppServerProvider", () => {
     expect(await stream.next("approvalRequired")).toMatchObject({
       kind: "command",
       canApprove: false,
-      reason: expect.stringContaining("지원하지 않아"),
+      reason: expect.stringContaining("Claude Code로 바꾸면"),
     });
     expect(await server.waitFor((m) => m.id === 7)).toEqual({
       id: 7,

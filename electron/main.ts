@@ -109,12 +109,21 @@ app
       .resolveRuntime()
       .catch((error) => console.error("Could not find Claude Code.", error));
     const { runtime } = ctx.setupService;
+    const claudeProvider = new ClaudeCodeProvider({
+      runtime: ctx.claudeSetup.runtime,
+      findTaskProcesses: ctx.screenService.supported
+        ? (tempDir, workspace) =>
+            ctx.screenService?.findTaskProcesses(tempDir, workspace) ?? Promise.resolve([])
+        : undefined,
+    });
+    // No task runs yet, so temp folders from a crash or a forced quit can go.
+    claudeProvider.cleanupLeftovers();
     ctx.screenProvider = new CodexAppServerProvider({ runtime });
     ctx.agentCore = new AgentCore(
       new EngineProvider(
         {
           codex: new CodexAppServerProvider({ runtime }),
-          claude: new ClaudeCodeProvider({ runtime: ctx.claudeSetup.runtime }),
+          claude: claudeProvider,
         },
         () => ctx.database?.getSettings().engine ?? "codex",
         (engine) => {

@@ -91,10 +91,13 @@ export class ClaudeSetupService {
     const found = await resolveCliExecutable("claude", [join(homedir(), ".claude", "local")]);
     const installed = found !== "claude" && (await isExecutable(found));
     // An npm-installed `claude` is a node script, so it gets the same PATH fallbacks as Codex.
+    const nodeDirectory = await findNodeDirectory(await nodeCandidates());
     this.current = installed
       ? {
           executable: found,
-          environment: codexEnvironment(found, await findNodeDirectory(await nodeCandidates())),
+          environment: codexEnvironment(found, nodeDirectory),
+          version: this.current.executable === found ? this.current.version : null,
+          nodeDirectory,
         }
       : { executable: "claude", environment: process.env };
     return installed ? found : null;
@@ -102,7 +105,10 @@ export class ClaudeSetupService {
 
   async refresh(): Promise<ClaudeSetup> {
     const claudePath = await this.resolveRuntime();
-    return checkClaudeSetup({ claudePath, run: (args) => this.run(args) });
+    const setup = await checkClaudeSetup({ claudePath, run: (args) => this.run(args) });
+    // Commands are offered only for a version the sandbox rules were verified with.
+    this.current = { ...this.current, version: setup.version };
+    return setup;
   }
 
   private run(args: string[]): Promise<RunResult> {

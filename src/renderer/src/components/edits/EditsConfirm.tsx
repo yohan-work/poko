@@ -14,7 +14,11 @@ export function EditsConfirm() {
         <ul className="edits-confirm__list">
           <li>포코가 파일 변경을 제안하면 바뀌는 내용을 먼저 보여줘.</li>
           <li>변경마다 허용해야 적용되고, 거절하면 아무것도 바뀌지 않아.</li>
-          <li>명령 실행, 파일 옮기기, 폴더 밖 변경은 여전히 하지 않아.</li>
+          <li>
+            엔진이 Claude Code(macOS)면 테스트 같은 명령도 제안할 수 있어. 명령마다 확인을 받고,
+            작업 폴더 안 샌드박스에서 인터넷 없이 실행돼. Codex에서는 명령을 실행하지 않아.
+          </li>
+          <li>파일 옮기기와 폴더 밖 변경은 하지 않아.</li>
         </ul>
         <div className="confirm-dialog__actions">
           <button className="secondary-button" type="button" onClick={close}>

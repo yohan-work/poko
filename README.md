@@ -41,6 +41,7 @@ Screenshots use sample data.
 - [x] Settings page: memory switch, undo retention, export, delete all (Phase 10)
 - [x] Claude Code as an alternative engine, with the same approvals and undo (Phase 11)
 - [x] Model picker under the message box, per engine
+- [x] Approved project commands (tests, builds) on Claude Code, in a sandbox (Phase 12)
 
 ## What Poko is aiming for
 
@@ -79,6 +80,14 @@ Poko runs on your Mac with the **Codex CLI** and your **ChatGPT** sign-in, or wi
 3. Open Poko. If Codex is missing, signed out, or too old, the setup screen names the problem and the fix: copy the install command, use **로그인하기** to sign in, or update. Codex 0.159.0 or newer is required.
 
 **Using Claude Code instead.** Install Claude Code (`npm install -g @anthropic-ai/claude-code`) and sign in once in a terminal (`claude`, then `/login`). Then choose **Claude Code** under 설정 → 엔진. Poko starts your own `claude` with your hooks, plugins, MCP servers, and settings files turned off, offers it only reading tools (plus Edit and Write when you allow edits), and shows every edit as the same approval card with undo. 화면 보기 and 대신 해 줘 always use Codex.
+
+With edits allowed on Claude Code (macOS), Poko can also propose project commands such as `npm test`. Each command needs approval and runs in Claude Code's sandbox:
+- it can write only in the workspace, never `.git`;
+- it reads only the workspace and developer toolchains, not your documents, keys, or settings;
+- it has no network;
+- its file changes can't be undone.
+
+Codex command requests are still declined, because Codex runs an approved command outside its sandbox.
 4. For 화면 보기, macOS asks for **Screen Recording** and **Accessibility** for Poko itself.
 
 Signing: without a certificate, `pnpm dist` signs the app ad hoc. It runs on the Mac that built it, and macOS asks for the screen permissions again after each new build. With a Developer ID certificate (`CSC_LINK` and `CSC_KEY_PASSWORD`, or `CSC_NAME`) the app is signed with it. With Apple credentials (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) it is also notarized, so it opens on other Macs without warnings. Pushing a `v*` tag builds the app in GitHub Actions.

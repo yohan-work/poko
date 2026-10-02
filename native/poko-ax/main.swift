@@ -518,10 +518,18 @@ case "raise":
   AXUIElementPerformAction(window, kAXRaiseAction as CFString)
   usleep(300_000)
   emit(["ok": true])
+case "task-processes":
+  // Processes left behind by one Poko command task, identified by their sandbox profile.
+  guard args.count > 3, args[2].hasPrefix("/"), args[3].hasPrefix("/") else {
+    fail("usage", "task-processes <tempDir> <workspace>")
+  }
+  var found = [pid_t](repeating: 0, count: 4096)
+  let count = Int(poko_task_processes(args[2], args[3], &found, Int32(found.count)))
+  emit(["pids": found.prefix(count).map { Int($0) }])
 case "act":
   guard args.count > 2, let id = Int(args[2]) else { fail("usage", "act <windowId>") }
   guard AXIsProcessTrusted() else { fail("no_accessibility", "Accessibility permission is missing.") }
   act(windowId: id)
 default:
-  fail("usage", "poko-ax permissions | windows | snapshot <windowId> | act <windowId>")
+  fail("usage", "poko-ax permissions | windows | snapshot <windowId> | act <windowId> | task-processes <tempDir> <workspace>")
 }

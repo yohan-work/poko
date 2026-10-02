@@ -144,3 +144,21 @@ The rule throughout: deny by default, then allow only what a project command nee
 - Allowing network per host.
 - Undo for files that commands change.
 - Long-running or background processes (dev servers).
+
+## Status
+
+Implemented. Real runs with Claude Code 2.1.287 changed four details of the plan:
+
+- **Temp folder location:** the task temp folder is created under `/private/tmp` and passed by its real path. In the per-user temp folder (`/var/folders/…`), Claude Code ignored `CLAUDE_CODE_TMPDIR` and fell back to the shared `/tmp/claude-<uid>`. Commands then failed to write their working-folder file and ended with exit code 1 even when they passed.
+- **`TMPDIR`:** it is set to the same folder as `CLAUDE_CODE_TMPDIR`.
+- **The profile rule needs workspace writes too:** without that condition, about 40 App Sandbox apps and services also matched "sandboxed, may write the temp folder, may not read `/Users`". With it, only the leftover job matched.
+- **`CLAUDE_*` variables:** only Claude Code's sign-in and provider names (`CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK` / `_VERTEX`, …) are kept. A parent Claude Code session's variables, such as its messaging token, are dropped.
+
+Leftover temp folders from a crash are removed at startup.
+
+**In-app runs.** "이 프로젝트 테스트 돌려 줘" showed a command card, ran `npm test` after approval, and reported the result. Claude itself also declined to attempt the boundary commands (writing home, `.git`, reading `~/.ssh`, network, background jobs) when the note was in the prompt. So the sandbox itself was verified by running the CLI with Poko's exact settings and environment and approving everything:
+- writing `~/…` and `.git/hooks`, reading `~/.ssh/…`, and listing `/tmp/claude-<uid>` failed with "Operation not permitted";
+- `example.com` was denied;
+- no `GITHUB_TOKEN` reached commands;
+- `npm test` passed with exit 0;
+- the leftover job was the only process the finder selected.

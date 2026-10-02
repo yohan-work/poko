@@ -778,7 +778,7 @@ export class CodexAppServerProvider implements AgentProvider {
       summary: command || "명령 내용을 확인할 수 없어.",
       cwd: readString(params.cwd) ?? null,
       reason:
-        "명령 실행 승인은 아직 지원하지 않아서 거절했어. 파일 변경은 확인을 받아 진행할 수 있어.",
+        "Codex에서는 명령 실행을 아직 안전하게 할 수 없어서 거절했어. 설정에서 엔진을 Claude Code로 바꾸면 승인 후 샌드박스 안에서 실행할 수 있어.",
       canApprove: false,
     };
   }
