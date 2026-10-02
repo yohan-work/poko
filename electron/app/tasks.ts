@@ -180,6 +180,13 @@ export function registerTaskHandlers(): void {
       request.choice === "approve" &&
       (editsWithdrawn || !ctx.agentCore.canStillApprove(request.taskId, request.requestId));
     let declineInstead = unsafe;
+    if (!unsafe && request.choice === "approve" && kind === "command") {
+      // Record earlier edits' "after" state now, so a command that rewrites those files later
+      // makes their undo refuse as changed instead of erasing the command's work.
+      await settleEdits(request.taskId).catch((error) =>
+        console.error("Could not settle edits before a command.", error),
+      );
+    }
     if (!unsafe && request.choice === "approve" && workspace && fileChange) {
       // The change Codex made before this one is on disk by now; settle it first so each
       // edit's "after" state is its own. Then save the files this change will touch.

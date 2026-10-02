@@ -50,7 +50,8 @@ function contains(parent: string, child: string): boolean {
 /**
  * Why commands can't run for this task, or null when they can. The sandbox rules are verified
  * only on macOS with a known Claude Code, and a workspace that holds the home folder (or is a
- * system folder) would reopen everything below it.
+ * system folder) would reopen everything below it. Pass real paths (symlinks resolved): the
+ * sandbox resolves them, so a link to the home folder must be caught here.
  */
 export function commandsBlockedReason(
   workspace: string,
@@ -61,8 +62,13 @@ export function commandsBlockedReason(
   if (platform !== "darwin") return "명령 실행은 지금 macOS에서만 지원해.";
   if (!versionAtLeast(version, MIN_COMMAND_VERSION))
     return "명령 실행에는 Claude Code 2.1.287 이상이 필요해. claude update로 업데이트해 줘.";
-  const folder = resolve(workspace);
-  if (contains(folder, home) || SYSTEM_FOLDERS.includes(folder))
+  // The caller passes real paths; case is ignored, as on macOS's default disk format.
+  const folder = resolve(workspace).toLowerCase();
+  const homeFolder = resolve(home).toLowerCase();
+  if (
+    contains(folder, homeFolder) ||
+    SYSTEM_FOLDERS.some((system) => system.toLowerCase() === folder)
+  )
     return "작업 폴더가 너무 넓어서(홈 폴더나 시스템 폴더) 명령 실행은 막아 뒀어.";
   return null;
 }

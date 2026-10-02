@@ -3,7 +3,7 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeProvider, claudeArgs, EDIT_TOOLS, READ_TOOLS } from "./ClaudeCodeProvider";
@@ -615,6 +615,42 @@ describe("ClaudeCodeProvider", () => {
       }
       expect(finds).toHaveLength(2); // and once more after the task ended
       rmSync(root, { recursive: true, force: true });
+    });
+
+    it("blocks a workspace that links to the home folder, and explains a missing one", async () => {
+      const fakeHome = mkdtempSync(join(tmpdir(), "poko-home-"));
+      const link = `${fakeHome}-link`;
+      symlinkSync(fakeHome, link);
+      let args: string[] = [];
+      const provider = new ClaudeCodeProvider({
+        runtime: () => ({ executable: "/bin/claude", environment: {}, version: "2.1.287" }),
+        spawnProcess: (_command, spawnArgs) => {
+          args = spawnArgs;
+          return new FakeClaude((message, claude) => {
+            if (message.type === "user")
+              claude.send(init({ tools: [...READ_TOOLS, ...EDIT_TOOLS] }), result("ok"));
+          }) as unknown as ChildProcessWithoutNullStreams;
+        },
+        findTaskProcesses: async () => [],
+        platform: "darwin",
+        home: fakeHome,
+      });
+      const events: AgentEvent[] = [];
+      for await (const event of provider.runTask(commandTask(link))) events.push(event);
+      expect(events[0]).toMatchObject({
+        type: "tool",
+        detail: expect.stringContaining("너무 넓어서"),
+      });
+      expect(args.at(-1)).toBe("Read,Grep,Glob,Edit,Write");
+
+      const missing: AgentEvent[] = [];
+      for await (const event of provider.runTask(commandTask(join(fakeHome, "gone"))))
+        missing.push(event);
+      expect(missing).toEqual([
+        { type: "error", error: "작업 폴더를 찾을 수 없어. 폴더를 다시 골라 줘." },
+      ]);
+      rmSync(link);
+      rmSync(fakeHome, { recursive: true, force: true });
     });
 
     it("removes command temp folders left from an earlier run", () => {

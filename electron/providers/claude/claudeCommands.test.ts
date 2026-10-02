@@ -17,7 +17,7 @@ describe("commandsBlockedReason", () => {
     expect(commandsBlockedReason("/Users/me/app", home, "linux", "2.1.287")).toContain("macOS");
     expect(commandsBlockedReason("/Users/me/app", home, "darwin", "2.1.286")).toContain("2.1.287");
     expect(commandsBlockedReason("/Users/me/app", home, "darwin", null)).toContain("2.1.287");
-    for (const folder of ["/Users/me", "/Users", "/", "/Volumes"])
+    for (const folder of ["/Users/me", "/Users", "/", "/Volumes", "/users/ME", "/USERS"])
       expect(commandsBlockedReason(folder, home, "darwin", "2.1.287")).toContain("너무 넓어서");
   });
 });

@@ -334,10 +334,27 @@ export class ClaudeCodeProvider implements AgentProvider {
     }
 
     const runtime = this.runtime();
+    // Real paths when commands may run: the sandbox resolves symlinks, so the checks and the
+    // rules must too.
+    let workspace = input.cwd;
+    let home = this.home;
+    if (input.editsEnabled) {
+      try {
+        workspace = realpathSync(input.cwd);
+      } catch {
+        yield { type: "error", error: "작업 폴더를 찾을 수 없어. 폴더를 다시 골라 줘." };
+        return;
+      }
+      try {
+        home = realpathSync(this.home);
+      } catch {
+        /* keep the given path */
+      }
+    }
     // Commands need edits on, a verified sandbox, and a way to clean up after them.
     const blocked = input.editsEnabled
       ? this.findTaskProcesses
-        ? commandsBlockedReason(input.cwd, this.home, this.platform, runtime.version)
+        ? commandsBlockedReason(workspace, home, this.platform, runtime.version)
         : "명령 실행을 정리할 도우미를 찾지 못해서 꺼 뒀어."
       : null;
     const commands = input.editsEnabled === true && blocked === null;
@@ -354,9 +371,9 @@ export class ClaudeCodeProvider implements AgentProvider {
       : READ_TOOLS;
     const settings = taskTemp
       ? commandSettings({
-          workspace: input.cwd,
+          workspace,
           tempDir: taskTemp,
-          reads: toolchainReads(this.home, runtime.nodeDirectory ?? null),
+          reads: toolchainReads(home, runtime.nodeDirectory ?? null),
         })
       : undefined;
     let child: ChildProcessWithoutNullStreams;
@@ -472,7 +489,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       commands: taskTemp
         ? {
             writableTemp: join(taskTemp, `claude-${process.getuid?.() ?? 0}`),
-            workspace: realpathSync(input.cwd),
+            workspace,
             childPid: child.pid,
           }
         : null,
