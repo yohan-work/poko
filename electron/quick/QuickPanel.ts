@@ -13,6 +13,8 @@ export class QuickPanel {
   private window: BrowserWindow | null = null;
   private ready: Promise<void> | null = null;
   private state: QuickState = IDLE_STATE;
+  /** The last height that fits the panel's content (see resize). */
+  private height = HEIGHT;
   private readonly itemId = { current: null as string | null };
 
   constructor(
@@ -45,7 +47,7 @@ export class QuickPanel {
       x: Math.round(display.x + (display.width - WIDTH) / 2),
       y: Math.round(display.y + display.height * 0.18),
       width: WIDTH,
-      height: HEIGHT,
+      height: this.height,
     });
     this.send();
     window.show();
@@ -57,6 +59,7 @@ export class QuickPanel {
     const window = this.window;
     if (!window || window.isDestroyed()) return;
     const height = Math.round(Math.min(Math.max(contentHeight, 60), HEIGHT));
+    this.height = height;
     const bounds = window.getBounds();
     if (bounds.height !== height) window.setBounds({ ...bounds, height });
   }
@@ -88,6 +91,18 @@ export class QuickPanel {
   refuse(question: string, message: string): void {
     this.state = { ...IDLE_STATE, phase: "error", question, message };
     this.send();
+  }
+
+  /** The main window answered the panel task's approval; it goes on working. */
+  resume(taskId: string): void {
+    if (this.state.taskId !== taskId || this.state.phase !== "approval") return;
+    this.state = { ...this.state, phase: "running", message: "이어서 작업하고 있어." };
+    this.send();
+  }
+
+  /** The panel task's answer so far, for a main window taking the task over. */
+  answerFor(taskId: string): string | undefined {
+    return this.state.taskId === taskId && this.state.answer ? this.state.answer : undefined;
   }
 
   /** An event of the panel's own task. */

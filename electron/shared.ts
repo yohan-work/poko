@@ -359,6 +359,8 @@ export interface ActiveTaskInfo {
   taskId: string;
   conversationId: string | null;
   approvals: PendingApprovalEvent[];
+  /** The answer written so far, so a window taking the task over doesn't start mid-sentence. */
+  answer?: string;
 }
 
 /** An approval card as the renderer shows it. */

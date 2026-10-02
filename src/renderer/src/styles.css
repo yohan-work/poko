@@ -2574,7 +2574,8 @@ html.is-quick body {
 
 .quick {
   display: flex;
-  max-height: calc(100vh - 16px);
+  /* The window follows the panel, so the cap is fixed rather than the window's height. */
+  max-height: 424px;
   margin: 8px;
   flex-direction: column;
   overflow: hidden;

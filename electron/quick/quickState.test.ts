@@ -46,4 +46,16 @@ describe("reduceQuickState", () => {
       message: "실패했어.",
     });
   });
+
+  it("keeps the approval phase through output until the app answers", () => {
+    const item = { current: null };
+    const waiting = {
+      ...running,
+      phase: "approval" as const,
+      message: "확인이 필요해. 앱에서 확인해 줘.",
+    };
+    expect(reduceQuickState(waiting, { type: "output", content: "x" }, item).phase).toBe(
+      "approval",
+    );
+  });
 });

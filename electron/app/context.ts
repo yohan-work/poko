@@ -67,6 +67,8 @@ export const BUSY_MESSAGE = "포코가 이미 다른 작업을 하고 있어. �
 export async function startConversationTask(
   message: string,
   conversationId: string | null,
+  /** Runs after the task is recorded and before it starts, so its first event finds it known. */
+  onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
 ): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
   if (!ctx.agentCore || !ctx.database) throw new Error("Local storage is unavailable.");
   // This start is already counted in startingTasks, so another start makes it more than one.
@@ -78,6 +80,7 @@ export async function startConversationTask(
   const started = recordTaskStart(ctx.database, message, cwd, conversationId);
   if ("error" in started) return started;
   const { taskId } = started;
+  onRecorded?.(started);
   try {
     ctx.agentCore.startTask({
       prompt: message,

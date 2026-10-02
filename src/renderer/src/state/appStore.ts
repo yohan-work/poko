@@ -859,14 +859,22 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
   const foreign = trackForeign(taskId, conversationId);
   adopting = { taskId, held: [] };
   set({ activeTaskId: taskId });
+  // On failure the task stays foreign, and the events held meanwhile go to it, not away.
+  const giveBack = (): void => {
+    const held = adopting?.held ?? [];
+    adopting = null;
+    for (const payload of held) applyForeignEvent(payload);
+  };
   try {
     const response = await window.poko.conversations.open(conversationId);
     if ("error" in response) {
       set({ conversationError: response.error, activeTaskId: null });
+      giveBack();
       return;
     }
     const live = await window.poko.tasks.active().catch(() => null);
     const running = live?.taskId === taskId;
+    const answerSoFar = running ? live?.answer : undefined;
     for (const approval of live?.approvals ?? [])
       foreign.approvals.set(approval.requestId, approval);
     foreignTasks.delete(taskId);
@@ -876,7 +884,8 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
       activeConversationId: conversationId,
       messages: response.messages,
       editNotes: [],
-      streaming: null,
+      // The answer written before the take-over, so the stream continues it.
+      streaming: answerSoFar ? { taskId, itemId: null, text: answerSoFar } : null,
       errorMessage: null,
       conversationError: null,
       activeTaskId: running ? taskId : null,
@@ -907,6 +916,7 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
       conversationError: "대화를 불러오지 못했어. 잠시 뒤 다시 시도해 줘.",
       activeTaskId: null,
     });
+    giveBack();
   } finally {
     adopting = null;
   }

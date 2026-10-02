@@ -56,7 +56,12 @@ export function registerSettingsHandlers(): void {
       memoriesInContext: input.memoriesInContext,
       checkpointDays: input.checkpointDays,
     });
-    if (saved.quickShortcut !== before) applyQuickShortcut(saved.quickShortcut);
+    // Picking the same shortcut again retries it, for example after another app freed it.
+    if (
+      input.quickShortcut !== undefined &&
+      (saved.quickShortcut !== before || !ctx.quickShortcutOk)
+    )
+      applyQuickShortcut(saved.quickShortcut);
     return saved;
   });
 }

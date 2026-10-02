@@ -427,4 +427,22 @@ describe("a task started elsewhere (the quick panel)", () => {
     expect(store.getState().pendingApprovals).toEqual([]);
     expect(store.getState().foreignApproval).not.toBeNull();
   });
+
+  it("gives held events back when adoption fails, so the window doesn't stay busy", async () => {
+    world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
+    const adopting = store.getState().openConversation("q");
+    world.emit("qt", { type: "completed", result: "끝" }); // held during the failed adoption
+    world.replyToOpen({ error: "포코가 작업 중이라 다른 대화로 옮길 수 없어." });
+    await adopting;
+    expect(store.getState()).toMatchObject({ busyElsewhere: false, activeTaskId: null });
+  });
+
+  it("continues the answer written before the take-over", async () => {
+    world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
+    world.setActive({ taskId: "qt", conversationId: "q", approvals: [], answer: "앞부분" });
+    const adopting = store.getState().openConversation("q");
+    world.replyToOpen({ messages: [] });
+    await adopting;
+    expect(store.getState().streaming).toEqual({ taskId: "qt", itemId: null, text: "앞부분" });
+  });
 });

@@ -24,7 +24,14 @@ export function registerQuickHandlers(): void {
     const question = raw.trim();
     let started: Awaited<ReturnType<typeof startConversationTask>>;
     try {
-      started = await startConversationTask(question, null);
+      // The panel and the main window learn about the task before it starts: a task can end
+      // right away, and its last event must find both ready.
+      started = await startConversationTask(question, null, ({ taskId, conversation }) => {
+        ctx.quickPanel?.begin(question, taskId, conversation.id);
+        const notice: TaskStartedNotice = { taskId, title: question, conversation };
+        if (ctx.mainWindow && !ctx.mainWindow.isDestroyed())
+          ctx.mainWindow.webContents.send(IPC_CHANNELS.taskStarted, notice);
+      });
     } catch (error) {
       // For example no folder selected: the message is already plain Korean.
       started = { error: error instanceof Error ? error.message : "작업을 시작하지 못했어." };
@@ -33,15 +40,6 @@ export function registerQuickHandlers(): void {
       ctx.quickPanel.refuse(question, started.error);
       return { error: started.error };
     }
-    ctx.quickPanel.begin(question, started.taskId, started.conversation.id);
-    // The main window adds the conversation and task, and adopts it when shown.
-    const notice: TaskStartedNotice = {
-      taskId: started.taskId,
-      title: question,
-      conversation: started.conversation,
-    };
-    if (ctx.mainWindow && !ctx.mainWindow.isDestroyed())
-      ctx.mainWindow.webContents.send(IPC_CHANNELS.taskStarted, notice);
     return { ok: true };
   });
 

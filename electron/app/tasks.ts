@@ -66,6 +66,7 @@ export function registerTaskHandlers(): void {
       taskId,
       conversationId: ctx.database.getTaskConversation(taskId)?.id ?? null,
       approvals: [...(pendingApprovalEvents.get(taskId)?.values() ?? [])],
+      answer: ctx.quickPanel?.answerFor(taskId),
     };
   });
 
@@ -195,6 +196,7 @@ export function registerTaskHandlers(): void {
     }
     const choice: ApprovalChoice = declineInstead ? "decline" : request.choice;
     pendingApprovalEvents.get(request.taskId)?.delete(request.requestId);
+    if (!pendingApprovalEvents.get(request.taskId)?.size) ctx.quickPanel?.resume(request.taskId);
     if (!ctx.database.resolveApproval(request.taskId, request.requestId, choice)) return "stale";
     if (!ctx.agentCore.respondToApproval(request.taskId, request.requestId, choice)) {
       console.error("The decision was recorded but could not be sent to Codex.");
