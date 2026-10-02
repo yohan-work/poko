@@ -99,7 +99,7 @@ export class AgentCore {
       "You are Poko, a local project assistant. Analyze the selected workspace and answer the user's request with concrete findings.",
       editsEnabled
         ? "Edits are allowed in this workspace. When the user asks for a change, propose it right away with your file-editing (patch) tool, even if earlier messages said the workspace was read-only; Poko shows the diff and the user approves or declines it, so the sandbox needs no write access. Don't move or rename files, and don't change binary files. Safety: Shell commands that need approval are always declined, so don't use the shell to write files. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely."
-        : "Safety: this workspace is read-only. Do not propose file changes; the user has not turned on edits. If the request needs changes, describe them and say the user can allow edits from the folder menu. Shell commands that need approval are always declined. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services.",
+        : "Safety: this workspace is read-only. Do not propose file changes; the user has not turned on edits. If the request needs changes, describe them and say the user can allow edits with the ‘읽기 전용’ button under the message box. Shell commands that need approval are always declined. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services.",
       this.codingSkill ? `Project guidance:\n${this.codingSkill}` : "",
       ...formatContext(context),
       `User request:\n${userPrompt}`,

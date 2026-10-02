@@ -173,14 +173,18 @@ function registerIpcHandlers(): void {
     if (!workspacePath) return { error: "먼저 작업할 폴더를 선택해 줘." };
     const realPath = await resolveWorkspaceDirectory(workspacePath);
     database.setEditsEnabled(realPath, raw);
+    const declined: Array<{ taskId: string; requestId: string }> = [];
     if (!raw) {
-      // A change shown before edits were turned off must not apply afterwards.
+      // A change shown before edits were turned off must not apply afterwards. Only this
+      // folder's changes are withdrawn; the renderer removes exactly these cards.
       for (const pending of database.pendingFileChanges(realPath)) {
-        if (database.resolveApproval(pending.taskId, pending.requestId, "decline"))
+        if (database.resolveApproval(pending.taskId, pending.requestId, "decline")) {
           agentCore.respondToApproval(pending.taskId, pending.requestId, "decline");
+          declined.push(pending);
+        }
       }
     }
-    return { available: true, enabled: raw };
+    return { available: true, enabled: raw, declined };
   });
 
   ipcMain.handle(IPC_CHANNELS.conversationRename, (event, raw: unknown) => {

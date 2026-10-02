@@ -697,7 +697,7 @@ export class CodexAppServerProvider implements AgentProvider {
         canApprove: false,
       };
     const refusal = !session.task.editsEnabled
-      ? "수정이 꺼져 있어. 폴더 메뉴에서 수정을 허용하면 변경을 제안할 수 있어."
+      ? "수정이 꺼져 있어. 입력창 아래 ‘읽기 전용’을 눌러 수정을 허용하면 변경을 제안할 수 있어."
       : item
         ? editRefusal(item)
         : null;
@@ -794,7 +794,7 @@ export function editRefusal(item: Record<string, unknown>): string | null {
       return "파일 옮기기나 이름 바꾸기는 아직 지원하지 않아.";
     if (
       typeof value.diff === "string" &&
-      (value.diff.includes("\u0000") || /^Binary files /m.test(value.diff))
+      (value.diff.includes("\u0000") || /^Binary files .* differ$/.test(value.diff.trim()))
     )
       return "바이너리 파일 변경은 보여줄 수 없어서 거절했어.";
   }

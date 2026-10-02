@@ -54,7 +54,6 @@ export interface SessionTask {
 interface AppState {
   edits: EditsState;
   editsConfirmOpen: boolean;
-  editsError: string | null;
   loadEdits: () => Promise<void>;
   /** Turning edits on asks first; turning them off happens at once. */
   setEdits: (enabled: boolean, confirmed?: boolean) => Promise<void>;
@@ -208,11 +207,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   memoryQuery: "",
   edits: { available: false, enabled: false },
   editsConfirmOpen: false,
-  editsError: null,
 
   loadEdits: async () => {
     try {
-      set({ edits: await window.poko.edits.get(), editsError: null });
+      const edits = await window.poko.edits.get();
+      set({ edits: { available: edits.available, enabled: edits.enabled } });
     } catch {
       set({ edits: { available: false, enabled: false } });
     }
@@ -220,27 +219,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setEdits: async (enabled, confirmed = false) => {
     if (enabled && !confirmed) {
-      set({ editsConfirmOpen: true, editsError: null });
+      set({ editsConfirmOpen: true });
       return;
     }
     try {
       const response = await window.poko.edits.set(enabled);
       if ("error" in response) {
-        set({ editsError: response.error, editsConfirmOpen: false });
+        set({ errorMessage: response.error, editsConfirmOpen: false });
         return;
       }
+      const declined = response.declined ?? [];
       set((state) => ({
-        edits: response,
+        edits: { available: response.available, enabled: response.enabled },
         editsConfirmOpen: false,
-        editsError: null,
-        // Main declined pending file changes when edits went off; their cards go too.
-        pendingApprovals: enabled
-          ? state.pendingApprovals
-          : state.pendingApprovals.filter((item) => item.kind !== "file_change"),
+        // Exactly the changes main declined (this folder's) leave the screen.
+        pendingApprovals: state.pendingApprovals.filter(
+          (item) =>
+            !declined.some(
+              (gone) => gone.taskId === item.taskId && gone.requestId === item.requestId,
+            ),
+        ),
       }));
     } catch {
       set({
-        editsError: "수정 설정을 바꾸지 못했어. 잠시 뒤 다시 시도해 줘.",
+        errorMessage: "수정 설정을 바꾸지 못했어. 잠시 뒤 다시 시도해 줘.",
         editsConfirmOpen: false,
       });
     }

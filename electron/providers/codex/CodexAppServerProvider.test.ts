@@ -720,5 +720,17 @@ describe("CodexAppServerProvider", () => {
     expect(
       editRefusal({ changes: [{ path: "a.ts", kind: { type: "update" }, diff: "-a\n+b" }] }),
     ).toBeNull();
+    // A new text file may mention git's binary message in its content.
+    expect(
+      editRefusal({
+        changes: [
+          {
+            path: "notes.md",
+            kind: { type: "add" },
+            diff: "# Notes\nBinary files a and b differ\nmore",
+          },
+        ],
+      }),
+    ).toBeNull();
   });
 });

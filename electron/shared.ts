@@ -153,6 +153,8 @@ export interface EditsState {
   /** A workspace is selected. */
   available: boolean;
   enabled: boolean;
+  /** After turning edits off: the pending file changes that were declined. */
+  declined?: Array<{ taskId: string; requestId: string }>;
 }
 
 export interface PersistedConversation {
