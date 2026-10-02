@@ -213,6 +213,9 @@ function addActivity(state: AppState, taskId: string, message: string): Activity
   ].slice(-MAX_ACTIVITIES);
 }
 
+/** Counts settings saves, so a load that started before one is dropped. */
+let settingsSaves = 0;
+
 export const useAppStore = create<AppState>((set, get) => ({
   activeView: "conversation",
   characterState: "idle",
@@ -272,18 +275,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadSettings: async () => {
+    // Preferences and screen status load separately, so a failed screen check can't lock
+    // the switches; a reply that started before a save is dropped, so it can't undo it.
+    const saves = settingsSaves;
+    void window.poko.screen
+      .status()
+      .then((status) => set({ screen: { ...get().screen, status } }))
+      .catch(() => undefined);
     try {
-      const [{ settings, version }, status] = await Promise.all([
-        window.poko.settings.get(),
-        window.poko.screen.status(),
-      ]);
-      set({ settings, appVersion: version, screen: { ...get().screen, status } });
+      const { settings, version } = await window.poko.settings.get();
+      if (saves !== settingsSaves) return;
+      set({ settings, appVersion: version, settingsError: null });
     } catch {
       set({ settingsError: "설정을 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
     }
   },
 
   updateSettings: async (change) => {
+    settingsSaves += 1;
     set({ settingsError: null });
     try {
       set({ settings: await window.poko.settings.set(change) });
