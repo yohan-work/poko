@@ -562,7 +562,8 @@ export class ClaudeCodeProvider implements AgentProvider {
     // Only a model the user picked can be the problem; the default is the CLI's own choice.
     if (picked && isUnavailableModelError(detail))
       return "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘.";
-    if (/enoent|not found/.test(detail)) return "Claude Code를 찾지 못했어. 설치를 확인해 줘.";
+    if (/enoent|command not found|no such file/.test(detail))
+      return "Claude Code를 찾지 못했어. 설치를 확인해 줘.";
     if (/rate limit|usage limit|429/.test(detail))
       return "Claude Code 사용 한도에 닿았어. 잠시 뒤 다시 시도해 줘.";
     if (/unknown option|unrecognized/.test(detail))

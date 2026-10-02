@@ -316,7 +316,7 @@ export function isModelName(value: unknown): value is string {
 export function isUnavailableModelError(text: string): boolean {
   return (
     /model/i.test(text) &&
-    /not found|does not exist|not available|unavailable|no access|do not have access|don't have access|not supported|unsupported model|invalid model|unknown model/i.test(
+    /not found|does not exist|no access|do not have access|don't have access|invalid model|unknown model/i.test(
       text,
     )
   );

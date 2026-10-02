@@ -291,9 +291,9 @@ describe("ClaudeCodeProvider", () => {
         type: "error",
         error: modelMessage,
       });
-      expect((await failing("model: claude-x not found")).at(-1)).not.toEqual({
+      expect((await failing("model: claude-x not found")).at(-1)).toEqual({
         type: "error",
-        error: modelMessage,
+        error: "Claude Code 작업을 마치지 못했어. 다시 시도해 줘.",
       });
       expect((await failing("401 unauthorized for model opus: no access", "opus")).at(-1)).toEqual({
         type: "error",

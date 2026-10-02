@@ -768,7 +768,7 @@ describe("CodexAppServerProvider", () => {
     server.send({
       method: "error",
       params: {
-        error: { message: "Your input exceeds the context window of this model" },
+        error: { message: "Image input is not supported by this model" },
         willRetry: false,
       },
     });

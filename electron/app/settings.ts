@@ -4,7 +4,10 @@ import { type AppSettings, IPC_CHANNELS, type ModelOption, type SettingsView } f
 import { ctx, isTrustedRenderer } from "./context";
 
 const MODEL_CACHE_MS = 10 * 60 * 1000;
+/** A failed listing is remembered briefly, so a busy picker doesn't keep starting Codex. */
+const MODEL_RETRY_MS = 30 * 1000;
 let codexModels: { at: number; models: ModelOption[] } | null = null;
+let codexListing: Promise<ModelOption[]> | null = null;
 
 /** The 설정 page and the model picker: preferences, the app version, and models per engine. */
 export function registerSettingsHandlers(): void {
@@ -15,12 +18,17 @@ export function registerSettingsHandlers(): void {
       if (engine === "claude") return CLAUDE_MODELS.map((model) => ({ ...model }));
       if (engine !== "codex" || !ctx.screenProvider) return [];
       // Codex lists what this account can use; asking starts a process, so the answer is kept.
-      if (!codexModels || Date.now() - codexModels.at > MODEL_CACHE_MS) {
-        const models = await ctx.screenProvider.listModels();
-        if (models.length === 0) return [];
-        codexModels = { at: Date.now(), models };
-      }
-      return codexModels.models;
+      const age = codexModels ? Date.now() - codexModels.at : Number.POSITIVE_INFINITY;
+      const fresh = codexModels?.models.length ? age < MODEL_CACHE_MS : age < MODEL_RETRY_MS;
+      if (fresh && codexModels) return codexModels.models;
+      // One listing at a time; callers during it share its answer.
+      const provider = ctx.screenProvider;
+      codexListing ??= provider.listModels().finally(() => {
+        codexListing = null;
+      });
+      const models = await codexListing;
+      codexModels = { at: Date.now(), models };
+      return models;
     },
   );
 

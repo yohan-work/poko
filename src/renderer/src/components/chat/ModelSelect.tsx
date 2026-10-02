@@ -10,9 +10,10 @@ export function ModelSelect() {
   const updateSettings = useAppStore((state) => state.updateSettings);
   const isSending = useAppStore((state) => state.isSending);
 
+  const ready = settings !== null;
   useEffect(() => {
-    if (settings && !models) void loadModels(engine);
-  }, [settings, models, engine, loadModels]);
+    if (ready && !models) void loadModels(engine);
+  }, [ready, models, engine, loadModels]);
 
   if (!settings) return null;
   const value = (engine === "claude" ? settings.claudeModel : settings.codexModel) ?? "";

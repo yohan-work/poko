@@ -247,6 +247,9 @@ function fromBootstrap(data: AppBootstrap): Partial<AppState> {
   };
 }
 
+/** Engines whose model list is being fetched, so the picker never asks twice at once. */
+const modelLoads = new Set<EngineId>();
+
 /** Counts settings saves, so a load that started before one is dropped. */
 let settingsSaves = 0;
 
@@ -313,7 +316,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   receiveSetup: (setup) => set({ setup }),
 
   loadModels: async (engine) => {
+    if (modelLoads.has(engine)) return;
+    modelLoads.add(engine);
     const models = await window.poko.settings.models(engine).catch(() => []);
+    modelLoads.delete(engine);
     // An empty answer means Codex couldn't be asked; leave it unloaded so the picker retries.
     if (models.length > 0) set({ models: { ...get().models, [engine]: models } });
   },
