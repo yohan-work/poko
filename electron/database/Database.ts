@@ -50,9 +50,30 @@ export interface ActivityRecord {
   message: string;
   createdAt: string;
 }
+export interface ConversationRecord {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+/** The renderer sent a conversation that no longer exists. */
+export class ConversationGoneError extends Error {
+  constructor() {
+    super("The conversation no longer exists.");
+  }
+}
+
+/** A conversation's title: the first message, flattened, at most 40 characters. */
+export function conversationTitle(message: string): string {
+  const flat = message.replace(/\s+/g, " ").trim();
+  return Array.from(flat).slice(0, 40).join("") || "새 대화";
+}
+
 export interface BootstrapData {
   workspacePath: string | null;
-  conversationId: string;
+  /** null: no conversation yet, or a new one about to start. */
+  conversationId: string | null;
+  conversations: ConversationRecord[];
   messages: MessageRecord[];
   tasks: TaskRecord[];
   activities: ActivityRecord[];
@@ -100,24 +121,87 @@ export class PokoDatabase {
     }
   }
 
-  private ensureConversation(): string {
-    const existing = this.db
-      .select({ id: conversations.id })
+  /** Conversations, most recently active first. */
+  listConversations(): ConversationRecord[] {
+    return this.db
+      .select({
+        id: conversations.id,
+        title: conversations.title,
+        updatedAt: conversations.updatedAt,
+      })
       .from(conversations)
-      .orderBy(asc(conversations.createdAt))
-      .get();
-    if (existing) return existing.id;
-    const id = randomUUID();
+      .orderBy(desc(conversations.updatedAt), desc(sql`${conversations}.rowid`))
+      .all();
+  }
+
+  getConversation(id: string): ConversationRecord | null {
+    return (
+      this.db
+        .select({
+          id: conversations.id,
+          title: conversations.title,
+          updatedAt: conversations.updatedAt,
+        })
+        .from(conversations)
+        .where(eq(conversations.id, id))
+        .get() ?? null
+    );
+  }
+
+  getConversationMessages(id: string): MessageRecord[] {
+    return this.db
+      .select({
+        id: messages.id,
+        role: messages.role,
+        content: messages.content,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .where(eq(messages.conversationId, id))
+      .orderBy(asc(messages.createdAt), asc(sql`${messages}.rowid`))
+      .all() as MessageRecord[];
+  }
+
+  /**
+   * The conversation Poko shows: the saved one if it still exists, else the most recently
+   * active, else none (the greeting screen).
+   */
+  getActiveConversationId(): string | null {
+    const saved = this.db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, "activeConversationId"))
+      .get()?.value;
+    if (saved && this.getConversation(saved)) return saved;
+    return this.listConversations()[0]?.id ?? null;
+  }
+
+  /** null means a new, not yet created conversation. */
+  setActiveConversation(id: string | null): void {
+    if (id === null) {
+      this.db.delete(settings).where(eq(settings.key, "activeConversationId")).run();
+      return;
+    }
     const timestamp = now();
     this.db
-      .insert(conversations)
-      .values({ id, title: "대화", createdAt: timestamp, updatedAt: timestamp })
+      .insert(settings)
+      .values({ key: "activeConversationId", value: id, updatedAt: timestamp })
+      .onConflictDoUpdate({ target: settings.key, set: { value: id, updatedAt: timestamp } })
       .run();
-    return id;
+  }
+
+  /** The conversation a task belongs to, or null when it was deleted. */
+  getTaskConversation(taskId: string): ConversationRecord | null {
+    const row = this.db
+      .select({ conversationId: tasks.conversationId })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .get();
+    return row?.conversationId ? this.getConversation(row.conversationId) : null;
   }
 
   getBootstrapData(): BootstrapData {
-    const conversationId = this.ensureConversation();
+    const conversationId = this.getActiveConversationId();
     const workspace = this.db
       .select()
       .from(settings)
@@ -126,17 +210,8 @@ export class PokoDatabase {
     return {
       workspacePath: workspace?.value ?? null,
       conversationId,
-      messages: this.db
-        .select({
-          id: messages.id,
-          role: messages.role,
-          content: messages.content,
-          createdAt: messages.createdAt,
-        })
-        .from(messages)
-        .where(eq(messages.conversationId, conversationId))
-        .orderBy(asc(messages.createdAt))
-        .all() as MessageRecord[],
+      conversations: this.listConversations(),
+      messages: conversationId ? this.getConversationMessages(conversationId) : [],
       // Explicit columns: prompts and results stay in main rather than riding along to the renderer.
       tasks: this.db
         .select({
@@ -204,11 +279,27 @@ export class PokoDatabase {
     }
   }
 
-  createTask(message: string, workspace: string): string {
+  /**
+   * Records the user's message and a running task in `conversationId`, or in a new conversation
+   * titled from the message when it is null. Throws ConversationGoneError for an id that no
+   * longer exists.
+   */
+  createTask(message: string, workspace: string, conversation: string | null = null): string {
     const id = randomUUID();
     const timestamp = now();
-    const conversationId = this.ensureConversation();
+    if (conversation !== null && !this.getConversation(conversation))
+      throw new ConversationGoneError();
+    const conversationId = conversation ?? randomUUID();
     this.db.transaction((tx) => {
+      if (conversation === null)
+        tx.insert(conversations)
+          .values({
+            id: conversationId,
+            title: conversationTitle(message),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })
+          .run();
       tx.insert(messages)
         .values({
           id: randomUUID(),
@@ -273,8 +364,14 @@ export class PokoDatabase {
           .set({ decision: type === "cancelled" ? "cancelled" : "expired", resolvedAt: timestamp })
           .where(sql`${approvals.taskId} = ${taskId} AND ${approvals.decision} = 'pending'`)
           .run();
-        if (result !== undefined) {
-          const conversationId = this.ensureConversation();
+        // The reply belongs to the task's own conversation. A deleted conversation keeps the
+        // result on the task only.
+        const conversationId = tx
+          .select({ conversationId: tasks.conversationId })
+          .from(tasks)
+          .where(eq(tasks.id, taskId))
+          .get()?.conversationId;
+        if (result !== undefined && conversationId) {
           tx.insert(messages)
             .values({
               id: randomUUID(),

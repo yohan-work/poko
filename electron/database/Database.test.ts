@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { PokoDatabase } from "./Database";
+import { ConversationGoneError, PokoDatabase } from "./Database";
 
 let directory = "";
 const migrationsPath = join(process.cwd(), "drizzle");
@@ -146,11 +146,12 @@ describe("PokoDatabase", () => {
 
     const done = database.createTask("구조 설명해 줘", "/tmp/project");
     database.recordTaskEvent(done, "completed", "마쳤어.", "Electron 앱이야.");
-    const failed = database.createTask("실패한 요청", "/tmp/project");
+    const conversation = database.getTaskConversation(done)?.id ?? null;
+    const failed = database.createTask("실패한 요청", "/tmp/project", conversation);
     database.recordTaskEvent(failed, "error", "실패했어.", "작업을 마치지 못했어.");
-    const cancelled = database.createTask("취소한 요청", "/tmp/project");
+    const cancelled = database.createTask("취소한 요청", "/tmp/project", conversation);
     database.recordTaskEvent(cancelled, "cancelled", "멈췄어.", "요청을 멈췄어.");
-    const current = database.createTask("그거 다시 설명해 줘", "/tmp/project");
+    const current = database.createTask("그거 다시 설명해 줘", "/tmp/project", conversation);
 
     const context = database.getTaskContext(current);
     expect(context.memories.map((memory) => memory.content)).toEqual([
@@ -199,10 +200,95 @@ describe("PokoDatabase", () => {
     client.close();
 
     const upgraded = await PokoDatabase.open(dbPath, migrationsPath);
-    const next = upgraded.createTask("그거 다시 설명해 줘", "/tmp/project");
+    // Phase 07 titles the old conversation from its first message.
+    expect(upgraded.listConversations()).toMatchObject([{ id: "c1", title: "구조 설명해 줘" }]);
+    const next = upgraded.createTask("그거 다시 설명해 줘", "/tmp/project", "c1");
     expect(upgraded.getTaskContext(next).history).toEqual([
       { request: "구조 설명해 줘", answer: "Electron 앱이야." },
     ]);
+    upgraded.close();
+  });
+
+  it("keeps conversations apart: titles, replies, and context", async () => {
+    const database = await openDatabase();
+    expect(database.getBootstrapData()).toMatchObject({ conversationId: null, conversations: [] });
+
+    const first = database.createTask("  프로젝트\n구조를 설명해 줘  ", "/tmp/project");
+    const firstConversation = database.getTaskConversation(first)?.id as string;
+    const second = database.createTask("메일 요약해 줘", "/tmp/project");
+    const secondConversation = database.getTaskConversation(second)?.id as string;
+    expect(firstConversation).not.toBe(secondConversation);
+
+    // Each reply lands in its own task's conversation, even when they finish out of order.
+    database.recordTaskEvent(second, "completed", "마쳤어.", "메일 요약이야.");
+    database.recordTaskEvent(first, "completed", "마쳤어.", "Electron 앱이야.");
+    expect(database.getConversationMessages(firstConversation).map((m) => m.content)).toEqual([
+      "  프로젝트\n구조를 설명해 줘  ",
+      "Electron 앱이야.",
+    ]);
+    expect(database.getConversationMessages(secondConversation).map((m) => m.content)).toEqual([
+      "메일 요약해 줘",
+      "메일 요약이야.",
+    ]);
+    // Titles are the first message, flattened (the order here is by same-millisecond updates).
+    expect(
+      database
+        .listConversations()
+        .map((c) => c.title)
+        .sort(),
+    ).toEqual(["메일 요약해 줘", "프로젝트 구조를 설명해 줘"]);
+
+    const followUp = database.createTask("더 자세히", "/tmp/project", secondConversation);
+    expect(database.getTaskContext(followUp).history).toEqual([
+      { request: "메일 요약해 줘", answer: "메일 요약이야." },
+    ]);
+    database.close();
+  });
+
+  it("titles a conversation with at most 40 characters and refuses unknown ids", async () => {
+    const database = await openDatabase();
+    const long = database.createTask("가".repeat(60), "/tmp/project");
+    expect(database.getTaskConversation(long)?.title).toBe("가".repeat(40));
+    expect(() => database.createTask("질문", "/tmp/project", "gone")).toThrow(
+      ConversationGoneError,
+    );
+    database.close();
+  });
+
+  it("reopens the saved conversation, or falls back to the newest", async () => {
+    const database = await openDatabase();
+    const a = database.getTaskConversation(database.createTask("A", "/tmp/p"))?.id as string;
+    const b = database.getTaskConversation(database.createTask("B", "/tmp/p"))?.id as string;
+    database.setActiveConversation(a);
+    expect(database.getBootstrapData()).toMatchObject({
+      conversationId: a,
+      messages: [{ content: "A" }],
+    });
+    database.setActiveConversation("deleted-or-unknown");
+    expect(database.getActiveConversationId()).toBe(b);
+    database.setActiveConversation(null);
+    expect(database.getActiveConversationId()).toBe(b);
+    database.close();
+  });
+
+  it("drops empty conversations when migrating", async () => {
+    directory = await mkdtemp(join(tmpdir(), "poko-database-"));
+    const migrations = (await readdir(migrationsPath)).sort();
+    const olderMigrations = join(directory, "older-migrations");
+    for (const name of migrations.slice(
+      0,
+      migrations.indexOf("20261001235717_conversation_titles"),
+    )) {
+      await cp(join(migrationsPath, name), join(olderMigrations, name), { recursive: true });
+    }
+    const dbPath = join(directory, "poko.sqlite");
+    (await PokoDatabase.open(dbPath, olderMigrations)).close();
+    const client = new DatabaseSync(dbPath);
+    const at = "2026-09-30T10:00:00.000Z";
+    client.exec(`INSERT INTO conversations VALUES ('empty', '대화', '${at}', '${at}');`);
+    client.close();
+    const upgraded = await PokoDatabase.open(dbPath, migrationsPath);
+    expect(upgraded.listConversations()).toEqual([]);
     upgraded.close();
   });
 });

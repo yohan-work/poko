@@ -2,6 +2,7 @@ export const IPC_CHANNELS = {
   workspaceGet: "workspace:get",
   workspaceSelect: "workspace:select",
   taskStart: "task:start",
+  conversationOpen: "conversation:open",
   taskCancel: "task:cancel",
   taskEvent: "task:event",
   appBootstrap: "app:bootstrap",
@@ -37,7 +38,10 @@ export interface ScreenStatus {
 }
 
 /** A screen look either starts a task or explains, in plain words, why it couldn't. */
-export type ScreenLookResponse = { taskId: string } | { error: string };
+/** A started task, with the conversation it belongs to (new or existing). */
+export type ScreenLookResponse =
+  | { taskId: string; conversation: PersistedConversation }
+  | { error: string };
 
 export interface ScreenWindow {
   id: number;
@@ -137,8 +141,12 @@ export interface TaskEventPayload {
   event: AgentEvent;
 }
 
-export interface TaskStartResponse {
-  taskId: string;
+export type TaskStartResponse = ScreenLookResponse;
+
+export interface PersistedConversation {
+  id: string;
+  title: string;
+  updatedAt: string;
 }
 
 export interface PersistedMessage {
@@ -173,7 +181,9 @@ export interface PersistedMemory {
 }
 export interface AppBootstrap {
   workspace: WorkspaceInfo | null;
-  conversationId: string;
+  /** The conversation shown at start, or null for the greeting screen. */
+  conversationId: string | null;
+  conversations: PersistedConversation[];
   messages: PersistedMessage[];
   tasks: PersistedTask[];
   activities: PersistedActivity[];

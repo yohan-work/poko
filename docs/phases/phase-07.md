@@ -47,6 +47,17 @@ Let the user keep separate conversations, the way Claude's sidebar does: start a
 1. **Conversations in the sidebar:** new conversation, switch, title from the first message, reopen the last one, screen tasks in the current conversation, and the migration.
 2. **Rename and delete:** an inline rename, a delete with an in-app confirmation, and refusals while a task is running.
 
+## Milestone 1 notes (implemented)
+
+- The sidebar lists conversations under 대화, each with a relative time and a 새 대화 button. The active one is highlighted and shows a dot while Poko works; the others and 새 대화 are disabled with a hint. The 작업 page still lists every task.
+- Main refuses `conversation:open` while any task runs, and `tasks:start`, `screen:look`, and `screen:act` return `{ taskId, conversation }` and make that conversation active.
+- Real run (Codex 0.159.3, separate data folder):
+  - two conversations stayed apart;
+  - switching showed only each one's messages;
+  - a restart reopened the last active one;
+  - a follow-up ("방금 한 자기소개를 영어로 바꿔 줘") used only its own conversation;
+  - during the task, switching was disabled and main refused it.
+
 ## Explicitly deferred
 
 - Searching across conversations, pinning, and folders.
