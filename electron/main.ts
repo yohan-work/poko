@@ -752,9 +752,10 @@ app
       if (mainWindow && !mainWindow.isDestroyed())
         mainWindow.webContents.send(IPC_CHANNELS.setupChanged, status);
     });
+    // Only find Codex here; the setup check runs once the window asks, so startup isn't delayed.
     await setupService
-      .refresh()
-      .catch((error) => console.error("Codex setup check failed.", error));
+      .resolveRuntime()
+      .catch((error) => console.error("Could not find Codex.", error));
     const { runtime } = setupService;
     screenProvider = new CodexAppServerProvider({ runtime });
     agentCore = new AgentCore(

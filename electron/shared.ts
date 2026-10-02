@@ -174,6 +174,8 @@ export interface CodexSetup {
   version: string | null;
   /** `codex` is a node script and no `node` was found to start it. */
   missingNode: boolean;
+  /** How this Codex was installed, so the update hint matches it. */
+  source?: "homebrew" | "npm";
   login: "chatgpt" | "api_key" | "signed_out" | "unknown";
   /** Version and features are new enough. */
   featuresOk: boolean;

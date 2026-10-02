@@ -38,6 +38,16 @@ export async function findNodeDirectory(
   return null;
 }
 
+/** Whether `node` can be found on a PATH, i.e. a node script would start. */
+export async function nodeOnPath(
+  path: string | undefined,
+  isExecutable: (path: string) => Promise<boolean> = executable,
+): Promise<boolean> {
+  for (const folder of (path ?? "").split(delimiter).filter(Boolean))
+    if (await isExecutable(join(folder, "node"))) return true;
+  return false;
+}
+
 /** Whether a file starts with `#!/usr/bin/env node`, i.e. it needs `node` on PATH to start. */
 export async function needsNode(path: string): Promise<boolean> {
   const file = await open(path, "r").catch(() => null);
@@ -51,9 +61,10 @@ export async function needsNode(path: string): Promise<boolean> {
 }
 
 /**
- * The environment for every Codex process. An app opened from Finder gets a minimal PATH, so
- * the folder of `codex` (where nvm keeps `node`), a known `node` folder, and Homebrew's folders
- * come first, then the inherited PATH. No login shell is ever run.
+ * The environment for every Codex process. The inherited PATH comes first, so a terminal's
+ * choice (for example `nvm use 18`) still decides which `node` runs. An app opened from Finder
+ * gets a minimal PATH, so the folder of `codex` (where nvm keeps `node`), a known `node`
+ * folder, and Homebrew's folders follow as fallbacks. No login shell is ever run.
  */
 export function codexEnvironment(
   codexPath: string,
@@ -61,10 +72,10 @@ export function codexEnvironment(
   base: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const folders = [
+    ...(base.PATH ?? "").split(delimiter).filter(Boolean),
     dirname(codexPath),
     ...(nodeDirectory ? [nodeDirectory] : []),
     ...HOMEBREW,
-    ...(base.PATH ?? "").split(delimiter).filter(Boolean),
   ];
   return { ...base, PATH: [...new Set(folders)].join(delimiter) };
 }

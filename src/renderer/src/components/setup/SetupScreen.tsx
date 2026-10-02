@@ -4,8 +4,16 @@ import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
 
 const INSTALL_COMMAND = "npm install -g @openai/codex";
+const BREW_UPDATE = "brew upgrade codex";
 
-type Step = { title: string; ok: boolean; detail: string; action?: "install" | "login" | "update" };
+type Step = {
+  title: string;
+  ok: boolean;
+  detail: string;
+  action?: "install" | "login" | "update";
+  /** The command to copy for install or update. */
+  command?: string;
+};
 
 /** What is missing, in order, with a plain fix for each. */
 export function setupSteps(setup: CodexSetup): Step[] {
@@ -19,6 +27,7 @@ export function setupSteps(setup: CodexSetup): Step[] {
           ? "Codex는 찾았지만 실행에 필요한 node를 찾지 못했어. Node.js를 설치하거나 nvm으로 다시 설치해 줘."
           : `${setup.path}${setup.version ? ` · v${setup.version}` : ""}`,
       action: setup.installed && !setup.missingNode ? undefined : "install",
+      command: INSTALL_COMMAND,
     },
     {
       title: "ChatGPT 로그인",
@@ -40,8 +49,10 @@ export function setupSteps(setup: CodexSetup): Step[] {
         ? "포코가 쓰는 기능이 모두 있어."
         : !setup.installed || setup.missingNode
           ? "Codex를 설치하면 확인할게."
-          : "Codex를 0.159.0 이상으로 업데이트해 줘. 아래 명령으로 업데이트할 수 있어.",
+          : `지금 쓰는 Codex(${setup.path}${setup.version ? `, v${setup.version}` : ""})를 0.159.0 이상으로 업데이트해 줘.`,
       action: setup.featuresOk || !setup.installed || setup.missingNode ? undefined : "update",
+      // Update the copy Poko actually uses: a Homebrew Codex isn't replaced by an npm install.
+      command: setup.source === "homebrew" ? BREW_UPDATE : INSTALL_COMMAND,
     },
   ];
 }
@@ -58,9 +69,9 @@ export function SetupScreen() {
   const [copied, setCopied] = useState(false);
   if (!setup || setup.ready || dismissed) return null;
 
-  const copy = async () => {
+  const copy = async (command: string) => {
     try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      await navigator.clipboard.writeText(command);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -96,8 +107,12 @@ export function SetupScreen() {
                 <p className="setup-step__detail">{step.detail}</p>
                 {(step.action === "install" || step.action === "update") && !step.ok && (
                   <div className="setup-step__command">
-                    <code className="setup-step__code">{INSTALL_COMMAND}</code>
-                    <button className="secondary-button" type="button" onClick={() => void copy()}>
+                    <code className="setup-step__code">{step.command}</code>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void copy(step.command ?? INSTALL_COMMAND)}
+                    >
                       {copied ? "복사했어" : "복사"}
                     </button>
                   </div>

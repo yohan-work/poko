@@ -1,12 +1,12 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { access } from "node:fs/promises";
-import { join } from "node:path";
+import { access, realpath } from "node:fs/promises";
 import {
   codexEnvironment,
   findNodeDirectory,
   needsNode,
   nodeCandidates,
+  nodeOnPath,
 } from "../providers/codex/codexEnvironment";
 import type { CodexRuntime } from "../providers/codex/CodexAppServerProvider";
 import { resolveCodexExecutable } from "../providers/codex/CodexProvider";
@@ -39,25 +39,32 @@ export class SetupService {
   /** The Codex every provider starts; updated by each check. */
   runtime = (): CodexRuntime => this.current;
 
-  async refresh(): Promise<CodexSetup> {
+  /** Finds Codex and builds its environment; fast, no Codex commands run. */
+  async resolveRuntime(): Promise<{ installed: boolean; missingNode: boolean; path: string }> {
     const found = await resolveCodexExecutable();
     const installed = found !== "codex" && (await isExecutable(found));
     const nodeDirectory = await findNodeDirectory(await nodeCandidates());
     this.current = installed
       ? { executable: found, environment: codexEnvironment(found, nodeDirectory) }
       : { executable: "codex", environment: process.env };
-    // A node script runs if node sits beside it (nvm) or in a known folder.
+    // A node script starts if `node` is anywhere on the PATH Codex gets.
     const missingNode =
-      installed &&
-      (await needsNode(found)) &&
-      nodeDirectory === null &&
-      !(await isExecutable(join(found, "..", "node")));
+      installed && (await needsNode(found)) && !(await nodeOnPath(this.current.environment.PATH));
+    return { installed, missingNode, path: found };
+  }
+
+  async refresh(): Promise<CodexSetup> {
+    const { installed, missingNode, path } = await this.resolveRuntime();
     const status = await checkCodexSetup({
-      codexPath: installed ? found : null,
+      codexPath: installed ? path : null,
       missingNode,
       run: (args) => this.run(args),
     });
-    this.status = { ...status, loggingIn: this.login !== null };
+    const real = installed ? await realpath(path).catch(() => path) : null;
+    // Homebrew keeps formulae and casks under Cellar or Caskroom; anything else came from npm.
+    const source =
+      real === null ? undefined : /\/(Cellar|Caskroom)\//.test(real) ? "homebrew" : "npm";
+    this.status = { ...status, ...(source ? { source } : {}), loggingIn: this.login !== null };
     return this.status;
   }
 

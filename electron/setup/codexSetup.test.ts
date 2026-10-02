@@ -6,6 +6,7 @@ import {
   codexEnvironment,
   findNodeDirectory,
   needsNode,
+  nodeOnPath,
 } from "../providers/codex/codexEnvironment";
 import { atLeast, checkCodexSetup, parseLogin, parseVersion, type RunResult } from "./codexSetup";
 
@@ -86,17 +87,18 @@ describe("Codex setup parsing", () => {
 });
 
 describe("Codex environment for a GUI app", () => {
-  it("puts codex's folder, node's folder, and Homebrew before the inherited PATH", () => {
+  it("keeps the inherited PATH first and adds codex's, node's, and Homebrew's folders", () => {
     const env = codexEnvironment("/Users/me/.npm-global/bin/codex", "/usr/local/bin", {
       PATH: "/usr/bin:/bin",
       HOME: "/Users/me",
     });
+    // The inherited PATH stays first (a terminal's `nvm use` wins); fallbacks follow.
     expect(env.PATH?.split(delimiter)).toEqual([
+      "/usr/bin",
+      "/bin",
       "/Users/me/.npm-global/bin",
       "/usr/local/bin",
       "/opt/homebrew/bin",
-      "/usr/bin",
-      "/bin",
     ]);
     expect(env.HOME).toBe("/Users/me");
   });
@@ -117,6 +119,8 @@ describe("Codex environment for a GUI app", () => {
         return path === "/b/node";
       });
       expect(found).toBe("/b");
+      expect(await nodeOnPath(`/x${delimiter}/b`, async (path) => path === "/b/node")).toBe(true);
+      expect(await nodeOnPath("/x", async () => false)).toBe(false);
       expect(seen).toEqual(["/a/node", "/b/node"]);
     } finally {
       await rm(dir, { recursive: true, force: true });

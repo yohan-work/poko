@@ -30,5 +30,9 @@ describe("setupSteps", () => {
     const steps = setupSteps({ ...base, login: "api_key", featuresOk: false, ready: false });
     expect(steps[1].detail).toContain("API 키");
     expect(steps[2].action).toBe("update");
+    expect(steps[2].command).toBe("npm install -g @openai/codex");
+    const brew = setupSteps({ ...base, source: "homebrew", featuresOk: false, ready: false });
+    expect(brew[2].command).toBe("brew upgrade codex");
+    expect(brew[2].detail).toContain("/x/codex");
   });
 });
