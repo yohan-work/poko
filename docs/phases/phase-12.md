@@ -41,6 +41,10 @@ The probes ran on 2026-10-02 in temp workspaces.
 **Third round of probes.**
 - **Temp folder:** `CLAUDE_CODE_TMPDIR` moves the commands' `TMPDIR` into a folder Poko chooses, so a command no longer shares `/tmp/claude-<uid>` with other Claude Code sessions. Listing that shared folder still worked until reads of `/tmp` were denied too.
 - **Allowlist:** with the whole home folder denied and only the workspace, `~/.nvm`, and `~/.npm` allowed, `npm test` worked.
+- **The final rules, verified together** with `denyRead` on `/Users`, `/Volumes`, `/tmp`, `/private/tmp`, and `/private/var/folders`, and the allowlist:
+  - `npm test` from nvm passed and `os.tmpdir()` writes worked;
+  - `ls /Users` failed;
+  - an orphaned job, `(node -e 'setTimeout(…)' &)`, was still running after the task, with `sandbox_check` = 1 and this task's temp folder in its environment, so the cleanup rule selects it.
 
 ## What the user experiences
 
