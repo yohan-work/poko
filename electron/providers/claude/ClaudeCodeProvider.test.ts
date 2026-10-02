@@ -361,6 +361,43 @@ describe("ClaudeCodeProvider", () => {
       rmSync(root, { recursive: true, force: true });
     });
 
+    it("stops the task when an approval isn't answered in time", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-task-"));
+      writeFileSync(join(root, "README.md"), "# Sample\n");
+      let fake: FakeClaude | undefined;
+      const provider = new ClaudeCodeProvider({
+        runtime: () => ({ executable: "/bin/claude", environment: {} }),
+        spawnProcess: () => {
+          fake = new FakeClaude((message, claude) => {
+            if (message.type === "user")
+              claude.send(
+                init({ tools: [...READ_TOOLS, ...EDIT_TOOLS] }),
+                editRequest("e1", {
+                  file_path: join(root, "README.md"),
+                  old_string: "# Sample",
+                  new_string: "# Poko",
+                }),
+              );
+          });
+          return fake as unknown as ChildProcessWithoutNullStreams;
+        },
+        approvalTimeoutMs: 10,
+      });
+      const events: AgentEvent[] = [];
+      for await (const event of provider.runTask({ ...task, cwd: root, editsEnabled: true }))
+        events.push(event);
+      expect(fake?.killed).toBe(true);
+      expect(fake?.received.at(-1)).toMatchObject({
+        response: { request_id: "e1", response: { behavior: "deny" } },
+      });
+      expect(events.at(-1)).toEqual({
+        type: "error",
+        error: "확인을 오래 기다려서 작업을 멈췄어. 다시 요청해 줘.",
+      });
+      expect(provider.hasPendingApproval("t1", "e1")).toBe(false);
+      rmSync(root, { recursive: true, force: true });
+    });
+
     it("denies Edit when edits are off", async () => {
       const { collect, fake } = run((message, claude) => {
         if (message.type === "user")

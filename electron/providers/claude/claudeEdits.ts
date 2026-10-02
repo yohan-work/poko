@@ -78,11 +78,19 @@ export function planEdit(
     if (typeof oldText !== "string" || typeof newText !== "string" || oldText === "")
       return { refusal: "바꿀 내용을 알 수 없어서 거절했어." };
     if (before === null) return { refusal: "없는 파일은 고칠 수 없어서 거절했어." };
-    const matches = count(before, oldText);
+    // Claude Code matches CRLF files with plain newlines and writes CRLF back, so do the same.
+    const crlf = before.includes("\r\n");
+    const toLf = (text: string) => (crlf ? text.replace(/\r\n/g, "\n") : text);
+    const text = toLf(before);
+    const search = toLf(oldText);
+    const replacement = toLf(newText);
+    const matches = count(text, search);
     if (matches === 0) return { refusal: "바꿀 부분을 파일에서 찾지 못해서 거절했어." };
-    if (input.replace_all === true) after = before.split(oldText).join(newText);
-    else if (matches === 1) after = before.replace(oldText, () => newText);
+    let changed: string;
+    if (input.replace_all === true) changed = text.split(search).join(replacement);
+    else if (matches === 1) changed = text.replace(search, () => replacement);
     else return { refusal: "바꿀 부분이 여러 곳이라 어느 것인지 알 수 없어서 거절했어." };
+    after = crlf ? changed.replace(/\n/g, "\r\n") : changed;
   } else return { refusal: "이 도구는 허용하지 않아." };
 
   if (isBinary(after) || Buffer.byteLength(after) > MAX_FILE_BYTES)
@@ -97,7 +105,7 @@ export function planEdit(
 }
 
 function lines(text: string): string[] {
-  const parts = text.split("\n");
+  const parts = text.replace(/\r\n/g, "\n").split("\n");
   if (parts.at(-1) === "") parts.pop();
   return parts;
 }
@@ -176,5 +184,8 @@ export function unifiedDiff(before: string, after: string): string {
     inHunk = true;
     out.push(all[index]);
   }
+  // A change to only the final newline has no changed lines; say so instead of an empty diff.
+  if (before.endsWith("\n") !== after.endsWith("\n"))
+    out.push(after.endsWith("\n") ? "+(파일 끝 줄바꿈 추가)" : "-(파일 끝 줄바꿈 삭제)");
   return out.join("\n");
 }

@@ -43,6 +43,25 @@ describe("planEdit", () => {
     expect(edit({ old_string: "missing", new_string: "x" })).toHaveProperty("refusal");
   });
 
+  it("matches multi-line edits in CRLF files the way Claude Code does", () => {
+    writeFileSync(join(root, "win.txt"), "one\r\ntwo\r\nthree\r\n");
+    const plan = planEdit(root, "Edit", {
+      file_path: join(root, "win.txt"),
+      old_string: "one\ntwo",
+      new_string: "ONE\nTWO",
+    });
+    expect("after" in plan && plan.after).toBe("ONE\r\nTWO\r\nthree\r\n");
+    expect("change" in plan && plan.change).toBe("update:\n@@\n-one\n-two\n+ONE\n+TWO\n three");
+  });
+
+  it("shows a change to only the final newline", () => {
+    const plan = planEdit(root, "Write", {
+      file_path: join(root, "README.md"),
+      content: "# Sample\nA tiny sample.\n# Sample again",
+    });
+    expect("change" in plan && plan.change).toBe("update:\n-(파일 끝 줄바꿈 삭제)");
+  });
+
   it("shows a new file as added text", () => {
     const plan = planEdit(root, "Write", { file_path: join(root, "notes.md"), content: "hi\n" });
     expect(plan).toMatchObject({ before: null, after: "hi\n", change: "add:\nhi\n" });

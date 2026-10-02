@@ -38,6 +38,8 @@ interface TaskSession {
   cwd: string;
   pending: Map<string, PendingEdit>;
   respond: (requestId: string, response: Record<string, unknown>) => void;
+  /** Ends the task's process. */
+  stop: () => void;
   approvalTimedOut: boolean;
 }
 
@@ -325,6 +327,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       cwd: input.cwd,
       pending: new Map(),
       respond,
+      stop: () => terminate(),
       approvalTimedOut: false,
     };
     this.sessions.set(input.id, session);
@@ -430,6 +433,8 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (type === "result") {
           terminal = true;
           if (aborted) yield { type: "cancelled" };
+          else if (session.approvalTimedOut)
+            yield { type: "error", error: "확인을 오래 기다려서 작업을 멈췄어. 다시 요청해 줘." };
           else if (raw.subtype === "success" && raw.is_error !== true) {
             const result = readString(raw.result)?.trim() || finalText.trim();
             yield { type: "completed", result: result || "요청한 작업을 마쳤어." };
@@ -509,12 +514,14 @@ export class ClaudeCodeProvider implements AgentProvider {
     }
     const timer = setTimeout(() => {
       if (!session.pending.delete(requestId)) return;
+      // Like Codex: nobody is there to answer, so the task stops instead of asking again.
       session.approvalTimedOut = true;
       try {
-        deny("The user did not answer in time.");
+        deny("The user did not answer in time. Do not retry.");
       } catch {
         /* closing */
       }
+      session.stop();
     }, this.approvalTimeoutMs);
     timer.unref?.();
     session.pending.set(requestId, { toolName, input, plan, timer });
