@@ -35,12 +35,12 @@ Screenshots use sample data.
 - [x] In-app approval gate for Codex command and file-change requests (Phase 04)
 - [x] Saved memories and recent conversation as context, Markdown answers, and streaming replies (Phase 05)
 - [x] Screen companion: Poko looks at a window you pick and acts in it one approved step at a time, on screen (Phase 06, macOS)
-- [ ] Multiple conversations (Phase 07)
+- [x] Multiple conversations: new, switch, rename, and delete, each with its own context (Phase 07)
 - [ ] Approval-gated file writes in a workspace-write sandbox (later)
 
 ## What Poko is aiming for
 
-Talk to a small desktop character in plain language. Poko sends read-only project-analysis requests to the locally installed Codex CLI, shows understandable progress, and reports the result. Conversation, tasks, Activity, workspace selection, and user-managed memories persist locally in SQLite.
+Talk to a small desktop character in plain language, in as many separate conversations as you like. Poko sends read-only project-analysis requests to the locally installed Codex CLI, shows understandable progress, and reports the result. Conversation, tasks, Activity, workspace selection, and user-managed memories persist locally in SQLite.
 
 ## Screen companion (macOS)
 
