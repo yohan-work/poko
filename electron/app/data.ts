@@ -52,13 +52,21 @@ export function registerDataHandlers(): void {
         return { error: "포코가 작업 중이라 지금은 지울 수 없어. 작업이 끝난 뒤 다시 시도해 줘." };
       ctx.deletingData = true;
       try {
-        ctx.database.deleteAllHistory();
-        await ctx.editManager?.forgetAll();
-        await ctx.screenService?.cleanupAll();
+        try {
+          ctx.database.deleteAllHistory();
+        } catch (error) {
+          console.error("Could not delete all data.", error);
+          return { error: "데이터를 모두 지우지 못했어. 다시 시도해 줘." };
+        }
+        // The history is gone once the transaction commits, so the renderer must reset even
+        // if a leftover file can't be removed; files nothing refers to are only logged.
+        await ctx.editManager
+          ?.forgetAll()
+          .catch((error) => console.error("Could not remove checkpoints.", error));
+        await ctx.screenService
+          ?.cleanupAll()
+          .catch((error) => console.error("Could not remove screen files.", error));
         return { ok: true, bootstrap: bootstrapData() };
-      } catch (error) {
-        console.error("Could not delete all data.", error);
-        return { error: "데이터를 모두 지우지 못했어. 다시 시도해 줘." };
       } finally {
         ctx.deletingData = false;
       }
