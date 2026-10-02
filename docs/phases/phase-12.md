@@ -38,11 +38,15 @@ The probes ran on 2026-10-02 in temp workspaces.
 - **Narrower read limits:** with only sensitive folders denied (for example `~/.ssh`, `~/Documents`) and the workspace allowed, `npm test` worked with npm from nvm under the home folder.
 - **Temp files:** Claude Code points `TMPDIR` at its own sandbox-writable temp folder (`/tmp/claude-<uid>`), so `os.tmpdir()` writes succeeded while other `/tmp` writes stay blocked.
 
+**Third round of probes.**
+- **Temp folder:** `CLAUDE_CODE_TMPDIR` moves the commands' `TMPDIR` into a folder Poko chooses, so a command no longer shares `/tmp/claude-<uid>` with other Claude Code sessions. Listing that shared folder still worked until reads of `/tmp` were denied too.
+- **Allowlist:** with the whole home folder denied and only the workspace, `~/.nvm`, and `~/.npm` allowed, `npm test` worked.
+
 ## What the user experiences
 
 - With **수정 허용** on and **Claude Code** as the engine, Poko can propose a command. A command card shows:
   - the exact command, the folder, and Claude's one-line description;
-  - the note "작업 폴더에만 쓸 수 있고, 문서·키·설정 같은 개인 파일은 읽지 못하고, 인터넷은 쓸 수 없어. 명령이 바꾼 파일은 되돌리기로 복구되지 않아."
+  - the note "작업 폴더에만 쓸 수 있고, 작업 폴더와 개발 도구 말고는 읽지 못하고, 인터넷은 쓸 수 없어. 명령이 바꾼 파일은 되돌리기로 복구되지 않아."
   - Approve runs it once; decline tells Claude not to.
 - After it runs, Activity shows the command and its exit result. The output itself stays with Claude.
 - **Read-only mode:** commands are never offered.
@@ -51,66 +55,78 @@ The probes ran on 2026-10-02 in temp workspaces.
 
 ## Design
 
+The rule throughout: deny by default, then allow only what a project command needs. A tool that isn't allowed fails with "Operation not permitted", which is a safe failure.
+
 - **Where it runs:**
   - Commands are offered only on macOS with Claude Code 2.1.287 or newer, the version these probes verified.
-  - Anywhere else, the sandbox isn't verified, so Bash isn't offered. With edits on, Activity explains it once at the task's start: "이 환경에서는 명령 실행을 지원하지 않아." The 수정 허용 tooltip says commands need Claude Code on macOS.
+  - They are also refused when the workspace is the home folder, a folder above it, or a system folder, because allowing reads and writes there would reopen everything below it.
+  - Anywhere else, Bash isn't offered. With edits on, Activity says once at the task's start: "이 환경에서는 명령 실행을 지원하지 않아." The 수정 허용 tooltip says commands need Claude Code on macOS.
 - **Settings passed with `--settings`** (every settings file stays out with `--setting-sources ""`):
-  - `permissions.ask: ["Bash"]`, so no command runs without a card;
+  - `permissions.ask: ["Bash"]`, so no command runs without a card, `ls` included;
   - `sandbox.enabled: true`, `autoAllowBashIfSandboxed: false`, `allowUnsandboxedCommands: false`;
-  - `sandbox.filesystem.denyRead`: a fixed list of private places in the home folder, and `allowRead: [workspace]` so a workspace inside one of them still works. Denying the whole home folder broke npm, npx, and pnpm from nvm, fnm, volta, and asdf, and their caches.
-    - Documents, Desktop, Downloads, Pictures, Movies, Music
-    - `~/Library` (Keychains, Mail, Messages, browser data, Application Support)
-    - `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.config/gcloud`, `~/.kube`, `~/.docker`
-    - `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`
-    - shell histories
-    - `~/.claude`, `~/.codex`
+  - `sandbox.filesystem.denyRead`: the home folder, `/tmp`, `/private/tmp`, and `/private/var/folders`;
+  - `allowRead`:
+    - the workspace;
+    - the task's temp folder;
+    - known toolchain folders that exist: `~/.nvm`, `~/.fnm`, `~/.local/share/fnm`, `~/.volta`, `~/.asdf`, `~/.bun`, `~/.deno`, `~/.pyenv`, `~/.rbenv`, `~/.rustup`, `~/.cargo/bin`, `~/.local/bin`, `~/.local/share/pnpm`, `~/Library/pnpm`, `~/.npm`, `~/.cache`, `~/.yarn`;
+    - the folder of the `node` Poko found.
+    - Credentials files are never in this list. `~/.cargo` is allowed only as `bin`.
   - `sandbox.network.allowUnixSockets: []` and `allowLocalBinding: false`.
-- **Environment:**
-  - The CLI keeps the environment it needs: sign-in (`ANTHROPIC_*`, `CLAUDE_*`), providers (`AWS_*`, `GOOGLE_*`, `VERTEX_*`, `CLOUD_ML_*`), and proxy and certificate variables.
-  - Other variables whose names contain `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `API_KEY`, or `PRIVATE` are removed, so tokens such as `GITHUB_TOKEN` or `NPM_TOKEN` aren't handed to commands.
-  - What is kept for Claude Code remains visible to an approved `env`. This is documented.
-- **Temp files:** nothing extra is needed. Claude Code gives commands a sandbox-writable `TMPDIR`.
-- **Tools:** when edits are on, `ClaudeCodeProvider` adds `Bash` to `--tools`. It passes the sandbox settings above with `--settings`; `--setting-sources ""` still keeps every settings file out.
-- **Init check:** the init check allows `Bash` only in that case.
+- **Temp folder:**
+  - Each task gets its own folder under the app's temp directory, passed as `CLAUDE_CODE_TMPDIR`.
+  - It is the only temp location commands can read or write, and it is removed when the task ends.
+- **Environment:** an allowlist, not a filter.
+  - Kept:
+    - `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LC_*`, `TERM`, `CLAUDE_CODE_TMPDIR`;
+    - Claude Code's own sign-in and settings variables (`ANTHROPIC_*`, `CLAUDE_*`);
+    - proxy and certificate variables (`HTTP(S)_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_*`).
+  - Cloud variables are kept only when Claude Code is set up to use that provider:
+    - `AWS_*` when `CLAUDE_CODE_USE_BEDROCK` is set;
+    - `GOOGLE_*`, `CLOUD_ML_*`, and `VERTEX_*` when `CLAUDE_CODE_USE_VERTEX` is set.
+  - Everything else is dropped. What is kept remains visible to an approved `env`, which is documented.
+- **Tools:**
+  - When edits are on and commands are allowed, `ClaudeCodeProvider` adds `Bash` to `--tools`.
+  - The init check allows `Bash` only then.
 - **Permission policy** for Bash:
   - The input must carry a non-empty `command` (at most 2,000 characters).
-  - It must not set `dangerouslyDisableSandbox`; a request that does is denied.
-  - `run_in_background` is denied, because a background process would outlive the card.
+  - It must not set `dangerouslyDisableSandbox`.
+  - `run_in_background` is denied.
   - A `timeout` above 5 minutes is **denied, not clamped**, so the allowed input is always the original. Claude Code's own default is 2 minutes.
-  - The task timeout becomes an **inactivity** timeout: 10 minutes without any event from the CLI, paused while a card waits for the user. A fix, test, fix loop isn't cut off as long as it keeps making progress.
   - The card is `kind: "command"` with `canApprove: true`. Approve sends `allow` with the original input.
-- **Network:**
-  - A permission request with a `host` (network access) is always denied, with no card and an Activity note.
-  - A network request is never offered for approval.
+  - `canStillApprove` re-runs exactly these input checks and never consults `planEdit`.
+- **Network:** a permission request with a `host` is always denied, with no card and an Activity note.
 - **Same rules as file changes:** one-shot answers, the 5-minute approval timeout, and decline on cancel or task end. A command card has no file checkpoint.
-- **`canStillApprove`** for a command re-runs the same input checks: command length, no `dangerouslyDisableSandbox`, no background run, and the timeout limit. It never consults `planEdit`.
+- **Task timeout:** an **inactivity** timeout, 10 minutes without any event from the CLI, paused while a card waits for the user, so a fix, test, fix loop isn't cut off.
 - **Leftover processes:**
-  - Groups and parents don't reach orphaned jobs, so Poko looks them up by where they run instead.
-  - When the task ends, and right before it allows an Edit or Write in a task that ran a command, Poko lists the user's processes with their working folder and start time (`lsof -a -d cwd` / `ps`).
-  - It stops those that run inside the workspace, started after the task began, and are not Poko, the CLI, or a live descendant of the CLI (its own helpers, such as ripgrep).
-  - The user's own servers, started before the task, are never touched.
-  - A job that changes folder out of the workspace can still escape. It stays inside the inherited sandbox (workspace writes only, private folders unreadable, no network). This is documented as a known limit.
+  - Groups and parents don't reach orphaned jobs, so Poko asks the system which processes run **inside a sandbox**. A new `sandboxed` command in `poko-ax` calls `sandbox_check(pid, NULL, 0)` for the user's processes.
+  - When the task ends, and right before it allows an Edit or Write in a task that ran a command, Poko stops processes that are all of these:
+    - sandboxed;
+    - started after the task began;
+    - running with their working folder inside the workspace or the task's temp folder;
+    - not a live descendant of the CLI.
+  - The user's own editors, terminals, and servers aren't sandboxed this way, so they are never touched.
+  - A sandboxed job that moves elsewhere can still escape, but it keeps the inherited limits (workspace and task-temp writes, allowlisted reads, no network). This is documented as a known limit.
 - **Card copy:**
   - The exact command is the main line.
-  - Claude's description is shown smaller, labeled "Claude 설명", because it is the model's claim, not a check.
-- **Codex:** the existing command decline gets the new explanation.
-- **Prompt:** with edits on and Claude Code as the engine, the safety line says commands may be proposed. They need approval, run sandboxed without network, and their file changes can't be undone. Edits to files should still go through Edit or Write.
+  - Claude's description is shown smaller, labeled "Claude 설명".
+  - The note reads: "작업 폴더에만 쓸 수 있고, 작업 폴더와 개발 도구 말고는 읽지 못하고, 인터넷은 쓸 수 없어. 명령이 바꾼 파일은 되돌리기로 복구되지 않아."
 
 ## Acceptance criteria
 
-- Unit tests:
-  - the args include `Bash` and the sandbox settings only when edits are on;
-  - a Bash request becomes a command card, and approval allows it with the original input;
-  - `dangerouslyDisableSandbox`, `run_in_background`, an empty or oversized command, and a `host` request are denied;
+- **Unit tests:**
+  - the settings, the environment allowlist, and the tool list for each case (edits off, unsupported platform, home workspace);
+  - the Bash card, and approval with the original input;
+  - `dangerouslyDisableSandbox`, `run_in_background`, an oversized command or timeout, and a `host` request are denied;
+  - the inactivity timeout pauses during approval;
+  - cleanup selection: only sandboxed processes started after the task, in the workspace or task temp, and not live descendants;
   - Codex's decline copy.
-- Real run with the installed Claude Code, in a temp workspace:
-  - "테스트 돌려 줘" gets a card, and after approval the test runs and the answer reports it;
-  - an approved `touch ~/…` or a `.git` write fails;
-  - an approved `cat ~/.ssh/…` fails;
-  - `npm test` with nvm's npm works;
-  - `ls` still produces a card;
+- **Real run with the installed Claude Code, in a temp workspace under the home folder.** With approval:
+  - `npm test` (npm from nvm) runs and its result is reported;
+  - `ls` produces a card;
+  - `touch ~/…`, a `.git` write, `cat ~/.ssh/…`, `cat ~/.config/gh/hosts.yml`, and `ls /tmp/claude-<uid>` fail;
   - a network command gets no card and fails;
-  - a backgrounded `sleep` is gone after the task.
+  - `env` shows no `GITHUB_TOKEN`-style variables;
+  - a backgrounded `sleep` is gone after the task, while an editor started meanwhile in the workspace is untouched.
 - CI passes.
 
 ## Explicitly deferred
