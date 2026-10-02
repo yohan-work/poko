@@ -1,7 +1,12 @@
 import { type ChildProcessWithoutNullStreams, spawn, type SpawnOptions } from "node:child_process";
 import { relative } from "node:path";
 import type { AgentProvider } from "../../agent/AgentProvider";
-import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
+import {
+  type AgentEvent,
+  type AgentTask,
+  type ApprovalChoice,
+  isUnavailableModelError,
+} from "../../shared";
 import { type PlannedEdit, planEdit } from "./claudeEdits";
 import { signalProcess } from "../codex/CodexProvider";
 
@@ -450,7 +455,7 @@ export class ClaudeCodeProvider implements AgentProvider {
           } else
             yield {
               type: "error",
-              error: this.friendlyError(readString(raw.result) ?? "", stderr),
+              error: this.friendlyError(readString(raw.result) ?? "", stderr, Boolean(input.model)),
             };
           break;
         }
@@ -460,12 +465,16 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (aborted || options.signal?.aborted) yield { type: "cancelled" };
         else if (session.approvalTimedOut)
           yield { type: "error", error: "확인을 오래 기다려서 작업을 멈췄어. 다시 요청해 줘." };
-        else yield { type: "error", error: this.friendlyError("", stderr) };
+        else yield { type: "error", error: this.friendlyError("", stderr, Boolean(input.model)) };
       }
     } catch (error) {
       if (aborted || options.signal?.aborted) yield { type: "cancelled" };
       else if (error instanceof ClaudeFailure) yield { type: "error", error: error.message };
-      else yield { type: "error", error: this.friendlyError(String(error), stderr) };
+      else
+        yield {
+          type: "error",
+          error: this.friendlyError(String(error), stderr, Boolean(input.model)),
+        };
     } finally {
       declineAll("The task ended.");
       this.sessions.delete(input.id);
@@ -546,15 +555,13 @@ export class ClaudeCodeProvider implements AgentProvider {
     };
   }
 
-  private friendlyError(result: string, stderr: string): string {
+  private friendlyError(result: string, stderr: string, picked = false): string {
     const detail = `${result}\n${stderr}`.toLowerCase();
-    if (
-      /model/.test(detail) &&
-      /not found|not available|invalid|unknown|access|does not exist/.test(detail)
-    )
-      return "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘.";
     if (/not logged in|log in|login|authentication|unauthorized|401/.test(detail))
       return "Claude Code 로그인이 필요해. 터미널에서 claude를 실행해 로그인해 줘.";
+    // Only a model the user picked can be the problem; the default is the CLI's own choice.
+    if (picked && isUnavailableModelError(detail))
+      return "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘.";
     if (/enoent|not found/.test(detail)) return "Claude Code를 찾지 못했어. 설치를 확인해 줘.";
     if (/rate limit|usage limit|429/.test(detail))
       return "Claude Code 사용 한도에 닿았어. 잠시 뒤 다시 시도해 줘.";

@@ -757,6 +757,28 @@ describe("CodexAppServerProvider", () => {
     });
   });
 
+  it("keeps the usual message for other errors, even with a model picked", async () => {
+    const server = new FakeAppServer();
+    const run = consume(providerFor(server).runTask({ ...task, model: "gpt-6-astra" }));
+    await turnStarted(server);
+    server.send({
+      method: "error",
+      params: { error: { message: "model stream disconnected" }, willRetry: true },
+    });
+    server.send({
+      method: "error",
+      params: {
+        error: { message: "Your input exceeds the context window of this model" },
+        willRetry: false,
+      },
+    });
+    await run.done;
+    expect(run.events.at(-1)).toEqual({
+      type: "error",
+      error: "Codex App Server에서 오류가 발생했어. 다시 시도해 줘.",
+    });
+  });
+
   it("leaves the model to Codex when none is picked", async () => {
     const server = new FakeAppServer();
     const run = consume(providerFor(server).runTask(task));

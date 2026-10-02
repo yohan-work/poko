@@ -223,6 +223,12 @@ describe("PokoDatabase", () => {
     expect(
       database.setSettings({ codexModel: "bad model; rm -rf", claudeModel: null }),
     ).toMatchObject({ codexModel: "gpt-6-astra", claudeModel: null });
+    expect(database.setSettings({ codexModel: "openai/gpt-oss-120b" }).codexModel).toBe(
+      "openai/gpt-oss-120b",
+    );
+    expect(database.setSettings({ codexModel: "--dangerous" }).codexModel).toBe(
+      "openai/gpt-oss-120b",
+    );
 
     database.acceptScreenNotice();
     database.resetScreenNotice();

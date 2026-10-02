@@ -8,7 +8,12 @@ import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
+import {
+  type AgentEvent,
+  type AgentTask,
+  type ApprovalChoice,
+  isUnavailableModelError,
+} from "../../shared";
 import type { AgentProvider } from "../../agent/AgentProvider";
 import { signalProcess } from "./CodexProvider";
 import {
@@ -425,7 +430,7 @@ export class CodexAppServerProvider implements AgentProvider {
     // A picked model the account can't use fails the turn; the user is told how to fix it.
     let failure = "";
     const failureMessage = (fallback: string): string =>
-      input.model && /model/i.test(failure)
+      input.model && isUnavailableModelError(failure)
         ? "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘."
         : fallback;
     const terminate = (): void => {
@@ -548,10 +553,10 @@ export class CodexAppServerProvider implements AgentProvider {
           }
           break;
         } else if (message.method === "error") {
-          if (isRecord(message.params.error))
-            failure += readString(message.params.error.message) ?? "";
           // Transient failures (e.g. a dropped model stream) are retried by Codex itself.
           if (message.params.willRetry === true) continue;
+          if (isRecord(message.params.error))
+            failure += readString(message.params.error.message) ?? "";
           terminal = true;
           yield {
             type: "error",

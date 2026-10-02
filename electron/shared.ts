@@ -304,7 +304,20 @@ export interface ModelOption {
   isDefault?: boolean;
 }
 
-/** Model names are short identifiers; anything else is ignored. */
+/**
+ * Model names are short identifiers (`gpt-6-astra`, `opus`, `openai/gpt-oss-120b`); anything
+ * else is ignored. The first character is never `-`, so a name can't read as a CLI option.
+ */
 export function isModelName(value: unknown): value is string {
-  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,79}$/.test(value);
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/@\-[\]]{0,119}$/.test(value);
+}
+
+/** Whether an error says the picked model doesn't exist or the account can't use it. */
+export function isUnavailableModelError(text: string): boolean {
+  return (
+    /model/i.test(text) &&
+    /not found|does not exist|not available|unavailable|no access|do not have access|don't have access|not supported|unsupported model|invalid model|unknown model/i.test(
+      text,
+    )
+  );
 }

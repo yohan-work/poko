@@ -270,6 +270,37 @@ describe("ClaudeCodeProvider", () => {
       return run(script, undefined, { ...task, cwd: root, editsEnabled: true });
     }
 
+    it("blames the model only when one was picked, after sign-in", async () => {
+      const failing = (text: string, model?: string) =>
+        run(
+          (message, claude) => {
+            if (message.type === "user")
+              claude.send(init(), {
+                type: "result",
+                subtype: "success",
+                is_error: true,
+                result: text,
+              });
+          },
+          undefined,
+          { ...task, ...(model ? { model } : {}) },
+        ).collect();
+      const modelMessage =
+        "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘.";
+      expect((await failing("model: not-a-model not found", "not-a-model")).at(-1)).toEqual({
+        type: "error",
+        error: modelMessage,
+      });
+      expect((await failing("model: claude-x not found")).at(-1)).not.toEqual({
+        type: "error",
+        error: modelMessage,
+      });
+      expect((await failing("401 unauthorized for model opus: no access", "opus")).at(-1)).toEqual({
+        type: "error",
+        error: "Claude Code 로그인이 필요해. 터미널에서 claude를 실행해 로그인해 줘.",
+      });
+    });
+
     it("passes a picked model and nothing otherwise", () => {
       expect(claudeArgs(READ_TOOLS, "opus")).toEqual(expect.arrayContaining(["--model", "opus"]));
       expect(claudeArgs(READ_TOOLS)).not.toContain("--model");

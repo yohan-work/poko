@@ -314,7 +314,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadModels: async (engine) => {
     const models = await window.poko.settings.models(engine).catch(() => []);
-    set({ models: { ...get().models, [engine]: models } });
+    // An empty answer means Codex couldn't be asked; leave it unloaded so the picker retries.
+    if (models.length > 0) set({ models: { ...get().models, [engine]: models } });
   },
 
   recheckSetup: async () => {

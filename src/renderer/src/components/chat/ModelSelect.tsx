@@ -33,6 +33,9 @@ export function ModelSelect() {
       <select
         value={value}
         disabled={isSending}
+        onFocus={() => {
+          if (!models) void loadModels(engine);
+        }}
         onChange={(event) => {
           const model = event.target.value || null;
           void updateSettings(engine === "claude" ? { claudeModel: model } : { codexModel: model });
