@@ -25,10 +25,15 @@ The probe ran in a temp folder.
 - **Without a host answering:**
   - `--permission-prompts host` without `--permission-prompt-tool stdio` silently denies.
   - So Poko must always pass `stdio`.
-- **Tools:** `--tools Read,Grep,Glob[,Edit]` limits the built-in tools.
+- **Tools:** `--tools Read,Grep,Glob` limits the built-in tools, plus `Edit,Write` when edits are on.
 - **Isolation:**
   - `--safe-mode` disables the user's hooks, skills, plugins, MCP servers, and CLAUDE.md, so none of them run inside Poko.
   - `--no-session-persistence` leaves no session files.
+- **Settings files:**
+  - The CLI applies permission rules from settings files **before** it asks the host.
+  - A user's or a cloned project's `.claude/settings.json` with `defaultMode: "acceptEdits"` / `"bypassPermissions"`, an `allow` rule for Edit or Write, or `additionalDirectories` could write or read without a card.
+  - So Poko passes `--setting-sources ""`, which loads no user, project, or local settings, together with an explicit `--permission-mode default`.
+  - Organization-managed settings still apply, and that is intended.
 - **Sign-in:** `claude auth status --json` reports `loggedIn` and `authMethod` without starting a model request.
 
 ## What the user experiences
@@ -51,7 +56,8 @@ The probe ran in a temp folder.
 ## Design
 
 - **`ClaudeCodeProvider`** (`electron/providers/claude/`) implements `AgentProvider`.
-  - It spawns one process per task in the workspace with the flags above.
+  - It spawns one process per task in the workspace with the flags above: `--safe-mode`, `--setting-sources ""`, `--permission-mode default`, `--strict-mcp-config`, and `--no-session-persistence`.
+  - The `system/init` line reports the effective `permissionMode` and tools. If the mode isn't `default`, or a tool outside the allowed list appears, the task stops with an error before any prompt is sent.
   - It sends `initialize` and then the prompt Agent Core built, so memories, history, and the skill are included.
 - **Event mapping** into the existing `AgentEvent`. No raw CLI output reaches the renderer.
   - Text deltas become `output`, with `itemId` set to the message id.
@@ -62,7 +68,12 @@ The probe ran in a temp folder.
   - Cancelling sends an `interrupt` control request, kills the process after a short grace period, and ends with `cancelled`.
 - **Permission policy** (the main-process provider decides; the model can't widen it):
   - `Edit` or `Write` on a path that resolves inside the workspace, when edits are on, becomes `approvalRequired` with `kind: "file_change"` and a diff.
-    - The diff shows `old_string` → `new_string` for Edit, or the full new content for Write.
+    - It must also pass the same checks as Codex changes: never under `.git` (`touchesGitDirectory`), and never creating or extending a repository (`buildsRepository`, exported for reuse). The checks run on real paths, and again in `canStillApprove`.
+    - The diff is computed by Poko, not taken from the model.
+      - For Edit, Poko reads the file and applies `old_string` → `new_string`, every match when `replace_all` is set. It refuses if `old_string` doesn't match exactly once and `replace_all` is off. It then shows a unified diff of the whole result.
+      - For Write, the diff runs against the current file, or is all-new content for a new file.
+      - `canStillApprove` recomputes this and refuses if the file changed since the card was shown.
+    - Binary content and files over a size limit are refused.
     - `fileChangePaths` returns that one path.
     - Approval flows through the existing checkpoint path in `electron/app/tasks.ts`.
   - Everything else is denied immediately, with a message telling the model it isn't allowed.
@@ -89,12 +100,19 @@ The probe ran in a temp folder.
 
 - Unit tests with a fake `claude` process:
   - the event mapping (text, tools, result, error, broken JSON, exit);
-  - the permission policy (edit inside allowed as a card, outside denied, symlink escape denied, shell denied, everything denied when edits are off);
+  - the permission policy:
+    - an edit inside is offered as a card;
+    - outside, a symlink escape, `.git`, or repository files are denied;
+    - shell is denied;
+    - everything is denied when edits are off;
+    - the `replace_all` diff shows every match;
+  - the args always include `--setting-sources ""` and `--permission-mode default`, and an init reporting another mode stops the task;
   - cancel.
 - Real run with the installed CLI in a temp workspace:
   - a read-only question gets an answer;
   - with edits on, an edit becomes a card; approving writes the file and undo restores it; declining leaves it unchanged.
   - Hooks and skills from `~/.claude` don't run (`--safe-mode`).
+  - A workspace whose `.claude/settings.json` sets `defaultMode: "acceptEdits"` and allows `Edit` still produces a card, and the file isn't changed before approval.
 - The setup screen shows the right steps when `claude` is missing or signed out (unit test for the steps).
 - Codex users see no change. All existing tests pass, and CI passes.
 
