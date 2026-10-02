@@ -3,7 +3,7 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeProvider, claudeArgs, EDIT_TOOLS, READ_TOOLS } from "./ClaudeCodeProvider";
@@ -452,6 +452,222 @@ describe("ClaudeCodeProvider", () => {
       expect(fake().received.at(-1)).toMatchObject({
         response: { response: { behavior: "deny" } },
       });
+    });
+  });
+
+  describe("commands", () => {
+    let root: string;
+    const bashRequest = (id: string, input: Record<string, unknown>) => ({
+      type: "control_request",
+      request_id: id,
+      request: { subtype: "can_use_tool", tool_name: "Bash", input },
+    });
+
+    function commandProvider(
+      script: Script,
+      options: { found?: number[][]; timeoutMs?: number } = {},
+    ) {
+      let fake: FakeClaude | undefined;
+      let spawned: { args: string[]; env: NodeJS.ProcessEnv | undefined } | undefined;
+      const finds: string[] = [];
+      let round = 0;
+      const provider = new ClaudeCodeProvider({
+        runtime: () => ({
+          executable: "/bin/claude",
+          environment: { PATH: "/bin", GITHUB_TOKEN: "secret" },
+          version: "2.1.287",
+        }),
+        spawnProcess: (_command, args, spawnOptions) => {
+          spawned = { args, env: spawnOptions.env };
+          fake = new FakeClaude(script);
+          return fake as unknown as ChildProcessWithoutNullStreams;
+        },
+        findTaskProcesses: async (dir) => {
+          finds.push(dir);
+          return options.found?.[round++] ?? [];
+        },
+        platform: "darwin",
+        home: "/Users/nobody-here",
+        ...(options.timeoutMs ? { taskTimeoutMs: options.timeoutMs } : {}),
+      });
+      return { provider, fake: () => fake as FakeClaude, spawned: () => spawned, finds };
+    }
+
+    const commandTask = (cwd: string): AgentTask => ({ ...task, cwd, editsEnabled: true });
+
+    it("offers Bash with the sandbox settings and a token-free environment", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-cmd-"));
+      const { provider, spawned } = commandProvider((message, claude) => {
+        if (message.type === "user")
+          claude.send(init({ tools: [...READ_TOOLS, ...EDIT_TOOLS, "Bash"] }), result("ok"));
+      });
+      const events: AgentEvent[] = [];
+      for await (const event of provider.runTask(commandTask(root))) events.push(event);
+      expect(events.at(-1)).toEqual({ type: "completed", result: "ok" });
+      const args = spawned()?.args ?? [];
+      expect(args.at(-1)).toBe("Read,Grep,Glob,Edit,Write,Bash");
+      const settings = JSON.parse(args[args.indexOf("--settings") + 1]);
+      expect(settings.permissions.ask).toEqual(["Bash"]);
+      expect(settings.sandbox.allowUnsandboxedCommands).toBe(false);
+      expect(spawned()?.env?.GITHUB_TOKEN).toBeUndefined();
+      expect(spawned()?.env?.CLAUDE_CODE_TMPDIR).toMatch(/poko-task-/);
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    it("turns Bash into a command card, denies network, and cleans up after the task", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-cmd-"));
+      const { provider, fake, finds } = commandProvider((message, claude) => {
+        if (message.type === "user")
+          claude.send(
+            init({ tools: [...READ_TOOLS, ...EDIT_TOOLS, "Bash"] }),
+            {
+              type: "control_request",
+              request_id: "n1",
+              request: {
+                subtype: "can_use_tool",
+                tool_name: "Bash",
+                input: { host: "example.com" },
+              },
+            },
+            bashRequest("b0", { command: "npm test", dangerouslyDisableSandbox: true }),
+            bashRequest("b1", { command: "npm test", description: "Run the tests" }),
+          );
+      });
+      const iterator = provider.runTask(commandTask(root))[Symbol.asyncIterator]();
+      const events: AgentEvent[] = [];
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        events.push(next.value);
+        if (next.value.type === "approvalRequired" && next.value.requestId === "b1") {
+          expect(next.value).toMatchObject({
+            kind: "command",
+            summary: "npm test",
+            reason: "Claude 설명: Run the tests",
+            canApprove: true,
+          });
+          expect(provider.fileChangePaths("t1", "b1")).toBeNull();
+          expect(provider.canStillApprove("t1", "b1")).toBe(true);
+          expect(provider.respondToApproval("t1", "b1", "approve")).toBe(true);
+          fake().send(result("테스트 통과"));
+        }
+      }
+      expect(events).toContainEqual({
+        type: "tool",
+        tool: "permission",
+        detail: "인터넷 접속 요청이라 거절했어.",
+      });
+      expect(events).toContainEqual(
+        expect.objectContaining({ requestId: "b0", kind: "command", canApprove: false }),
+      );
+      const answers = fake().received.filter((message) => message.type === "control_response");
+      expect(
+        answers.map((message) => (message.response as { request_id: string }).request_id),
+      ).toEqual(["n1", "b0", "b1"]);
+      expect(answers[2]).toMatchObject({
+        response: { response: { behavior: "allow", updatedInput: { command: "npm test" } } },
+      });
+      // After the task, leftover processes under this task's temp folder were looked up.
+      expect(finds).toHaveLength(1);
+      expect(finds[0]).toMatch(/poko-task-.*\/claude-\d+$/);
+      expect(events.at(-1)).toEqual({ type: "completed", result: "테스트 통과" });
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    it("stops leftovers before an Edit is allowed in a task that ran a command", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-cmd-"));
+      writeFileSync(join(root, "README.md"), "# Sample\n");
+      const { provider, finds } = commandProvider((message, claude) => {
+        if (message.type === "user")
+          claude.send(
+            init({ tools: [...READ_TOOLS, ...EDIT_TOOLS, "Bash"] }),
+            bashRequest("b1", { command: "npm test" }),
+          );
+        const answered = (message.response as { request_id?: string } | undefined)?.request_id;
+        if (answered === "b1")
+          claude.send({
+            type: "control_request",
+            request_id: "e1",
+            request: {
+              subtype: "can_use_tool",
+              tool_name: "Edit",
+              input: {
+                file_path: join(root, "README.md"),
+                old_string: "# Sample",
+                new_string: "# Poko",
+              },
+            },
+          });
+        if (answered === "e1") claude.send(result("끝"));
+      });
+      const iterator = provider.runTask(commandTask(root))[Symbol.asyncIterator]();
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        if (next.value.type !== "approvalRequired") continue;
+        if (next.value.requestId === "b1") provider.respondToApproval("t1", "b1", "approve");
+        if (next.value.requestId === "e1") {
+          expect(finds).toHaveLength(0);
+          await provider.prepareApproval("t1", "e1");
+          expect(finds).toHaveLength(1); // nothing found, so no second check was needed
+          provider.respondToApproval("t1", "e1", "decline");
+        }
+      }
+      expect(finds).toHaveLength(2); // and once more after the task ended
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    it("removes command temp folders left from an earlier run", () => {
+      const left = mkdtempSync(join(tmpdir(), "poko-task-"));
+      writeFileSync(join(left, "x"), "x");
+      new ClaudeCodeProvider({ platform: "linux" }).cleanupLeftovers();
+      expect(existsSync(left)).toBe(false);
+    });
+
+    it("explains once when commands can't run here, and doesn't offer Bash", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-cmd-"));
+      const provider = new ClaudeCodeProvider({
+        runtime: () => ({ executable: "/bin/claude", environment: {}, version: "2.1.287" }),
+        spawnProcess: (_command, args) => {
+          expect(args.at(-1)).toBe("Read,Grep,Glob,Edit,Write");
+          return new FakeClaude((message, claude) => {
+            if (message.type === "user")
+              claude.send(init({ tools: [...READ_TOOLS, ...EDIT_TOOLS] }), result("ok"));
+          }) as unknown as ChildProcessWithoutNullStreams;
+        },
+        findTaskProcesses: async () => [],
+        platform: "linux",
+      });
+      const events: AgentEvent[] = [];
+      for await (const event of provider.runTask(commandTask(root))) events.push(event);
+      expect(events[0]).toMatchObject({ type: "tool", detail: expect.stringContaining("macOS") });
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    it("pauses the inactivity timeout while a card waits, and resumes it after", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-cmd-"));
+      const { provider, fake } = commandProvider(
+        (message, claude) => {
+          if (message.type === "user")
+            claude.send(
+              init({ tools: [...READ_TOOLS, ...EDIT_TOOLS, "Bash"] }),
+              bashRequest("b1", { command: "npm test" }),
+            );
+        },
+        { timeoutMs: 30 },
+      );
+      const iterator = provider.runTask(commandTask(root))[Symbol.asyncIterator]();
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        if (next.value.type === "approvalRequired") {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          expect(fake().killed).toBe(false); // waiting for the user doesn't count
+          provider.respondToApproval("t1", "b1", "approve");
+        }
+      }
+      expect(fake().killed).toBe(true); // nothing came after the answer, so it timed out
+      rmSync(root, { recursive: true, force: true });
     });
   });
 });

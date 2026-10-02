@@ -171,6 +171,18 @@ export class ScreenService {
     return rm(tempDir, { recursive: true, force: true });
   }
 
+  /** Processes still running under one command task's sandbox profile. */
+  async findTaskProcesses(writableTempDir: string, workspace: string): Promise<number[]> {
+    const result = await runHelper(this.helperPath, ["task-processes", writableTempDir, workspace]);
+    const pids =
+      typeof result === "object" && result !== null && "pids" in result
+        ? (result as { pids: unknown }).pids
+        : null;
+    return Array.isArray(pids)
+      ? pids.filter((pid): pid is number => Number.isInteger(pid) && pid > 1)
+      : [];
+  }
+
   /** Leftover screenshots from a crash never outlive a restart. */
   cleanupAll(): Promise<void> {
     return rm(this.tempRoot, { recursive: true, force: true });

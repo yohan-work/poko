@@ -31,7 +31,7 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── screen/              # window capture, accessibility helper, overlay, step loop
 │   ├── setup/               # Codex setup check
 │   ├── providers/codex/     # Codex App Server adapter and environment
-│   └── providers/claude/    # Claude Code (stream-json) adapter
+│   └── providers/claude/    # Claude Code (stream-json) adapter, edit planning, sandboxed commands
 ├── src/renderer/
 │   ├── index.html
 │   └── src/

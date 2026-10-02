@@ -68,6 +68,11 @@ export class AgentCore {
     return this.provider.respondToApproval?.(taskId, requestId, choice) ?? false;
   }
 
+  async prepareApproval(taskId: string, requestId: string): Promise<void> {
+    if (!this.activeTasks.has(taskId)) return;
+    await this.provider.prepareApproval?.(taskId, requestId);
+  }
+
   fileChangePaths(taskId: string, requestId: string): string[] | null {
     return this.activeTasks.has(taskId)
       ? (this.provider.fileChangePaths?.(taskId, requestId) ?? null)

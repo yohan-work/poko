@@ -117,7 +117,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             disabled={!edits.available}
             title={
               edits.enabled
-                ? "포코가 변경을 제안할 수 있어. 변경마다 확인을 받아. 누르면 읽기 전용으로 돌아가."
+                ? "포코가 변경을 제안할 수 있어(Claude Code·macOS에서는 명령도). 하나하나 확인을 받아. 누르면 읽기 전용으로 돌아가."
                 : "포코는 파일을 바꾸지 않아. 누르면 수정을 허용할 수 있어."
             }
           >

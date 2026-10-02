@@ -166,9 +166,16 @@ export function registerTaskHandlers(): void {
     // Decide before recording, so the audit row always matches what Codex receives. A file change
     // also needs edits still on for its workspace: turning them off withdraws earlier cards.
     const workspace = ctx.database.getTaskWorkspace(request.taskId);
-    const fileChange =
-      ctx.database.getApprovalKind(request.taskId, request.requestId) === "file_change";
-    const editsWithdrawn = fileChange && !(workspace && ctx.database.isEditsEnabled(workspace));
+    const kind = ctx.database.getApprovalKind(request.taskId, request.requestId);
+    const fileChange = kind === "file_change";
+    // Commands, like file changes, are offered only while edits stay on for the workspace.
+    const needsEdits = fileChange || kind === "command";
+    const editsWithdrawn = needsEdits && !(workspace && ctx.database.isEditsEnabled(workspace));
+    // Leftover processes from earlier commands are stopped before the safety re-check.
+    if (request.choice === "approve" && !editsWithdrawn)
+      await ctx.agentCore
+        .prepareApproval(request.taskId, request.requestId)
+        .catch((error) => console.error("Could not prepare an approval.", error));
     const unsafe =
       request.choice === "approve" &&
       (editsWithdrawn || !ctx.agentCore.canStillApprove(request.taskId, request.requestId));

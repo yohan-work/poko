@@ -42,6 +42,10 @@ export class EngineProvider implements AgentProvider {
     return this.byTask.get(taskId)?.fileChangePaths?.(taskId, requestId) ?? null;
   }
 
+  async prepareApproval(taskId: string, requestId: string): Promise<void> {
+    await this.byTask.get(taskId)?.prepareApproval?.(taskId, requestId);
+  }
+
   respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
     return this.byTask.get(taskId)?.respondToApproval?.(taskId, requestId, choice) ?? false;
   }
