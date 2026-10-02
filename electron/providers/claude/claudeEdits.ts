@@ -78,11 +78,14 @@ export function planEdit(
     if (typeof oldText !== "string" || typeof newText !== "string" || oldText === "")
       return { refusal: "바꿀 내용을 알 수 없어서 거절했어." };
     if (before === null) return { refusal: "없는 파일은 고칠 수 없어서 거절했어." };
-    // Claude Code matches a CRLF file with plain newlines and writes CRLF back. Do the same,
-    // but only for a file that is CRLF throughout and only when the text as sent doesn't match;
-    // a file with mixed endings is refused rather than guessed.
-    const allCrlf = before.includes("\r\n") && !/(^|[^\r])\n/.test(before);
-    const crlf = allCrlf && count(before, oldText) === 0;
+    // Claude Code edits a CRLF file as plain newlines and writes CRLF back, so a file that is
+    // CRLF throughout is planned the same way. A file with mixed endings can't be planned
+    // exactly, so its edits are refused rather than shown with a guessed diff.
+    const hasCrlf = before.includes("\r\n");
+    const hasLf = /(^|[^\r])\n/.test(before);
+    if (hasCrlf && hasLf)
+      return { refusal: "줄바꿈 형식이 섞인 파일이라 정확한 변경을 보여줄 수 없어서 거절했어." };
+    const crlf = hasCrlf;
     const toLf = (value: string) => (crlf ? value.replace(/\r\n/g, "\n") : value);
     const text = toLf(before);
     const search = toLf(oldText);

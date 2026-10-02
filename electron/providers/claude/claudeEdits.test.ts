@@ -56,15 +56,30 @@ describe("planEdit", () => {
     );
   });
 
-  it("refuses an Edit that only matches after guessing line endings in a mixed file", () => {
+  it("keeps CRLF in new lines of a CRLF file and refuses edits to mixed files", () => {
+    writeFileSync(join(root, "win.txt"), "one\r\ntwo\r\n");
+    const plan = planEdit(root, "Edit", {
+      file_path: join(root, "win.txt"),
+      old_string: "one",
+      new_string: "A\nB",
+    });
+    expect("after" in plan && plan.after).toBe("A\r\nB\r\ntwo\r\n");
+    // Recorded from Claude Code 2.1.287: it sends LF text for a CRLF file and writes CRLF.
+    writeFileSync(join(root, "probe.txt"), "one\r\ntwo\r\nthree\r\n");
+    const recorded = planEdit(root, "Edit", {
+      file_path: join(root, "probe.txt"),
+      old_string: "one\n",
+      new_string: "ONE\nONE-B\n",
+      replace_all: false,
+    });
+    expect("after" in recorded && recorded.after).toBe("ONE\r\nONE-B\r\ntwo\r\nthree\r\n");
     writeFileSync(join(root, "mixed.txt"), "one\r\ntwo\nthree\n");
-    expect(
-      planEdit(root, "Edit", {
-        file_path: join(root, "mixed.txt"),
-        old_string: "one\ntwo",
-        new_string: "x",
-      }),
-    ).toHaveProperty("refusal");
+    for (const old_string of ["one", "one\ntwo"])
+      expect(
+        planEdit(root, "Edit", { file_path: join(root, "mixed.txt"), old_string, new_string: "x" }),
+      ).toEqual({
+        refusal: "줄바꿈 형식이 섞인 파일이라 정확한 변경을 보여줄 수 없어서 거절했어.",
+      });
   });
 
   it("shows a Write that only changes line endings", () => {
