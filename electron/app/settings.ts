@@ -62,6 +62,7 @@ export function registerSettingsHandlers(): void {
       (saved.quickShortcut !== before || !ctx.quickShortcutOk)
     )
       applyQuickShortcut(saved.quickShortcut);
+    if (saved.quickShortcut !== before) ctx.refreshTray?.();
     return saved;
   });
 }

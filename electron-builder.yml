@@ -14,6 +14,8 @@ files:
 extraResources:
   - from: native/build/poko-ax
     to: poko-ax
+  - from: resources/tray
+    to: tray
 mac:
   target:
     - target: dmg

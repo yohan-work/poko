@@ -15,6 +15,7 @@ import { ClaudeCodeProvider } from "./providers/claude/ClaudeCodeProvider";
 import { ctx, showMainWindow } from "./app/context";
 import { applyQuickShortcut, registerQuickHandlers } from "./app/quick";
 import { QuickPanel } from "./quick/QuickPanel";
+import { showTray } from "./quick/tray";
 import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
 import { registerEditsHandlers } from "./app/edits";
@@ -26,6 +27,14 @@ import { registerWorkspaceHandlers } from "./app/workspace";
 
 /** Set when the app is quitting, so closing the main window really closes it. */
 let quitting = false;
+
+/** The menu bar icon, with the current shortcut shown next to 포코에게 묻기. */
+function refreshTray(): void {
+  showTray(
+    { ask: () => void ctx.quickPanel?.show(), open: () => void openMainWindow() },
+    ctx.database?.getSettings().quickShortcut ?? "Alt+Space",
+  );
+}
 
 /** Shows the main window, creating it again if it was destroyed. */
 async function openMainWindow(): Promise<void> {
@@ -158,9 +167,11 @@ app
       join(__dirname, "../renderer/index.html"),
     );
     ctx.openMainWindow = openMainWindow;
+    ctx.refreshTray = refreshTray;
     registerIpcHandlers();
     await createWindow();
     applyQuickShortcut(ctx.database.getSettings().quickShortcut);
+    refreshTray();
 
     // The hidden main window, the quick panel, and the overlay all count as windows, so a Dock
     // click shows the main window instead of checking whether any window exists.
