@@ -30,10 +30,20 @@ interface CodexProviderOptions {
   spawnProcess?: SpawnProcess;
 }
 
-export async function resolveCodexExecutable(
+export function resolveCodexExecutable(environmentPath = process.env.PATH ?? ""): Promise<string> {
+  return resolveCliExecutable("codex", [join(homedir(), ".codex", "bin")], environmentPath);
+}
+
+/**
+ * Finds a CLI on the PATH or in the places installers put it (an app opened from Finder gets a
+ * minimal PATH). Returns the bare name when nothing is found, so spawn applies PATH rules.
+ */
+export async function resolveCliExecutable(
+  name: string,
+  extraFolders: string[] = [],
   environmentPath = process.env.PATH ?? "",
 ): Promise<string> {
-  const executableName = process.platform === "win32" ? "codex.exe" : "codex";
+  const executableName = process.platform === "win32" ? `${name}.exe` : name;
   const candidates = [
     ...environmentPath
       .split(delimiter)
@@ -41,12 +51,14 @@ export async function resolveCodexExecutable(
       .map((directory) => join(directory, executableName)),
     join(homedir(), ".local", "bin", executableName),
     join(homedir(), ".npm-global", "bin", executableName),
-    join(homedir(), ".codex", "bin", executableName),
+    ...extraFolders.map((folder) => join(folder, executableName)),
     join(homedir(), ".volta", "bin", executableName),
     join(homedir(), ".asdf", "shims", executableName),
     join(homedir(), ".bun", "bin", executableName),
-    ...(process.platform === "darwin" ? ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"] : []),
-    ...(process.platform === "linux" ? ["/usr/local/bin/codex", "/usr/bin/codex"] : []),
+    ...(process.platform === "darwin"
+      ? [`/opt/homebrew/bin/${name}`, `/usr/local/bin/${name}`]
+      : []),
+    ...(process.platform === "linux" ? [`/usr/local/bin/${name}`, `/usr/bin/${name}`] : []),
   ];
 
   const nvmDirectory = join(homedir(), ".nvm", "versions", "node");
@@ -67,7 +79,7 @@ export async function resolveCodexExecutable(
   }
 
   // Keep the standard command name so spawn can apply the platform PATH rules.
-  return "codex";
+  return name;
 }
 
 function friendlyFailure(error: unknown, stderr: string): string {

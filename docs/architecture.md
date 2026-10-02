@@ -25,12 +25,13 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── settings.ts          # legacy workspace settings import helpers
 │   ├── shared.ts            # IPC channels and domain types
 │   ├── database/            # SQLite connection, schema, and persistence
-│   ├── agent/               # Agent Core and provider contract
+│   ├── agent/               # Agent Core, provider contract, engine routing
 │   ├── export/              # private (0600) file writes for export
 │   ├── edits/               # checkpoints and undo for approved changes
 │   ├── screen/              # window capture, accessibility helper, overlay, step loop
 │   ├── setup/               # Codex setup check
-│   └── providers/codex/     # Codex App Server adapter and environment
+│   ├── providers/codex/     # Codex App Server adapter and environment
+│   └── providers/claude/    # Claude Code (stream-json) adapter
 ├── src/renderer/
 │   ├── index.html
 │   └── src/

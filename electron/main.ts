@@ -9,6 +9,9 @@ import { ScreenService } from "./screen/ScreenService";
 import { ScreenOverlay } from "./screen/ScreenOverlay";
 import { EditManager } from "./edits/EditManager";
 import { SetupService } from "./setup/SetupService";
+import { ClaudeSetupService } from "./setup/claudeSetup";
+import { EngineProvider } from "./agent/EngineProvider";
+import { ClaudeCodeProvider } from "./providers/claude/ClaudeCodeProvider";
 import { ctx } from "./app/context";
 import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
@@ -101,10 +104,20 @@ app
     await ctx.setupService
       .resolveRuntime()
       .catch((error) => console.error("Could not find Codex.", error));
+    ctx.claudeSetup = new ClaudeSetupService();
+    await ctx.claudeSetup
+      .resolveRuntime()
+      .catch((error) => console.error("Could not find Claude Code.", error));
     const { runtime } = ctx.setupService;
     ctx.screenProvider = new CodexAppServerProvider({ runtime });
     ctx.agentCore = new AgentCore(
-      new CodexAppServerProvider({ runtime }),
+      new EngineProvider(
+        {
+          codex: new CodexAppServerProvider({ runtime }),
+          claude: new ClaudeCodeProvider({ runtime: ctx.claudeSetup.runtime }),
+        },
+        () => ctx.database?.getSettings().engine ?? "codex",
+      ),
       deliverTaskEvent,
       codingSkill,
     );

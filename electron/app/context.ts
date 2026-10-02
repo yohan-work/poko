@@ -14,6 +14,7 @@ import type { ScreenOverlay } from "../screen/ScreenOverlay";
 import type { ScreenAgent } from "../screen/ScreenAgent";
 import type { EditManager } from "../edits/EditManager";
 import type { SetupService } from "../setup/SetupService";
+import type { ClaudeSetupService } from "../setup/claudeSetup";
 
 /**
  * Main-process state shared by the IPC handlers: the window, the database, and the services.
@@ -30,6 +31,7 @@ export const ctx = {
   screenRun: null as { taskId: string; agent: ScreenAgent; done: Promise<void> } | null,
   editManager: null as EditManager | null,
   setupService: null as SetupService | null,
+  claudeSetup: null as ClaudeSetupService | null,
   /** Task-starting handlers still running (a start isn't an active task yet). */
   startingTasks: 0,
   /** 모든 데이터 삭제 is in progress; no task may start. */

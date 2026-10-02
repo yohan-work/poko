@@ -15,6 +15,7 @@ export function registerSettingsHandlers(): void {
       throw new Error("Unknown renderer changed settings.");
     const input = typeof raw === "object" && raw !== null ? (raw as Partial<AppSettings>) : {};
     return ctx.database.setSettings({
+      engine: input.engine,
       memoriesInContext: input.memoriesInContext,
       checkpointDays: input.checkpointDays,
     });

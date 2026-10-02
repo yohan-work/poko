@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   CHECKPOINT_DAY_CHOICES,
+  type ClaudeSetup,
+  type CodexSetup,
   DELETE_ALL_CONFIRMATION,
   type DataExportResult,
 } from "../../../../../electron/shared";
@@ -38,29 +40,66 @@ function Row({
   );
 }
 
-const loginLabels = {
+const codexLogins = {
   chatgpt: "ChatGPT 계정으로 로그인되어 있어.",
   api_key: "API 키로 로그인되어 있어. 포코는 ChatGPT 계정 로그인을 사용해.",
   signed_out: "로그인이 필요해.",
   unknown: "로그인 상태를 확인하지 못했어.",
 } as const;
 
-function CodexSection() {
-  const setup = useAppStore((state) => state.setup);
+function codexStatus(setup: CodexSetup | null): string {
+  if (!setup) return "확인하는 중";
+  if (!setup.installed) return "Codex CLI를 찾지 못했어.";
+  const where = `${setup.path}${setup.version ? ` · v${setup.version}` : ""}`;
+  return setup.ready ? `준비됐어 · ${where}` : `${codexLogins[setup.login]} ${where}`;
+}
+
+function claudeStatus(setup: ClaudeSetup | null): string {
+  if (!setup) return "확인하는 중";
+  if (!setup.installed) return "Claude Code를 찾지 못했어.";
+  const where = `${setup.path}${setup.version ? ` · v${setup.version}` : ""}`;
+  if (setup.ready) return `준비됐어 · ${where}`;
+  if (setup.login !== "signed_in") return `로그인이 필요해 · ${where}`;
+  return `업데이트가 필요해 · ${where}`;
+}
+
+const engines = [
+  { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude Code" },
+] as const;
+
+function EngineSection() {
+  const settings = useAppStore((state) => state.settings);
+  const codexSetup = useAppStore((state) => state.setup);
+  const claudeSetup = useAppStore((state) => state.claudeSetup);
   const checking = useAppStore((state) => state.setupChecking);
+  const isSending = useAppStore((state) => state.isSending);
+  const updateSettings = useAppStore((state) => state.updateSettings);
   const recheckSetup = useAppStore((state) => state.recheckSetup);
   return (
-    <Section id="settings-codex" title="Codex">
+    <Section id="settings-engine" title="엔진">
       <Row
-        label={setup ? (setup.ready ? "준비됐어" : "준비가 필요해") : "확인하는 중"}
-        detail={
-          setup?.installed
-            ? `${setup.path}${setup.version ? ` · v${setup.version}` : ""}`
-            : setup
-              ? "Codex CLI를 찾지 못했어."
-              : undefined
-        }
+        label="대화와 수정에 쓸 엔진"
+        detail="바꾸면 다음 메시지부터 적용돼. 화면 보기와 대신 해 줘는 Codex로 동작해."
       >
+        <fieldset className="segmented">
+          <legend className="sr-only">엔진</legend>
+          {engines.map((engine) => (
+            <button
+              key={engine.id}
+              type="button"
+              aria-pressed={settings?.engine === engine.id}
+              className={`segmented__item${settings?.engine === engine.id ? " is-active" : ""}`}
+              disabled={!settings || isSending}
+              onClick={() => void updateSettings({ engine: engine.id })}
+            >
+              {engine.label}
+            </button>
+          ))}
+        </fieldset>
+      </Row>
+      <Row label="Codex" detail={codexStatus(codexSetup)} />
+      <Row label="Claude Code" detail={claudeStatus(claudeSetup)}>
         <button
           className="secondary-button"
           type="button"
@@ -70,7 +109,6 @@ function CodexSection() {
           {checking ? "확인하는 중" : "다시 확인"}
         </button>
       </Row>
-      {setup?.installed && <Row label="로그인" detail={loginLabels[setup.login]} />}
     </Section>
   );
 }
@@ -338,7 +376,7 @@ export function SettingsPanel() {
           {settingsError}
         </p>
       )}
-      <CodexSection />
+      <EngineSection />
       <MemorySection />
       <ScreenSection />
       <EditsSection />

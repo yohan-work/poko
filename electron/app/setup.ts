@@ -10,6 +10,12 @@ export function registerSetupHandlers(): void {
     return ctx.setupService.refresh();
   });
 
+  ipcMain.handle(IPC_CHANNELS.setupClaudeStatus, async (event) => {
+    if (!isTrustedRenderer(event) || !ctx.claudeSetup)
+      throw new Error("Unknown renderer asked for Claude Code setup.");
+    return ctx.claudeSetup.refresh();
+  });
+
   ipcMain.handle(IPC_CHANNELS.setupLogin, (event) => {
     if (!isTrustedRenderer(event) || !ctx.setupService)
       throw new Error("Unknown renderer started a login.");

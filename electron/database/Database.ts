@@ -486,11 +486,12 @@ export class PokoDatabase {
     const rows = this.db
       .select()
       .from(settings)
-      .where(sql`${settings.key} IN ('memoriesInContext', 'checkpointDays')`)
+      .where(sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine')`)
       .all();
     const value = (key: string) => rows.find((row) => row.key === key)?.value;
     const days = Number(value("checkpointDays"));
     return {
+      engine: value("engine") === "claude" ? "claude" : "codex",
       memoriesInContext: value("memoriesInContext") !== "false",
       checkpointDays: (CHECKPOINT_DAY_CHOICES as readonly number[]).includes(days)
         ? (days as CheckpointDays)
@@ -501,6 +502,8 @@ export class PokoDatabase {
   /** Saves the given preferences; anything invalid is ignored. Returns the saved settings. */
   setSettings(input: Partial<AppSettings>): AppSettings {
     const updates: [string, string][] = [];
+    if (input.engine === "codex" || input.engine === "claude")
+      updates.push(["engine", input.engine]);
     if (typeof input.memoriesInContext === "boolean")
       updates.push(["memoriesInContext", String(input.memoriesInContext)]);
     if ((CHECKPOINT_DAY_CHOICES as readonly unknown[]).includes(input.checkpointDays))
