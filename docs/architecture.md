@@ -9,13 +9,25 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 ```text
 .
 ├── electron/
-│   ├── main.ts              # lifecycle, window, native dialogs, settings, Agent Core entry
+│   ├── main.ts              # lifecycle: services, window, quit
+│   ├── app/                 # IPC handlers by area, sharing `ctx` (context.ts)
+│   │   ├── context.ts       # main-process state and shared helpers (trust check, task start)
+│   │   ├── events.ts        # task events → database, Activity, renderer
+│   │   ├── tasks.ts         # tasks, approvals (with edit checkpoints), conversations
+│   │   ├── screen.ts        # 화면 보기 and 대신 해 줘
+│   │   ├── edits.ts         # edit switch, approved changes, undo
+│   │   ├── setup.ts         # Codex setup check and sign-in
+│   │   └── workspace.ts     # workspace, app data, memories
 │   ├── preload.ts           # narrow, typed renderer bridge
+│   ├── eventGuards.ts       # shape checks for task events sent to the renderer
 │   ├── settings.ts          # legacy workspace settings import helpers
 │   ├── shared.ts            # IPC channels and domain types
 │   ├── database/            # SQLite connection, schema, and persistence
 │   ├── agent/               # Agent Core and provider contract
-│   └── providers/codex/     # Codex CLI process and JSONL adapter
+│   ├── edits/               # checkpoints and undo for approved changes
+│   ├── screen/              # window capture, accessibility helper, overlay, step loop
+│   ├── setup/               # Codex setup check
+│   └── providers/codex/     # Codex App Server adapter and environment
 ├── src/renderer/
 │   ├── index.html
 │   └── src/
