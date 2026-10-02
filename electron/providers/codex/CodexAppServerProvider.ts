@@ -696,6 +696,21 @@ export class CodexAppServerProvider implements AgentProvider {
         reason: "화면 보기는 설명만 해서 파일 변경 요청을 거절했어.",
         canApprove: false,
       };
+    const refusal = !session.task.editsEnabled
+      ? "수정이 꺼져 있어. 폴더 메뉴에서 수정을 허용하면 변경을 제안할 수 있어."
+      : item
+        ? editRefusal(item)
+        : null;
+    if (refusal)
+      return {
+        type: "approvalRequired",
+        requestId,
+        kind: "file_change",
+        summary: "파일 변경 요청을 거절했어.",
+        cwd: session.task.cwd,
+        reason: refusal,
+        canApprove: false,
+      };
     const changes = item ? getFileChanges(item, session.task.cwd) : null;
     const grantRoot = readString(params.grantRoot);
     const canApprove = Boolean(changes?.length) && !grantRoot;
@@ -765,6 +780,25 @@ export function getFileChanges(
   }
   if (buildsRepository(root, changeTargets(item))) return null;
   return changes;
+}
+
+/**
+ * Changes Poko's edit mode refuses even inside the workspace: a move or rename can overwrite a
+ * destination that undo can't restore, and a binary diff can't be shown for approval.
+ */
+export function editRefusal(item: Record<string, unknown>): string | null {
+  if (!Array.isArray(item.changes)) return null;
+  for (const value of item.changes) {
+    if (!isRecord(value)) continue;
+    if (isRecord(value.kind) && value.kind.move_path != null)
+      return "파일 옮기기나 이름 바꾸기는 아직 지원하지 않아.";
+    if (
+      typeof value.diff === "string" &&
+      (value.diff.includes("\u0000") || /^Binary files /m.test(value.diff))
+    )
+      return "바이너리 파일 변경은 보여줄 수 없어서 거절했어.";
+  }
+  return null;
 }
 
 /** Every path a file-change item writes, including move destinations. */

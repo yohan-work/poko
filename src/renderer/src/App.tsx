@@ -8,6 +8,7 @@ import { MemoryPanel } from "./components/activity/MemoryPanel";
 import { Character, stateLabels } from "./components/character/Character";
 import { Icon, type IconName } from "./components/Icon";
 import { ConversationItem } from "./components/sidebar/ConversationItem";
+import { EditsConfirm } from "./components/edits/EditsConfirm";
 import { useNow } from "./lib/useNow";
 
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
@@ -22,6 +23,7 @@ function WorkspaceButton() {
   const isSelectingWorkspace = useAppStore((state) => state.isSelectingWorkspace);
   const workspaceError = useAppStore((state) => state.workspaceError);
   const selectWorkspace = useAppStore((state) => state.selectWorkspace);
+  const edits = useAppStore((state) => state.edits);
 
   return (
     <div className="sidebar__footer">
@@ -41,7 +43,11 @@ function WorkspaceButton() {
             {isSelectingWorkspace ? "폴더를 여는 중" : (workspace?.name ?? "작업 폴더 선택")}
           </span>
           <span className="workspace-button__label">
-            {workspace ? "작업 폴더 · 읽기 전용" : "포코가 살펴볼 폴더"}
+            {workspace
+              ? edits.enabled
+                ? "작업 폴더 · 수정 허용"
+                : "작업 폴더 · 읽기 전용"
+              : "포코가 살펴볼 폴더"}
           </span>
         </span>
         <Icon name="chevron" className="workspace-button__chevron" />
@@ -153,6 +159,7 @@ export function App() {
 
   return (
     <div className="app-shell" data-sidebar={isSidebarOpen ? "open" : "closed"}>
+      <EditsConfirm />
       {/* One live region announces Poko's state; the drawn characters stay silent. */}
       <p className="sr-only" aria-live="polite">
         포코: {stateLabels[characterState]}

@@ -319,4 +319,33 @@ describe("PokoDatabase", () => {
     expect(database.deleteConversation(id)).toBe(false);
     database.close();
   });
+
+  it("keeps the edit switch per workspace and finds pending file changes", async () => {
+    const database = await openDatabase();
+    expect(database.isEditsEnabled("/real/project")).toBe(false);
+    database.setEditsEnabled("/real/project", true);
+    expect(database.isEditsEnabled("/real/project")).toBe(true);
+    expect(database.isEditsEnabled("/real/other")).toBe(false);
+
+    const task = database.createTask("README 고쳐 줘", "/real/project");
+    expect(database.getTaskWorkspace(task)).toBe("/real/project");
+    database.recordApprovalRequest({
+      taskId: task,
+      requestId: "7",
+      kind: "file_change",
+      summary: "1개 파일 변경",
+      cwd: "/real/project",
+      reason: null,
+      canApprove: true,
+    });
+    expect(database.getApprovalKind(task, "7")).toBe("file_change");
+    expect(database.pendingFileChanges("/real/project")).toEqual([
+      { taskId: task, requestId: "7" },
+    ]);
+    expect(database.pendingFileChanges("/real/other")).toEqual([]);
+
+    database.setEditsEnabled("/real/project", false);
+    expect(database.isEditsEnabled("/real/project")).toBe(false);
+    database.close();
+  });
 });

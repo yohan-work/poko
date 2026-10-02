@@ -11,6 +11,7 @@ import {
   getFileChanges,
   isInside,
   disabledFeatures,
+  editRefusal,
   parseFeatureList,
   permissionProfile,
   touchesGitDirectory,
@@ -82,7 +83,13 @@ class FakeAppServer extends EventEmitter {
   }
 }
 
-const task: AgentTask = { id: "task-1", prompt: "Analyze", cwd: "/workspace", mode: "read" };
+const task: AgentTask = {
+  id: "task-1",
+  prompt: "Analyze",
+  cwd: "/workspace",
+  mode: "read",
+  editsEnabled: true,
+};
 
 /** Every feature name Poko may disable, as a current Codex would list them. */
 const allFeatures = new Set([
@@ -681,5 +688,37 @@ describe("CodexAppServerProvider", () => {
     expect(permissionProfile("project").filesystem).toHaveProperty(":minimal", "read");
     server.kill();
     await stream.done;
+  });
+
+  it("declines file changes while edits are off, and moves even when they are on", async () => {
+    const off = new FakeAppServer();
+    const offStream = consume(providerFor(off).runTask({ ...task, editsEnabled: false }));
+    await turnStarted(off);
+    sendFileChange(off);
+    expect(await offStream.next("approvalRequired")).toMatchObject({
+      kind: "file_change",
+      canApprove: false,
+      reason: expect.stringContaining("수정이 꺼져 있어"),
+    });
+    expect(await off.waitFor((m) => m.id === 7)).toEqual({
+      id: 7,
+      result: { decision: "decline" },
+    });
+    off.kill();
+    await offStream.done;
+
+    expect(
+      editRefusal({
+        changes: [{ path: "a.ts", kind: { type: "update", move_path: "b.ts" }, diff: "" }],
+      }),
+    ).toContain("옮기기");
+    expect(
+      editRefusal({
+        changes: [{ path: "a.png", kind: { type: "update" }, diff: "Binary files a and b differ" }],
+      }),
+    ).toContain("바이너리");
+    expect(
+      editRefusal({ changes: [{ path: "a.ts", kind: { type: "update" }, diff: "-a\n+b" }] }),
+    ).toBeNull();
   });
 });

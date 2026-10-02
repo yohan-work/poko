@@ -3,6 +3,8 @@ export const IPC_CHANNELS = {
   workspaceSelect: "workspace:select",
   taskStart: "task:start",
   conversationOpen: "conversation:open",
+  editsGet: "edits:get",
+  editsSet: "edits:set",
   conversationRename: "conversation:rename",
   conversationDelete: "conversation:delete",
   taskCancel: "task:cancel",
@@ -83,6 +85,8 @@ export interface AgentTask {
   profile?: "project" | "screen";
   /** Local image files attached to the prompt (screenshots). */
   images?: string[];
+  /** The user turned on edits for this workspace; otherwise every file change is declined. */
+  editsEnabled?: boolean;
 }
 
 export type AgentEvent =
@@ -144,6 +148,12 @@ export interface TaskEventPayload {
 }
 
 export type TaskStartResponse = ScreenLookResponse;
+
+export interface EditsState {
+  /** A workspace is selected. */
+  available: boolean;
+  enabled: boolean;
+}
 
 export interface PersistedConversation {
   id: string;

@@ -1,5 +1,8 @@
 import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
+import { parseChange, relativePath } from "../../lib/diff";
+
+const changeLabels = { add: "새 파일", update: "수정", delete: "삭제", unknown: "변경" } as const;
 
 export function ApprovalCard() {
   const approval = useAppStore((state) => state.pendingApprovals[0]);
@@ -67,12 +70,32 @@ export function ApprovalCard() {
           </>
         )}
       </dl>
-      {approval.diff?.map((entry) => (
-        <details className="approval-card__diff" key={entry.path}>
-          <summary>{entry.path}</summary>
-          <pre className="approval-card__code">{entry.change}</pre>
-        </details>
-      ))}
+      {approval.diff?.map((entry) => {
+        const change = parseChange(entry.change);
+        return (
+          // Small changes open right away, so the diff is what the user sees first.
+          <details
+            className="approval-card__diff"
+            key={entry.path}
+            open={(approval.diff?.length ?? 0) <= 3}
+          >
+            <summary>
+              {changeLabels[change.kind]} {relativePath(entry.path, approval.cwd)}
+              <span className="approval-card__counts">
+                <span className="approval-card__counts-add">+{change.added}</span>
+                <span className="approval-card__counts-remove">−{change.removed}</span>
+              </span>
+            </summary>
+            <pre className="approval-card__code">
+              {change.lines.map((line) => (
+                <span className={`diff-line diff-line--${line.kind}`} key={line.n}>
+                  {line.text || " "}
+                </span>
+              ))}
+            </pre>
+          </details>
+        );
+      })}
       {laterCount > 0 && (
         <p className="approval-card__queue">이 다음에 확인할 요청이 {laterCount}개 더 있어.</p>
       )}

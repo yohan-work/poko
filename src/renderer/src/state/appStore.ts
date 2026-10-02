@@ -10,6 +10,7 @@ import type {
   WorkspaceInfo,
   PersistedMemory,
   MemoryInput,
+  EditsState,
   PersistedConversation,
   ScreenStatus,
   ScreenWindow,
@@ -51,6 +52,13 @@ export interface SessionTask {
 }
 
 interface AppState {
+  edits: EditsState;
+  editsConfirmOpen: boolean;
+  editsError: string | null;
+  loadEdits: () => Promise<void>;
+  /** Turning edits on asks first; turning them off happens at once. */
+  setEdits: (enabled: boolean, confirmed?: boolean) => Promise<void>;
+  closeEditsConfirm: () => void;
   conversations: PersistedConversation[];
   /** null: a new conversation, created when its first message is sent. */
   activeConversationId: string | null;
@@ -198,6 +206,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   memories: [],
   memoryError: null,
   memoryQuery: "",
+  edits: { available: false, enabled: false },
+  editsConfirmOpen: false,
+  editsError: null,
+
+  loadEdits: async () => {
+    try {
+      set({ edits: await window.poko.edits.get(), editsError: null });
+    } catch {
+      set({ edits: { available: false, enabled: false } });
+    }
+  },
+
+  setEdits: async (enabled, confirmed = false) => {
+    if (enabled && !confirmed) {
+      set({ editsConfirmOpen: true, editsError: null });
+      return;
+    }
+    try {
+      const response = await window.poko.edits.set(enabled);
+      if ("error" in response) {
+        set({ editsError: response.error, editsConfirmOpen: false });
+        return;
+      }
+      set((state) => ({
+        edits: response,
+        editsConfirmOpen: false,
+        editsError: null,
+        // Main declined pending file changes when edits went off; their cards go too.
+        pendingApprovals: enabled
+          ? state.pendingApprovals
+          : state.pendingApprovals.filter((item) => item.kind !== "file_change"),
+      }));
+    } catch {
+      set({
+        editsError: "수정 설정을 바꾸지 못했어. 잠시 뒤 다시 시도해 줘.",
+        editsConfirmOpen: false,
+      });
+    }
+  },
+
+  closeEditsConfirm: () => set({ editsConfirmOpen: false }),
+
   conversations: [],
   activeConversationId: null,
   conversationError: null,
@@ -267,6 +317,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Storage returns newest first; the store appends new entries, so keep it oldest first.
         activities: [...data.activities].reverse(),
       });
+      void get().loadEdits();
     } catch {
       set({ workspaceError: "저장된 대화와 폴더를 불러오지 못했어. 앱을 다시 시작해 줘." });
     }
@@ -309,6 +360,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const workspace = await window.poko.workspace.select();
       if (workspace) {
         set({ workspace, characterState: "success" });
+        // Each folder keeps its own edit setting.
+        void get().loadEdits();
         window.setTimeout(() => {
           if (!get().isSending && get().characterState === "success") {
             set({ characterState: "idle" });
