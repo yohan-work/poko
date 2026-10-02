@@ -58,6 +58,17 @@ Let the user keep separate conversations, the way Claude's sidebar does: start a
   - a follow-up ("방금 한 자기소개를 영어로 바꿔 줘") used only its own conversation;
   - during the task, switching was disabled and main refused it.
 
+## Milestone 2 notes (implemented)
+
+- Each conversation row has a "…" menu with 이름 바꾸기 and 삭제. The menu is fixed-positioned so the list's scroll area can't clip it.
+- **Rename:** inline. Enter or blur saves, Escape cancels. Main flattens whitespace and accepts 1–80 characters.
+- **Delete:** an in-app dialog says the messages go and tasks and Activity stay. Main refuses while a task in that conversation is queued, running, or waiting for approval. Deleting the active conversation clears the saved setting, and the app shows the greeting screen.
+- **Real run:**
+  - renamed a conversation;
+  - deleted another one;
+  - deleting the active conversation while its task ran was refused ("포코가 이 대화에서 작업 중이라 지금은 지울 수 없어.");
+  - after the task, deleting it led to the greeting screen.
+
 ## Explicitly deferred
 
 - Searching across conversations, pinning, and folders.

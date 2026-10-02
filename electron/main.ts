@@ -150,6 +150,33 @@ function registerIpcHandlers(): void {
     return { messages: id === null ? [] : database.getConversationMessages(id) };
   });
 
+  ipcMain.handle(IPC_CHANNELS.conversationRename, (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer renamed a conversation.");
+    const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
+      conversationId?: unknown;
+      title?: unknown;
+    };
+    const id = readConversationId(request.conversationId);
+    if (id === null || typeof request.title !== "string" || request.title.length > 400)
+      throw new TypeError("Invalid rename request.");
+    const title = request.title.replace(/\s+/g, " ").trim();
+    if (!title) return { error: "제목을 적어 줘." };
+    if (Array.from(title).length > 80) return { error: "제목은 80자까지 쓸 수 있어." };
+    return database.renameConversation(id, title) ? { ok: true } : { error: CONVERSATION_GONE };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.conversationDelete, (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !database)
+      throw new Error("Unknown renderer deleted a conversation.");
+    const id = readConversationId(raw);
+    if (id === null) throw new TypeError("Invalid conversation id.");
+    // A running task's reply and approval card belong to its conversation.
+    if (database.hasRunningTask(id))
+      return { error: "포코가 이 대화에서 작업 중이라 지금은 지울 수 없어." };
+    return database.deleteConversation(id) ? { ok: true } : { error: CONVERSATION_GONE };
+  });
+
   ipcMain.handle(IPC_CHANNELS.taskCancel, (event, rawTaskId: unknown) => {
     if (!isTrustedRenderer(event) || !agentCore) {
       throw new Error("Unknown renderer requested task cancellation.");

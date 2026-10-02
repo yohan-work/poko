@@ -38,6 +38,14 @@ const paths = {
     </>
   ),
   plus: <path d="M10 4.5v11M4.5 10h11" />,
+  more: (
+    <>
+      <circle cx="5" cy="10" r="1.2" />
+      <circle cx="10" cy="10" r="1.2" />
+      <circle cx="15" cy="10" r="1.2" />
+    </>
+  ),
+  pencil: <path d="M4.5 15.5l.8-3.2 7.7-7.7a1.6 1.6 0 0 1 2.3 2.3l-7.7 7.7-3.1.9z" />,
   screen: (
     <>
       <rect x="3" y="4" width="14" height="9.5" rx="1.5" />

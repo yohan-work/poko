@@ -82,6 +82,10 @@ const pokoApi = {
       conversationId: string | null,
     ): Promise<{ messages: PersistedMessage[] } | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.conversationOpen, conversationId),
+    rename: (conversationId: string, title: string): Promise<{ ok: true } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.conversationRename, { conversationId, title }),
+    delete: (conversationId: string): Promise<{ ok: true } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.conversationDelete, conversationId),
   },
   memory: {
     list: (): Promise<PersistedMemory[]> => ipcRenderer.invoke(IPC_CHANNELS.memoryList),

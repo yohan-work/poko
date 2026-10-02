@@ -190,6 +190,46 @@ export class PokoDatabase {
       .run();
   }
 
+  /** Returns false when the conversation doesn't exist. The title is 1–80 characters. */
+  renameConversation(id: string, title: string): boolean {
+    const clean = title.replace(/\s+/g, " ").trim();
+    if (!clean || Array.from(clean).length > 80) throw new TypeError("Invalid title.");
+    const result = this.db
+      .update(conversations)
+      .set({ title: clean })
+      .where(eq(conversations.id, id))
+      .run();
+    return Number(result.changes) > 0;
+  }
+
+  /** Whether a running or approval-waiting task belongs to the conversation. */
+  hasRunningTask(conversationId: string): boolean {
+    return Boolean(
+      this.db
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(
+          sql`${tasks.conversationId} = ${conversationId} AND ${tasks.status} IN ('queued', 'running', 'waiting_approval')`,
+        )
+        .get(),
+    );
+  }
+
+  /**
+   * Deletes the conversation and its messages. Its tasks and Activity stay as the audit trail,
+   * detached from it (ON DELETE SET NULL). A deleted active conversation stops being active.
+   */
+  deleteConversation(id: string): boolean {
+    const deleted = this.db.transaction((tx) => {
+      const result = tx.delete(conversations).where(eq(conversations.id, id)).run();
+      tx.delete(settings)
+        .where(sql`${settings.key} = 'activeConversationId' AND ${settings.value} = ${id}`)
+        .run();
+      return Number(result.changes) > 0;
+    });
+    return deleted;
+  }
+
   /** The conversation a task belongs to, or null when it was deleted. */
   getTaskConversation(taskId: string): ConversationRecord | null {
     const row = this.db
