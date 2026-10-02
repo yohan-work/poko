@@ -96,8 +96,8 @@ export class ScreenOverlay {
     window.setIgnoreMouseEvents(true);
     window.setAlwaysOnTop(true, "screen-saver");
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    // Only an extra layer: window capture already records just the picked window.
-    window.setContentProtection(true);
+    // No content protection: screen recordings and screenshots should show Poko. Poko's own
+    // captures stay clean because they record just the picked window and hide this one first.
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     this.window = window;
