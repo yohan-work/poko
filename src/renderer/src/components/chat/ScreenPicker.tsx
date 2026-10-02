@@ -34,6 +34,7 @@ function Permission({
 /** Picks a window for Poko to look at; explains permissions and data use first. */
 export function ScreenPicker({ question, onPicked }: { question: string; onPicked: () => void }) {
   const screen = useAppStore((state) => state.screen);
+  const codexSetup = useAppStore((state) => state.setup);
   const closeScreen = useAppStore((state) => state.closeScreen);
   const refreshScreen = useAppStore((state) => state.refreshScreen);
   const acceptScreenNotice = useAppStore((state) => state.acceptScreenNotice);
@@ -58,6 +59,8 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
   if (!screen.open) return null;
   const status = screen.status;
   const permissionsReady = status?.permissions.accessibility && status.permissions.screen;
+  // Screen tasks always run on Codex, whatever engine conversations use.
+  const codexMissing = codexSetup !== null && !codexSetup.ready;
 
   return (
     <div className="screen-picker" role="dialog" aria-modal="true" aria-labelledby="screen-title">
@@ -75,6 +78,10 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
         ) : screen.error ? (
           <p className="screen-picker__error" role="alert">
             {screen.error}
+          </p>
+        ) : codexMissing ? (
+          <p className="screen-picker__note">
+            화면 보기와 대신 해 줘는 Codex로 동작해. Codex를 설치하고 로그인하면 쓸 수 있어.
           </p>
         ) : !status?.supported ? (
           <p className="screen-picker__note">화면 보기는 지금 macOS에서만 쓸 수 있어.</p>

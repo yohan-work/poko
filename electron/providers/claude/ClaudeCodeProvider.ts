@@ -1,7 +1,8 @@
 import { type ChildProcessWithoutNullStreams, spawn, type SpawnOptions } from "node:child_process";
 import { relative } from "node:path";
 import type { AgentProvider } from "../../agent/AgentProvider";
-import type { AgentEvent, AgentTask } from "../../shared";
+import type { AgentEvent, AgentTask, ApprovalChoice } from "../../shared";
+import { type PlannedEdit, planEdit } from "./claudeEdits";
 import { signalProcess } from "../codex/CodexProvider";
 
 const MAX_LINE_LENGTH = 4 * 1024 * 1024;
@@ -11,6 +12,9 @@ const KILL_GRACE_MS = 3000;
 
 /** Tools a task may ever see. Shell, web, and agents are never offered. */
 export const READ_TOOLS = ["Read", "Grep", "Glob"] as const;
+/** Offered only when the user allowed edits; each call becomes an approval card. */
+export const EDIT_TOOLS = ["Edit", "Write"] as const;
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export interface ClaudeRuntime {
   executable: string;
@@ -23,7 +27,22 @@ export type ClaudeSpawn = (
   options: SpawnOptions,
 ) => ChildProcessWithoutNullStreams;
 
+interface PendingEdit {
+  toolName: string;
+  input: Record<string, unknown>;
+  plan: PlannedEdit;
+  timer: NodeJS.Timeout;
+}
+
+interface TaskSession {
+  cwd: string;
+  pending: Map<string, PendingEdit>;
+  respond: (requestId: string, response: Record<string, unknown>) => void;
+  approvalTimedOut: boolean;
+}
+
 interface ProviderOptions {
+  approvalTimeoutMs?: number;
   runtime?: () => ClaudeRuntime;
   spawnProcess?: ClaudeSpawn;
   taskTimeoutMs?: number;
@@ -136,15 +155,6 @@ class LineQueue implements AsyncIterable<unknown> {
 class ClaudeFailure extends Error {}
 
 /**
- * The prompt as sent. Edits through approvals aren't offered on this engine yet, so a request
- * that needs a change is answered with a description instead of a tool Claude doesn't have.
- */
-export function promptFor(input: AgentTask): string {
-  if (!input.editsEnabled) return input.prompt;
-  return `${input.prompt}\n\nNote for this engine: Poko can't apply file changes with Claude Code yet, even though edits are allowed. Describe the exact change (file and lines) instead of calling a tool, and say the user can switch the engine to Codex in 설정 to apply it.`;
-}
-
-/**
  * Runs a task with the user's own Claude Code CLI over stream-json. Main process only. Raw CLI
  * output never leaves this class: it becomes AgentEvent values.
  */
@@ -153,6 +163,8 @@ export class ClaudeCodeProvider implements AgentProvider {
   private readonly spawnProcess: ClaudeSpawn;
   private readonly taskTimeoutMs: number;
   private readonly interruptGraceMs: number;
+  private readonly approvalTimeoutMs: number;
+  private readonly sessions = new Map<string, TaskSession>();
 
   constructor(options: ProviderOptions = {}) {
     this.runtime = options.runtime ?? (() => ({ executable: "claude", environment: process.env }));
@@ -162,6 +174,50 @@ export class ClaudeCodeProvider implements AgentProvider {
         spawn(command, args, spawnOptions) as ChildProcessWithoutNullStreams);
     this.taskTimeoutMs = options.taskTimeoutMs ?? TASK_TIMEOUT_MS;
     this.interruptGraceMs = options.interruptGraceMs ?? INTERRUPT_GRACE_MS;
+    this.approvalTimeoutMs = options.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
+  }
+
+  hasPendingApproval(taskId: string, requestId: string): boolean {
+    return this.sessions.get(taskId)?.pending.has(requestId) ?? false;
+  }
+
+  /** Recomputes the change from the current disk; it must be exactly what the card showed. */
+  canStillApprove(taskId: string, requestId: string): boolean {
+    const session = this.sessions.get(taskId);
+    const pending = session?.pending.get(requestId);
+    if (!session || !pending) return false;
+    const again = planEdit(session.cwd, pending.toolName, pending.input);
+    return (
+      !("refusal" in again) &&
+      again.path === pending.plan.path &&
+      again.before === pending.plan.before &&
+      again.after === pending.plan.after
+    );
+  }
+
+  fileChangePaths(taskId: string, requestId: string): string[] | null {
+    const pending = this.sessions.get(taskId)?.pending.get(requestId);
+    return pending ? [pending.plan.path] : null;
+  }
+
+  respondToApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
+    const session = this.sessions.get(taskId);
+    const pending = session?.pending.get(requestId);
+    if (!session || !pending) return false;
+    // One-shot: the request is consumed even if writing the reply fails.
+    session.pending.delete(requestId);
+    clearTimeout(pending.timer);
+    try {
+      session.respond(
+        requestId,
+        choice === "approve"
+          ? { behavior: "allow", updatedInput: pending.input }
+          : { behavior: "deny", message: "The user declined this change." },
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async *runTask(
@@ -177,7 +233,9 @@ export class ClaudeCodeProvider implements AgentProvider {
       return;
     }
 
-    const tools = READ_TOOLS;
+    const tools: readonly string[] = input.editsEnabled
+      ? [...READ_TOOLS, ...EDIT_TOOLS]
+      : READ_TOOLS;
     const runtime = this.runtime();
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -256,10 +314,37 @@ export class ClaudeCodeProvider implements AgentProvider {
       kill.unref?.();
     };
 
+    const respond = (requestId: string, response: Record<string, unknown>): void => {
+      if (!child.stdin.writable) throw new Error("Claude Code is not listening.");
+      write({
+        type: "control_response",
+        response: { subtype: "success", request_id: requestId, response },
+      });
+    };
+    const session: TaskSession = {
+      cwd: input.cwd,
+      pending: new Map(),
+      respond,
+      approvalTimedOut: false,
+    };
+    this.sessions.set(input.id, session);
+    const declineAll = (message: string): void => {
+      for (const [requestId, pending] of session.pending) {
+        clearTimeout(pending.timer);
+        try {
+          respond(requestId, { behavior: "deny", message });
+        } catch {
+          /* closing */
+        }
+      }
+      session.pending.clear();
+    };
+
     let aborted = false;
     let graceTimer: NodeJS.Timeout | undefined;
     const onAbort = (): void => {
       aborted = true;
+      declineAll("The task was cancelled.");
       write({
         type: "control_request",
         request_id: "poko-interrupt",
@@ -282,7 +367,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         request_id: "poko-init",
         request: { subtype: "initialize" },
       });
-      write({ type: "user", message: { role: "user", content: promptFor(input) } });
+      write({ type: "user", message: { role: "user", content: input.prompt } });
 
       for await (const raw of lines) {
         if (!isRecord(raw)) continue;
@@ -291,9 +376,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (type === "system" && raw.subtype === "init") {
           // Refuse to go on if anything widened what the CLI may do on its own.
           const reported = Array.isArray(raw.tools) ? raw.tools : [];
-          const extra = reported.some(
-            (tool) => typeof tool !== "string" || !(tools as readonly string[]).includes(tool),
-          );
+          const extra = reported.some((tool) => typeof tool !== "string" || !tools.includes(tool));
           if (raw.permissionMode !== "default" || extra)
             throw new ClaudeFailure("Claude Code가 포코의 제한 설정대로 시작하지 않아서 멈췄어.");
           yield { type: "started" };
@@ -305,24 +388,8 @@ export class ClaudeCodeProvider implements AgentProvider {
           const request = isRecord(raw.request) ? raw.request : {};
           if (!requestId) continue;
           if (request.subtype === "can_use_tool") {
-            // Milestone 1 is read-only: anything that needs permission is declined.
-            write({
-              type: "control_response",
-              response: {
-                subtype: "success",
-                request_id: requestId,
-                response: {
-                  behavior: "deny",
-                  message:
-                    "Poko only allows reading files inside the selected workspace. Do not retry.",
-                },
-              },
-            });
-            yield {
-              type: "tool",
-              tool: "permission",
-              detail: "작업 폴더 밖이나 허용되지 않은 동작이라 건너뛰었어.",
-            };
+            const event = this.handlePermission(session, input, requestId, request);
+            if (event) yield event;
           } else {
             write({
               type: "control_response",
@@ -377,6 +444,8 @@ export class ClaudeCodeProvider implements AgentProvider {
 
       if (!terminal) {
         if (aborted || options.signal?.aborted) yield { type: "cancelled" };
+        else if (session.approvalTimedOut)
+          yield { type: "error", error: "확인을 오래 기다려서 작업을 멈췄어. 다시 요청해 줘." };
         else yield { type: "error", error: this.friendlyError("", stderr) };
       }
     } catch (error) {
@@ -384,6 +453,8 @@ export class ClaudeCodeProvider implements AgentProvider {
       else if (error instanceof ClaudeFailure) yield { type: "error", error: error.message };
       else yield { type: "error", error: this.friendlyError(String(error), stderr) };
     } finally {
+      declineAll("The task ended.");
+      this.sessions.delete(input.id);
       clearTimeout(timeout);
       if (graceTimer) clearTimeout(graceTimer);
       options.signal?.removeEventListener("abort", onAbort);
@@ -394,6 +465,69 @@ export class ClaudeCodeProvider implements AgentProvider {
       }
       terminate();
     }
+  }
+
+  /**
+   * Decides a permission request. Only Edit and Write inside the workspace, with edits on,
+   * become an approval card; everything else is denied at once.
+   */
+  private handlePermission(
+    session: TaskSession,
+    task: AgentTask,
+    requestId: string,
+    request: Record<string, unknown>,
+  ): AgentEvent | null {
+    const toolName = readString(request.tool_name) ?? "";
+    const input = isRecord(request.input) ? request.input : {};
+    const deny = (message: string) => {
+      session.respond(requestId, { behavior: "deny", message });
+    };
+    if (session.pending.has(requestId)) {
+      deny("Duplicate request.");
+      return null;
+    }
+    if (!(EDIT_TOOLS as readonly string[]).includes(toolName) || !task.editsEnabled) {
+      deny("Poko only allows reading files inside the selected workspace. Do not retry.");
+      return {
+        type: "tool",
+        tool: "permission",
+        detail: "작업 폴더 밖이나 허용되지 않은 동작이라 건너뛰었어.",
+      };
+    }
+    const plan = planEdit(session.cwd, toolName, input);
+    if ("refusal" in plan) {
+      deny(`Poko refused this change: ${plan.refusal} Do not retry it.`);
+      return {
+        type: "approvalRequired",
+        requestId,
+        kind: "file_change",
+        summary: "파일 변경 요청을 거절했어.",
+        cwd: session.cwd,
+        reason: plan.refusal,
+        canApprove: false,
+      };
+    }
+    const timer = setTimeout(() => {
+      if (!session.pending.delete(requestId)) return;
+      session.approvalTimedOut = true;
+      try {
+        deny("The user did not answer in time.");
+      } catch {
+        /* closing */
+      }
+    }, this.approvalTimeoutMs);
+    timer.unref?.();
+    session.pending.set(requestId, { toolName, input, plan, timer });
+    return {
+      type: "approvalRequired",
+      requestId,
+      kind: "file_change",
+      summary: "1개 파일 변경을 적용하려고 해.",
+      cwd: session.cwd,
+      reason: null,
+      diff: [{ path: plan.path, change: plan.change }],
+      canApprove: true,
+    };
   }
 
   private friendlyError(result: string, stderr: string): string {
