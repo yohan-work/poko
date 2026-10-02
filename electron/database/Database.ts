@@ -394,6 +394,34 @@ export class PokoDatabase {
     return deleted;
   }
 
+  /** Everything Poko has kept, for 모두 내보내기. Checkpoint file contents are not included. */
+  exportAll(): Record<
+    "conversations" | "messages" | "tasks" | "activities" | "approvals" | "memories" | "edits",
+    unknown[]
+  > {
+    return {
+      conversations: this.db.select().from(conversations).orderBy(conversations.createdAt).all(),
+      messages: this.db.select().from(messages).orderBy(messages.createdAt).all(),
+      tasks: this.db.select().from(tasks).orderBy(tasks.createdAt).all(),
+      activities: this.db.select().from(activities).orderBy(activities.createdAt).all(),
+      approvals: this.db.select().from(approvals).orderBy(approvals.createdAt).all(),
+      memories: this.db.select().from(memories).orderBy(memories.createdAt).all(),
+      edits: this.db.select().from(edits).orderBy(edits.createdAt).all(),
+    };
+  }
+
+  /**
+   * Deletes all history: conversations, messages, tasks, Activity, approvals, memories, and edit
+   * records. Settings (workspace, edit switches, the screen notice, preferences) are kept.
+   */
+  deleteAllHistory(): void {
+    this.db.transaction((tx) => {
+      for (const table of [approvals, activities, edits, messages, tasks, conversations, memories])
+        tx.delete(table).run();
+      tx.delete(settings).where(eq(settings.key, "activeConversationId")).run();
+    });
+  }
+
   /** The conversation a task belongs to, or null when it was deleted. */
   getTaskConversation(taskId: string): ConversationRecord | null {
     const row = this.db

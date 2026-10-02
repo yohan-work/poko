@@ -71,6 +71,19 @@ function fakePoko() {
       })),
     },
     screen: { status: record("screen.status", () => screenReply.promise) },
+    data: {
+      deleteAll: record("data.deleteAll", async () => ({
+        ok: true,
+        bootstrap: {
+          workspace: { path: "/w/project", name: "project" },
+          conversationId: null,
+          conversations: [],
+          messages: [],
+          tasks: [],
+          activities: [],
+        },
+      })),
+    },
   };
   return {
     poko,
@@ -282,5 +295,50 @@ describe("settings", () => {
       settings: { checkpointDays: 7 },
       settingsError: null,
     });
+  });
+});
+
+describe("deleting all data", () => {
+  it("resets every page to the fresh start data", async () => {
+    store.setState({
+      messages: [{ id: "m", role: "user", content: "A", createdAt: "x" }],
+      tasks: [{ id: "t", title: "작업", status: "completed", createdAt: "x" }],
+      activities: [{ id: "a", taskId: "t" } as never],
+      memories: [
+        {
+          id: "k",
+          type: "fact",
+          content: "기억",
+          importance: 3,
+          source: "user",
+          createdAt: "x",
+          updatedAt: "x",
+        },
+      ],
+      editNotes: [{ id: "e" } as never],
+      errorMessage: "오류",
+      characterState: "error",
+    });
+    expect(await store.getState().deleteAllData("삭제")).toBeNull();
+    expect(world.calls.at(-1)).toEqual({ method: "data.deleteAll", args: ["삭제"] });
+    expect(store.getState()).toMatchObject({
+      activeConversationId: null,
+      conversations: [],
+      messages: [],
+      tasks: [],
+      activities: [],
+      memories: [],
+      editNotes: [],
+      pendingApprovals: [],
+      errorMessage: null,
+      characterState: "idle",
+      workspace: { name: "project" },
+    });
+  });
+
+  it("refuses while a task is running", async () => {
+    void store.getState().sendMessage("질문");
+    expect(await store.getState().deleteAllData("삭제")).toContain("작업 중");
+    expect(world.calls.some((call) => call.method === "data.deleteAll")).toBe(false);
   });
 });

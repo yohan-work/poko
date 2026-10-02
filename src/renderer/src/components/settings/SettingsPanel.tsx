@@ -1,5 +1,9 @@
-import { useEffect, type ReactNode } from "react";
-import { CHECKPOINT_DAY_CHOICES } from "../../../../../electron/shared";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  CHECKPOINT_DAY_CHOICES,
+  DELETE_ALL_CONFIRMATION,
+  type DataExportResult,
+} from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
 import { Page, PageHeader } from "../page/Page";
 
@@ -185,6 +189,130 @@ function EditsSection() {
   );
 }
 
+const exportLabels: Record<DataExportResult, string | null> = {
+  saved: "파일로 저장했어.",
+  cancelled: null,
+  failed: "내보내지 못했어. 다른 위치에 다시 시도해 줘.",
+};
+
+function DeleteAllDialog({ onClose }: { onClose: () => void }) {
+  const deleteAllData = useAppStore((state) => state.deleteAllData);
+  const [word, setWord] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (word !== DELETE_ALL_CONFIRMATION) return;
+    setBusy(true);
+    const result = await deleteAllData(word);
+    setBusy(false);
+    if (result) setError(result);
+    else onClose();
+  }
+
+  return (
+    <div className="confirm-dialog" role="alertdialog" aria-labelledby="delete-all-title">
+      <form className="confirm-dialog__panel" onSubmit={(event) => void submit(event)}>
+        <h2 id="delete-all-title">모든 데이터를 지울까?</h2>
+        <p>
+          대화, 작업, 활동, 승인 기록, 기억, 되돌리기 기록이 모두 지워지고 되돌릴 수 없어. 작업
+          폴더와 설정은 그대로 남아. 계속하려면 “{DELETE_ALL_CONFIRMATION}”를 입력해 줘.
+        </p>
+        <label className="sr-only" htmlFor="delete-all-word">
+          확인 문구
+        </label>
+        <input
+          id="delete-all-word"
+          className="settings-confirm-input"
+          value={word}
+          onChange={(event) => setWord(event.target.value)}
+          placeholder={DELETE_ALL_CONFIRMATION}
+          autoComplete="off"
+          disabled={busy}
+        />
+        {error && (
+          <p className="page-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="confirm-dialog__actions">
+          <button className="secondary-button" type="button" onClick={onClose} disabled={busy}>
+            취소
+          </button>
+          <button
+            className="primary-button confirm-dialog__danger"
+            type="submit"
+            disabled={busy || word !== DELETE_ALL_CONFIRMATION}
+          >
+            {busy ? "지우는 중" : "모두 삭제"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DataSection() {
+  const exportData = useAppStore((state) => state.exportData);
+  const openDataFolder = useAppStore((state) => state.openDataFolder);
+  const isSending = useAppStore((state) => state.isSending);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<DataExportResult | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  async function runExport() {
+    setExporting(true);
+    setExportResult(null);
+    setExportResult(await exportData());
+    setExporting(false);
+  }
+
+  return (
+    <Section id="settings-data" title="데이터">
+      <Row
+        label="모두 내보내기"
+        detail={
+          (exportResult && exportLabels[exportResult]) ??
+          "대화, 작업, 활동, 승인 기록, 기억, 변경 기록을 JSON 파일로 저장해."
+        }
+      >
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => void runExport()}
+          disabled={exporting}
+        >
+          {exporting ? "저장하는 중" : "내보내기"}
+        </button>
+      </Row>
+      <Row label="데이터 폴더" detail="포코가 기록을 보관하는 폴더를 Finder에서 열어.">
+        <button className="secondary-button" type="button" onClick={() => void openDataFolder()}>
+          폴더 열기
+        </button>
+      </Row>
+      <Row
+        label="모든 데이터 삭제"
+        detail={
+          isSending
+            ? "포코가 작업 중이라 끝난 뒤에 지울 수 있어."
+            : "작업 폴더와 설정은 남기고 나머지 기록을 모두 지워."
+        }
+      >
+        <button
+          className="secondary-button settings-danger"
+          type="button"
+          onClick={() => setConfirming(true)}
+          disabled={isSending}
+        >
+          삭제
+        </button>
+      </Row>
+      {confirming && <DeleteAllDialog onClose={() => setConfirming(false)} />}
+    </Section>
+  );
+}
+
 export function SettingsPanel() {
   const loadSettings = useAppStore((state) => state.loadSettings);
   const settingsError = useAppStore((state) => state.settingsError);
@@ -214,6 +342,7 @@ export function SettingsPanel() {
       <MemorySection />
       <ScreenSection />
       <EditsSection />
+      <DataSection />
       <Section id="settings-about" title="정보">
         <Row
           label={`Poko${appVersion ? ` v${appVersion}` : ""}`}

@@ -3,6 +3,8 @@ import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type AppBootstrap,
   type AppSettings,
+  type DataExportResult,
+  type DeleteAllResponse,
   type CodexSetup,
   type EditNote,
   type EditsState,
@@ -28,6 +30,13 @@ const pokoApi = {
     get: (): Promise<SettingsView> => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
     set: (settings: Partial<AppSettings>): Promise<AppSettings> =>
       ipcRenderer.invoke(IPC_CHANNELS.settingsSet, settings),
+  },
+  data: {
+    /** Asks where to save, then writes everything Poko kept as JSON. */
+    export: (): Promise<DataExportResult> => ipcRenderer.invoke(IPC_CHANNELS.dataExport),
+    openFolder: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.dataOpenFolder),
+    deleteAll: (confirm: string): Promise<DeleteAllResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.dataDeleteAll, { confirm }),
   },
   workspace: {
     get: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceGet),

@@ -139,6 +139,59 @@ describe("PokoDatabase", () => {
     database.close();
   });
 
+  it("exports everything it keeps, then deletes all history but keeps settings", async () => {
+    const database = await openDatabase();
+    const taskId = database.createTask("README 고쳐 줘", "/tmp/project");
+    database.recordTaskEvent(taskId, "completed", "마쳤어.", "고쳤어.");
+    const conversation = database.getTaskConversation(taskId)?.id ?? null;
+    database.recordApprovalRequest({
+      taskId,
+      requestId: "1",
+      kind: "file_change",
+      summary: "README.md",
+      cwd: "/tmp/project",
+      reason: null,
+      canApprove: true,
+    });
+    database.createEdit({
+      id: "edit-1",
+      taskId,
+      requestId: "1",
+      workspace: "/tmp/project",
+      files: "[]",
+    });
+    database.saveMemory({ type: "fact", content: "기억", importance: 3 });
+    database.setActiveConversation(conversation);
+    database.setWorkspace("/tmp/project");
+    database.acceptScreenNotice();
+    database.setSettings({ checkpointDays: 7 });
+
+    const exported = database.exportAll();
+    expect(
+      Object.fromEntries(Object.entries(exported).map(([key, rows]) => [key, rows.length])),
+    ).toEqual({
+      conversations: 1,
+      messages: 2,
+      tasks: 1,
+      activities: 2,
+      approvals: 1,
+      memories: 1,
+      edits: 1,
+    });
+
+    database.deleteAllHistory();
+    expect(Object.values(database.exportAll()).every((rows) => rows.length === 0)).toBe(true);
+    expect(database.getBootstrapData()).toMatchObject({
+      conversationId: null,
+      conversations: [],
+      tasks: [],
+      workspacePath: "/tmp/project",
+    });
+    expect(database.isScreenNoticeAccepted()).toBe(true);
+    expect(database.getSettings().checkpointDays).toBe(7);
+    database.close();
+  });
+
   it("keeps valid settings and ignores invalid ones", async () => {
     const database = await openDatabase();
     expect(database.getSettings()).toEqual({ memoriesInContext: true, checkpointDays: 30 });

@@ -31,7 +31,7 @@ A **설정** page in the sidebar, after 활동, with sections:
 ## Design
 
 - **Settings storage:** the existing `settings` table with keys `memoriesInContext` (`"false"` when off) and `checkpointDays` (`7`, `30`, or `90`). A typed `getSettings` / `setSettings` in `Database` validates each value and ignores anything invalid.
-- **Status:** milestone 1 is done. The page refreshes permissions when the window regains focus, so changes made in System Settings show up on return.
+- **Status:** milestones 1 and 2 are done. The page refreshes permissions when the window regains focus, so changes made in System Settings show up on return.
 - **Memories in context:** `getTaskContext` returns no memories when the setting is off. Recent exchanges are unchanged.
 - **Retention:** `EditManager.expireOld` takes the days from the setting at startup.
 - **Notice reset:** delete `screenNoticeAccepted`.
