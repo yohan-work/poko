@@ -220,6 +220,19 @@ describe("ClaudeCodeProvider", () => {
     });
   });
 
+  it("ignores a result that follows broken output in the same chunk", async () => {
+    const { collect } = run((message, claude) => {
+      if (message.type === "user") {
+        claude.send(init());
+        setTimeout(() => claude.stdout.write(`not json\n${JSON.stringify(result("x"))}\n`), 10);
+      }
+    });
+    expect((await collect()).at(-1)).toEqual({
+      type: "error",
+      error: "Claude Code가 읽을 수 없는 응답을 보냈어.",
+    });
+  });
+
   it("asks for a description instead of an edit while edits aren't offered", () => {
     expect(promptFor(task)).toBe(task.prompt);
     expect(promptFor({ ...task, editsEnabled: true })).toContain("Describe the exact change");

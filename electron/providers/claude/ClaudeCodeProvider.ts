@@ -87,6 +87,8 @@ class LineQueue implements AsyncIterable<unknown> {
   private done = false;
 
   push(value: unknown): void {
+    // Nothing after a failure counts, even a result line in the same chunk.
+    if (this.done) return;
     if (this.waiting) {
       const { resolve } = this.waiting;
       this.waiting = null;
@@ -195,9 +197,13 @@ export class ClaudeCodeProvider implements AgentProvider {
     let stderr = "";
     let buffer = "";
     child.stdout.setEncoding("utf8");
+    let broken = false;
     child.stdout.on("data", (chunk: string) => {
+      if (broken) return;
       buffer += chunk;
       if (buffer.length > MAX_LINE_LENGTH) {
+        broken = true;
+        buffer = "";
         lines.fail(new ClaudeFailure("Claude Code 응답이 너무 길어서 작업을 멈췄어."));
         return;
       }
@@ -208,7 +214,10 @@ export class ClaudeCodeProvider implements AgentProvider {
         try {
           lines.push(JSON.parse(line));
         } catch {
+          broken = true;
+          buffer = "";
           lines.fail(new ClaudeFailure("Claude Code가 읽을 수 없는 응답을 보냈어."));
+          return;
         }
       }
     });
