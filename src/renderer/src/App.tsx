@@ -10,6 +10,7 @@ import { Icon, type IconName } from "./components/Icon";
 import { ConversationItem } from "./components/sidebar/ConversationItem";
 import { EditsConfirm } from "./components/edits/EditsConfirm";
 import { SetupScreen } from "./components/setup/SetupScreen";
+import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { useNow } from "./lib/useNow";
 
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
@@ -17,6 +18,7 @@ const navigation: { id: AppView; label: string; icon: IconName }[] = [
   { id: "tasks", label: "작업", icon: "tasks" },
   { id: "memory", label: "기억", icon: "memory" },
   { id: "activity", label: "활동", icon: "activity" },
+  { id: "settings", label: "설정", icon: "settings" },
 ];
 
 function WorkspaceButton() {
@@ -202,6 +204,8 @@ export function App() {
           <MemoryPanel />
         ) : activeView === "tasks" ? (
           <TasksPanel />
+        ) : activeView === "settings" ? (
+          <SettingsPanel />
         ) : (
           <ActivityPanel />
         )}

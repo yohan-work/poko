@@ -13,6 +13,7 @@ import { ctx } from "./app/context";
 import { deliverTaskEvent } from "./app/events";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
+import { registerSettingsHandlers } from "./app/settings";
 import { registerSetupHandlers } from "./app/setup";
 import { registerTaskHandlers } from "./app/tasks";
 import { registerWorkspaceHandlers } from "./app/workspace";
@@ -23,6 +24,7 @@ function registerIpcHandlers(): void {
   registerSetupHandlers();
   registerEditsHandlers();
   registerScreenHandlers();
+  registerSettingsHandlers();
 }
 
 async function createWindow(): Promise<void> {
@@ -74,7 +76,7 @@ app
     ).catch(() => "");
     ctx.editManager = new EditManager(ctx.database, join(userDataDirectory, "checkpoints"));
     await ctx.editManager
-      .expireOld()
+      .expireOld(ctx.database.getSettings().checkpointDays)
       .catch((error) => console.error("Could not expire edits.", error));
     ctx.screenService = new ScreenService(
       // The helper ships beside app.asar in a packaged app (it can't run from inside it).

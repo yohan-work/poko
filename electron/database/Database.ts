@@ -16,7 +16,13 @@ import {
   settings,
   tasks,
 } from "./schema";
-import type { ApprovalRequest, ApprovalChoice } from "../shared";
+import {
+  type AppSettings,
+  type ApprovalChoice,
+  type ApprovalRequest,
+  CHECKPOINT_DAY_CHOICES,
+  type CheckpointDays,
+} from "../shared";
 import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
 
 export type MemoryType = "preference" | "project" | "person" | "decision" | "fact" | "routine";
@@ -448,6 +454,39 @@ export class PokoDatabase {
     );
   }
 
+  getSettings(): AppSettings {
+    const rows = this.db
+      .select()
+      .from(settings)
+      .where(sql`${settings.key} IN ('memoriesInContext', 'checkpointDays')`)
+      .all();
+    const value = (key: string) => rows.find((row) => row.key === key)?.value;
+    const days = Number(value("checkpointDays"));
+    return {
+      memoriesInContext: value("memoriesInContext") !== "false",
+      checkpointDays: (CHECKPOINT_DAY_CHOICES as readonly number[]).includes(days)
+        ? (days as CheckpointDays)
+        : 30,
+    };
+  }
+
+  /** Saves the given preferences; anything invalid is ignored. Returns the saved settings. */
+  setSettings(input: Partial<AppSettings>): AppSettings {
+    const updates: [string, string][] = [];
+    if (typeof input.memoriesInContext === "boolean")
+      updates.push(["memoriesInContext", String(input.memoriesInContext)]);
+    if ((CHECKPOINT_DAY_CHOICES as readonly unknown[]).includes(input.checkpointDays))
+      updates.push(["checkpointDays", String(input.checkpointDays)]);
+    const timestamp = now();
+    for (const [key, value] of updates)
+      this.db
+        .insert(settings)
+        .values({ key, value, updatedAt: timestamp })
+        .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: timestamp } })
+        .run();
+    return this.getSettings();
+  }
+
   isScreenNoticeAccepted(): boolean {
     return (
       this.db.select().from(settings).where(eq(settings.key, "screenNoticeAccepted")).get()
@@ -462,6 +501,11 @@ export class PokoDatabase {
       .values({ key: "screenNoticeAccepted", value: "true", updatedAt: timestamp })
       .onConflictDoUpdate({ target: settings.key, set: { value: "true", updatedAt: timestamp } })
       .run();
+  }
+
+  /** Shows the screen notice again before the next screen task. */
+  resetScreenNotice(): void {
+    this.db.delete(settings).where(eq(settings.key, "screenNoticeAccepted")).run();
   }
 
   setWorkspace(path: string | null): void {
@@ -599,12 +643,14 @@ export class PokoDatabase {
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .get();
-    const memoryRows = this.db
-      .select({ type: memories.type, content: memories.content })
-      .from(memories)
-      .orderBy(desc(memories.importance), desc(memories.updatedAt))
-      .limit(CONTEXT_LIMITS.memoryCount)
-      .all();
+    const memoryRows = this.getSettings().memoriesInContext
+      ? this.db
+          .select({ type: memories.type, content: memories.content })
+          .from(memories)
+          .orderBy(desc(memories.importance), desc(memories.updatedAt))
+          .limit(CONTEXT_LIMITS.memoryCount)
+          .all()
+      : [];
     const exchangeRows = task?.conversationId
       ? this.db
           .select({ request: tasks.prompt, answer: tasks.result })

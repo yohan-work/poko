@@ -103,6 +103,12 @@ export function registerScreenHandlers(): void {
     ctx.database.acceptScreenNotice();
     return true;
   });
+  ipcMain.handle(IPC_CHANNELS.screenResetNotice, (event) => {
+    if (!isTrustedRenderer(event) || !ctx.database)
+      throw new Error("Unknown renderer reset the screen notice.");
+    ctx.database.resetScreenNotice();
+    return true;
+  });
   ipcMain.handle(IPC_CHANNELS.screenListWindows, (event) => {
     if (!isTrustedRenderer(event) || !ctx.screenService)
       throw new Error("Unknown renderer requested windows.");

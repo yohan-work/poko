@@ -16,6 +16,7 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   │   ├── tasks.ts         # tasks, approvals (with edit checkpoints), conversations
 │   │   ├── screen.ts        # 화면 보기 and 대신 해 줘
 │   │   ├── edits.ts         # edit switch, approved changes, undo
+│   │   ├── settings.ts      # 설정 preferences and app version
 │   │   ├── setup.ts         # Codex setup check and sign-in
 │   │   └── workspace.ts     # workspace, app data, memories
 │   ├── preload.ts           # narrow, typed renderer bridge

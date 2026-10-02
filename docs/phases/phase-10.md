@@ -26,11 +26,12 @@ A **설정** page in the sidebar, after 활동, with sections:
    - **모두 내보내기:** a JSON file through the system save dialog, holding conversations with messages, tasks with results, Activity, approvals, memories, and edit records (file names only, not checkpoint contents);
    - **데이터 폴더 열기:** opens the folder in Finder;
    - **모든 데이터 삭제:** after an in-app confirmation where the user types "삭제", it removes conversations, messages, tasks, Activity, approvals, memories, edits, and checkpoints. The app starts fresh with the greeting screen. The workspace, edit switches, and the screen notice are kept, because they are settings, not history.
-6. **정보:** the app version and a link to the project.
+6. **정보:** the app version and the project address, as text. The window opens no links.
 
 ## Design
 
-- **Settings storage:** the existing `settings` table with keys `memoriesInContext` (`"false"` when off) and `checkpointDays` (`7`, `30`, or `90`). A typed `getSettings` / `setSetting` in `Database` validates each value.
+- **Settings storage:** the existing `settings` table with keys `memoriesInContext` (`"false"` when off) and `checkpointDays` (`7`, `30`, or `90`). A typed `getSettings` / `setSettings` in `Database` validates each value and ignores anything invalid.
+- **Status:** milestone 1 is done. The page refreshes permissions when the window regains focus, so changes made in System Settings show up on return.
 - **Memories in context:** `getTaskContext` returns no memories when the setting is off. Recent exchanges are unchanged.
 - **Retention:** `EditManager.expireOld` takes the days from the setting at startup.
 - **Notice reset:** delete `screenNoticeAccepted`.

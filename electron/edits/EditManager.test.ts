@@ -82,7 +82,7 @@ describe("EditManager", () => {
     await manager.settle(task);
 
     const later = new Date(Date.now() + (KEEP_DAYS + 1) * 24 * 60 * 60 * 1000);
-    await manager.expireOld(later);
+    await manager.expireOld(KEEP_DAYS, later);
     expect(manager.notes(conversation)).toMatchObject([{ status: "expired" }]);
     expect(await readdir(checkpoints)).toEqual([]);
 
@@ -93,12 +93,27 @@ describe("EditManager", () => {
     expect(await readdir(checkpoints)).toEqual([]);
   });
 
+  it("keeps edits for the chosen number of days", async () => {
+    const task = database.createTask("제목 바꿔 줘", project);
+    const conversation = database.getTaskConversation(task)?.id as string;
+    await manager.checkpoint(task, "7", project, [readme()]);
+    await writeFile(readme(), "# Poko Sample\n");
+    await manager.settle(task);
+
+    const eightDaysLater = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000);
+    await manager.expireOld(30, eightDaysLater);
+    expect(manager.notes(conversation)).toMatchObject([{ status: "applied" }]);
+    await manager.expireOld(7, eightDaysLater);
+    expect(manager.notes(conversation)).toMatchObject([{ status: "expired" }]);
+    expect(await readdir(checkpoints)).toEqual([]);
+  });
+
   it("drops old edits that never applied instead of showing them as changes", async () => {
     const task = database.createTask("제목 바꿔 줘", project);
     const conversation = database.getTaskConversation(task)?.id as string;
     await manager.checkpoint(task, "7", project, [readme()]); // left pending
     const later = new Date(Date.now() + (KEEP_DAYS + 1) * 24 * 60 * 60 * 1000);
-    await manager.expireOld(later);
+    await manager.expireOld(KEEP_DAYS, later);
     expect(manager.notes(conversation)).toEqual([]);
     expect(await readdir(checkpoints)).toEqual([]);
   });
