@@ -23,10 +23,12 @@ export function registerQuickHandlers(): void {
       throw new TypeError("A non-empty question is required.");
     const question = raw.trim();
     let started: Awaited<ReturnType<typeof startConversationTask>>;
+    let recorded: string | null = null;
     try {
       // The panel and the main window learn about the task before it starts: a task can end
       // right away, and its last event must find both ready.
       started = await startConversationTask(question, null, ({ taskId, conversation }) => {
+        recorded = taskId;
         ctx.quickPanel?.begin(question, taskId, conversation.id);
         const notice: TaskStartedNotice = { taskId, title: question, conversation };
         if (ctx.mainWindow && !ctx.mainWindow.isDestroyed())
@@ -35,6 +37,12 @@ export function registerQuickHandlers(): void {
     } catch (error) {
       // For example no folder selected: the message is already plain Korean.
       started = { error: error instanceof Error ? error.message : "작업을 시작하지 못했어." };
+      // The main window was told about a task that never started: end it there too.
+      if (recorded && ctx.mainWindow && !ctx.mainWindow.isDestroyed())
+        ctx.mainWindow.webContents.send(IPC_CHANNELS.taskEvent, {
+          taskId: recorded,
+          event: { type: "error", error: "작업을 시작하지 못했어." },
+        });
     }
     if ("error" in started) {
       ctx.quickPanel.refuse(question, started.error);

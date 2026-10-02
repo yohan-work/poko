@@ -439,10 +439,20 @@ describe("a task started elsewhere (the quick panel)", () => {
 
   it("continues the answer written before the take-over", async () => {
     world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
-    world.setActive({ taskId: "qt", conversationId: "q", approvals: [], answer: "앞부분" });
+    world.setActive({
+      taskId: "qt",
+      conversationId: "q",
+      approvals: [],
+      answer: { text: "앞부분", itemId: "m1" },
+    });
     const adopting = store.getState().openConversation("q");
+    // Already in the snapshot, so it isn't added again.
+    world.emit("qt", { type: "output", content: "부분", itemId: "m1" });
     world.replyToOpen({ messages: [] });
     await adopting;
-    expect(store.getState().streaming).toEqual({ taskId: "qt", itemId: null, text: "앞부분" });
+    expect(store.getState().streaming).toEqual({ taskId: "qt", itemId: "m1", text: "앞부분" });
+    world.emit("qt", { type: "output", content: " 뒷부분", itemId: "m1" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(store.getState().streaming?.text).toBe("앞부분 뒷부분");
   });
 });

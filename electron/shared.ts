@@ -360,7 +360,7 @@ export interface ActiveTaskInfo {
   conversationId: string | null;
   approvals: PendingApprovalEvent[];
   /** The answer written so far, so a window taking the task over doesn't start mid-sentence. */
-  answer?: string;
+  answer?: { text: string; itemId: string | null };
 }
 
 /** An approval card as the renderer shows it. */

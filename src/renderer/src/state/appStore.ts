@@ -885,7 +885,9 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
       messages: response.messages,
       editNotes: [],
       // The answer written before the take-over, so the stream continues it.
-      streaming: answerSoFar ? { taskId, itemId: null, text: answerSoFar } : null,
+      streaming: answerSoFar
+        ? { taskId, itemId: answerSoFar.itemId, text: answerSoFar.text }
+        : null,
       errorMessage: null,
       conversationError: null,
       activeTaskId: running ? taskId : null,
@@ -902,14 +904,18 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
     });
     const held = adopting.held;
     adopting = null;
-    if (running) for (const payload of held) routeTaskEvent(payload);
-    else {
-      // It ended while loading: the saved conversation now holds its final answer.
-      const again = await window.poko.conversations.open(conversationId).catch(() => null);
-      if (again && !("error" in again)) set({ messages: again.messages });
+    // Text held during the take-over is already in the answer snapshot (main sent it before
+    // answering task:active), so only the other events are replayed then.
+    if (running)
       for (const payload of held)
-        if (sessionTaskStatus(payload.event) !== null) applyForeignEvent(payload);
-    }
+        if (!answerSoFar || payload.event.type !== "output") routeTaskEvent(payload);
+        else {
+          // It ended while loading: the saved conversation now holds its final answer.
+          const again = await window.poko.conversations.open(conversationId).catch(() => null);
+          if (again && !("error" in again)) set({ messages: again.messages });
+          for (const payload of held)
+            if (sessionTaskStatus(payload.event) !== null) applyForeignEvent(payload);
+        }
     void useAppStore.getState().loadEditNotes();
   } catch {
     set({

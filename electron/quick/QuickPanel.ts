@@ -101,8 +101,10 @@ export class QuickPanel {
   }
 
   /** The panel task's answer so far, for a main window taking the task over. */
-  answerFor(taskId: string): string | undefined {
-    return this.state.taskId === taskId && this.state.answer ? this.state.answer : undefined;
+  answerFor(taskId: string): { text: string; itemId: string | null } | undefined {
+    return this.state.taskId === taskId && this.state.answer
+      ? { text: this.state.answer, itemId: this.itemId.current }
+      : undefined;
   }
 
   /** An event of the panel's own task. */
