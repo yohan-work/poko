@@ -35,11 +35,12 @@ A **설정** page in the sidebar, after 활동, with sections:
 - **Retention:** `EditManager.expireOld` takes the days from the setting at startup.
 - **Notice reset:** delete `screenNoticeAccepted`.
 - **Export** (`data:export`, trusted renderer only)
-  - Main builds the JSON (`{ version: 1, exportedAt, conversations, tasks, activities, approvals, memories, edits }`) and asks for a path with `dialog.showSaveDialog`, defaulting to `poko-export-YYYY-MM-DD.json` in Downloads. It writes the file with mode `0600`.
+  - Main builds the JSON (`{ version: 1, exportedAt, conversations, tasks, activities, approvals, memories, edits }`) and asks for a path with `dialog.showSaveDialog`, defaulting to `poko-export-YYYY-MM-DD.json` in Downloads. It writes to a temporary file with mode `0600` in the same folder and renames it into place, so overwriting an existing file can't keep that file's looser permissions.
   - The renderer never sees the path picker's result beyond "saved" or "cancelled".
 - **Delete all** (`data:delete-all`, trusted renderer only)
-  - Refused while a task runs.
-  - Deletes all history rows in one transaction, removes the checkpoints folder and screen temp folder, then re-sends bootstrap data so the renderer shows the empty state.
+  - Refused while a task runs **or is starting**. A start in progress (for example while 화면 보기 captures the window into the temp folder) is counted by a new main-process counter around every task-starting handler. The existing per-conversation count misses starts without a conversation.
+  - Deletes all history rows in one transaction, and removes the checkpoints folder and the screen temp folder.
+  - It **returns** fresh bootstrap data, since main has no channel to push it. The renderer then resets every cached slice to it: messages, conversations, the active conversation, tasks, Activity, memories, edit notes, pending approvals, and streaming. No deleted item stays visible on any page.
   - The confirmation word is checked in the renderer **and** sent to main, which refuses without it.
 - **Open data folder** (`data:open-folder`): `shell.openPath(userData)`.
 
@@ -53,7 +54,8 @@ A **설정** page in the sidebar, after 활동, with sections:
 - With memories off, the prompt context holds no memories (unit test), and the 기억 page still lists them.
 - Retention: with 7 days chosen, an edit 8 days old is expired at the next start (unit test).
 - Export writes valid JSON with every listed section. Its counts match the database (unit test plus a real run).
-- Delete-all is refused while a task runs and without the confirmation word. After it runs, the tables are empty, the checkpoints and temp folders are gone, and the app shows the greeting screen (unit test plus a real run). Settings are kept.
+- Delete-all is refused while a task runs, while one is starting, and without the confirmation word. After it runs, the tables are empty, the checkpoints and temp folders are gone, every page (대화, 작업, 기억, 활동) shows the empty state, and the app shows the greeting screen (unit test plus a real run). Settings are kept.
+- An export that overwrites an existing file leaves it with `0600` permissions.
 - CI passes, plus a GUI check of the page in light and dark.
 
 ## Explicitly deferred
