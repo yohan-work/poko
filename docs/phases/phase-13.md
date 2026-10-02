@@ -42,22 +42,32 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
   - The renderer's `#quick` page uses only `window.poko.quick`.
 - **Starting a task:**
   - The task start in `electron/app/tasks.ts` moves into a shared function, `startConversationTask(message, conversationId | null)`. It does the workspace and setup checks, records the start, and calls `agentCore.startTask`, so both entry points behave the same.
-  - `quick:ask` calls it with `null`, which means a new conversation.
-  - The main window learns about the new conversation and task through the existing events, so it is in sync when opened.
+  - `quick:ask` is registered through `handleTaskStart`, like `task:start`, so it gets the same start guards: refusal while 모든 데이터 삭제 runs, and the starting counts that `anyTaskBusy()` relies on.
+  - It calls the shared function with `null`, which means a new conversation.
+- **The main window adopts tasks it didn't start.**
+  - Today the main window listens to task events only inside its own send, and drops other tasks' events, so it would never see a quick task's approval card.
+  - A new app-level listener in the store handles any task that isn't the window's own. It adds the conversation and task to the lists. When the window switches to that conversation, it **adopts** the task: `activeTaskId`, `isSending`, streaming, and approval cards, exactly as if the window had sent the message.
+  - Approval events are added to `pendingApprovals` even before adoption, so a card is never lost.
+  - When the window is created or reloaded, it asks main for the active task and its pending approvals with a new `task:active` (main-window only), so a card raised while the window was hidden is still there.
 - **Panel updates:**
   - `deliverTaskEvent` also sends a reduced view of the panel's own task to the panel: status, text deltas, the final answer or error, and "needs approval".
   - The panel gets no raw CLI output and no approval details. It keeps only the latest quick task.
-- **Opening in the app:** `quick:open-in-app` shows the main window, creating it if needed, and tells the renderer to switch to that conversation, through an existing-style `app:focus-conversation` push.
+- **Opening in the app:**
+  - `quick:open-in-app` shows the main window, creating it if needed, and pushes `app:focus-conversation` with the conversation and task.
+  - The renderer switches to that conversation and adopts the task.
+  - `conversation:open` refuses while a task runs, except for the conversation that holds the running task, which is the one being focused. Switching anywhere else stays refused.
 - **Shortcut:**
   - `settings.quickShortcut` holds `"Alt+Space"` (the default), `"Alt+Shift+Space"`, or `"off"`, validated in `setSettings`.
   - Main registers it with `globalShortcut` at startup and on change, and records whether registration succeeded so 설정 can show it.
   - ⌘⇧Esc is unaffected.
 - **Menu bar:**
-  - `Tray` with a template image: a monochrome Poko head, 16 and 32 px, committed under `build/`, so macOS tints it for light and dark menu bars;
+  - `Tray` with a template image: a monochrome Poko head, 16 and 32 px, so macOS tints it for light and dark menu bars;
+  - the images live in `resources/tray/` and ship through `extraResources` (like `poko-ax`). They are read from `process.resourcesPath` when packaged and from the app path in development. The packaged-app check opens the built `.app`;
   - the menu holds the three items above.
 - **Main window close (macOS):**
   - `close` is intercepted to `hide()` unless the app is quitting (a flag set in `before-quit`).
   - The existing `closed` cleanup (cancel tasks, destroy the overlay) runs only when the window is really destroyed at quit.
+  - `activate` (a Dock click) shows the hidden main window, or creates it if there is none. It no longer checks `getAllWindows().length`, because the hidden window, the panel, and the overlay all count.
   - Other platforms are unchanged.
 - **Renderer:**
   - `#quick` renders `QuickPanel.tsx`: the character, the input, the streaming answer with `Markdown`, and the buttons.
@@ -75,6 +85,8 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
 
 - **Unit tests:**
   - the panel's channels refuse the main window and other senders, and existing channels refuse the panel;
+  - the store adopting a foreign task: approval cards before and after adoption, streaming, and completion;
+  - `conversation:open` while busy is allowed only for the running task's conversation;
   - the shared task start (no workspace, busy, setup not ready, success);
   - the shortcut setting validation;
   - the panel store reducing task events, including approval hand-off and errors.
@@ -82,8 +94,9 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
   - ⌥Space opens the panel over another app, a question streams an answer, and 앱에서 이어서 opens that conversation;
   - Esc hides the panel during a task, and reopening shows the progress;
   - an edit request shows the approval hand-off, and the main window shows the card;
-  - closing the main window keeps the app and shortcut alive, and ⌘Q quits;
-  - the tray menu works in light and dark menu bars.
+  - closing the main window keeps the app and shortcut alive, a Dock click brings it back, and ⌘Q quits;
+  - a quick task that needs approval while the main window is hidden shows its card when the window opens;
+  - the tray menu works in light and dark menu bars, including in the packaged app.
 - CI passes, plus a GUI check of the panel in light and dark.
 
 ## Explicitly deferred
