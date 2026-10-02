@@ -3,7 +3,10 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { ClaudeCodeProvider, claudeArgs, promptFor, READ_TOOLS } from "./ClaudeCodeProvider";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ClaudeCodeProvider, claudeArgs, EDIT_TOOLS, READ_TOOLS } from "./ClaudeCodeProvider";
 
 type Script = (message: Record<string, unknown>, fake: FakeClaude) => void;
 
@@ -72,7 +75,7 @@ const task: AgentTask = {
   profile: "project",
 };
 
-function run(script: Script, signal?: AbortSignal) {
+function run(script: Script, signal?: AbortSignal, runTask: AgentTask = task) {
   let fake: FakeClaude | undefined;
   let spawned: { command: string; args: string[] } | undefined;
   const provider = new ClaudeCodeProvider({
@@ -86,10 +89,10 @@ function run(script: Script, signal?: AbortSignal) {
   });
   const collect = async () => {
     const events: AgentEvent[] = [];
-    for await (const event of provider.runTask(task, { signal })) events.push(event);
+    for await (const event of provider.runTask(runTask, { signal })) events.push(event);
     return events;
   };
-  return { collect, fake: () => fake as FakeClaude, spawned: () => spawned };
+  return { collect, provider, fake: () => fake as FakeClaude, spawned: () => spawned };
 }
 
 describe("ClaudeCodeProvider", () => {
@@ -233,11 +236,6 @@ describe("ClaudeCodeProvider", () => {
     });
   });
 
-  it("asks for a description instead of an edit while edits aren't offered", () => {
-    expect(promptFor(task)).toBe(task.prompt);
-    expect(promptFor({ ...task, editsEnabled: true })).toContain("Describe the exact change");
-  });
-
   it("interrupts on cancel and ends as cancelled", async () => {
     const controller = new AbortController();
     const { collect, fake } = run((message, claude) => {
@@ -258,5 +256,166 @@ describe("ClaudeCodeProvider", () => {
       ),
     ).toBe(true);
     expect(events.at(-1)).toEqual({ type: "cancelled" });
+  });
+
+  describe("edits", () => {
+    let root: string;
+    const editRequest = (id: string, input: Record<string, unknown>) => ({
+      type: "control_request",
+      request_id: id,
+      request: { subtype: "can_use_tool", tool_name: "Edit", input },
+    });
+
+    function editTask(script: Script) {
+      return run(script, undefined, { ...task, cwd: root, editsEnabled: true });
+    }
+
+    it("offers edit tools only when edits are on", () => {
+      expect(claudeArgs([...READ_TOOLS, ...EDIT_TOOLS]).at(-1)).toBe("Read,Grep,Glob,Edit,Write");
+    });
+
+    it("turns an Edit into a card and allows it once approved", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-task-"));
+      writeFileSync(join(root, "README.md"), "# Sample\n");
+      const input = {
+        file_path: join(root, "README.md"),
+        old_string: "# Sample",
+        new_string: "# Poko",
+      };
+      const events: AgentEvent[] = [];
+      const { provider, fake } = editTask((message, claude) => {
+        if (message.type === "user")
+          claude.send(init({ tools: [...READ_TOOLS, ...EDIT_TOOLS] }), editRequest("e1", input));
+        if (message.type === "control_response") claude.send(result("바꿨어."));
+      });
+      const iterator = provider
+        .runTask({ ...task, cwd: root, editsEnabled: true })
+        [Symbol.asyncIterator]();
+      for (;;) {
+        const next = await iterator.next();
+        if (next.done) break;
+        events.push(next.value);
+        if (next.value.type === "approvalRequired") {
+          expect(next.value).toMatchObject({
+            kind: "file_change",
+            canApprove: true,
+            diff: [{ path: join(root, "README.md"), change: "update:\n@@\n-# Sample\n+# Poko" }],
+          });
+          expect(provider.fileChangePaths("t1", "e1")).toEqual([join(root, "README.md")]);
+          expect(provider.canStillApprove("t1", "e1")).toBe(true);
+          expect(provider.respondToApproval("t1", "e1", "approve")).toBe(true);
+          expect(provider.respondToApproval("t1", "e1", "approve")).toBe(false);
+        }
+      }
+      expect(fake().received.at(-1)).toMatchObject({
+        response: { request_id: "e1", response: { behavior: "allow", updatedInput: input } },
+      });
+      expect(events.at(-1)).toEqual({ type: "completed", result: "바꿨어." });
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    it("can't approve once the file changed, and denies refused edits at once", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-task-"));
+      writeFileSync(join(root, "README.md"), "# Sample\n");
+      const { provider, fake } = editTask((message, claude) => {
+        if (message.type === "user")
+          claude.send(
+            init({ tools: [...READ_TOOLS, ...EDIT_TOOLS] }),
+            editRequest("bad", { file_path: "/etc/hosts", old_string: "a", new_string: "b" }),
+            editRequest("e1", {
+              file_path: join(root, "README.md"),
+              old_string: "# Sample",
+              new_string: "# Poko",
+            }),
+          );
+      });
+      const iterator = provider
+        .runTask({ ...task, cwd: root, editsEnabled: true })
+        [Symbol.asyncIterator]();
+      const cards: AgentEvent[] = [];
+      while (cards.length < 2) {
+        const next = await iterator.next();
+        if (next.value?.type === "approvalRequired") cards.push(next.value);
+      }
+      expect(cards[0]).toMatchObject({
+        requestId: "bad",
+        canApprove: false,
+        reason: "작업 폴더 밖의 파일이라 거절했어.",
+      });
+      expect(
+        fake().received.find(
+          (m) => (m.response as { request_id?: string } | undefined)?.request_id === "bad",
+        ),
+      ).toMatchObject({
+        response: { response: { behavior: "deny" } },
+      });
+      writeFileSync(join(root, "README.md"), "# Changed by hand\n");
+      expect(provider.canStillApprove("t1", "e1")).toBe(false);
+      fake().send(result("끝"));
+      for (;;) if ((await iterator.next()).done) break;
+      // The pending card is declined when the task ends.
+      expect(fake().received.at(-1)).toMatchObject({
+        response: { request_id: "e1", response: { behavior: "deny" } },
+      });
+      expect(readFileSync(join(root, "README.md"), "utf8")).toBe("# Changed by hand\n");
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    it("stops the task when an approval isn't answered in time", async () => {
+      root = mkdtempSync(join(tmpdir(), "poko-claude-task-"));
+      writeFileSync(join(root, "README.md"), "# Sample\n");
+      let fake: FakeClaude | undefined;
+      const provider = new ClaudeCodeProvider({
+        runtime: () => ({ executable: "/bin/claude", environment: {} }),
+        spawnProcess: () => {
+          fake = new FakeClaude((message, claude) => {
+            if (message.type === "user")
+              claude.send(
+                init({ tools: [...READ_TOOLS, ...EDIT_TOOLS] }),
+                editRequest("e1", {
+                  file_path: join(root, "README.md"),
+                  old_string: "# Sample",
+                  new_string: "# Poko",
+                }),
+              );
+          });
+          return fake as unknown as ChildProcessWithoutNullStreams;
+        },
+        approvalTimeoutMs: 10,
+      });
+      const events: AgentEvent[] = [];
+      for await (const event of provider.runTask({ ...task, cwd: root, editsEnabled: true }))
+        events.push(event);
+      expect(fake?.killed).toBe(true);
+      expect(fake?.received.at(-1)).toMatchObject({
+        response: { request_id: "e1", response: { behavior: "deny" } },
+      });
+      expect(events.at(-1)).toEqual({
+        type: "error",
+        error: "확인을 오래 기다려서 작업을 멈췄어. 다시 요청해 줘.",
+      });
+      expect(provider.hasPendingApproval("t1", "e1")).toBe(false);
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    it("denies Edit when edits are off", async () => {
+      const { collect, fake } = run((message, claude) => {
+        if (message.type === "user")
+          claude.send(
+            init(),
+            editRequest("e1", {
+              file_path: "/w/project/README.md",
+              old_string: "a",
+              new_string: "b",
+            }),
+          );
+        if (message.type === "control_response") claude.send(result("못 바꿨어."));
+      });
+      const events = await collect();
+      expect(events.some((event) => event.type === "approvalRequired")).toBe(false);
+      expect(fake().received.at(-1)).toMatchObject({
+        response: { response: { behavior: "deny" } },
+      });
+    });
   });
 });

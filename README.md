@@ -38,7 +38,8 @@ Screenshots use sample data.
 - [x] Multiple conversations: new, switch, rename, and delete, each with its own context (Phase 07)
 - [x] Approved edits with undo: edits are off by default per folder; each change is shown as a diff, approved once, and can be undone (Phase 08)
 - [x] Installable macOS app with a Codex setup check on first run (Phase 09)
-- [ ] Other engines besides Codex, such as Claude Code (later)
+- [x] Settings page: memory switch, undo retention, export, delete all (Phase 10)
+- [x] Claude Code as an alternative engine, with the same approvals and undo (Phase 11)
 
 ## What Poko is aiming for
 
@@ -70,11 +71,13 @@ Details and test results are in [Phase 06](docs/phases/phase-06.md).
 
 ## Install (macOS, Apple silicon)
 
-Poko runs on your Mac with the **Codex CLI** and your **ChatGPT** sign-in; it has no account or server of its own.
+Poko runs on your Mac with the **Codex CLI** and your **ChatGPT** sign-in, or with **Claude Code** and your Claude sign-in. It has no account or server of its own.
 
 1. Install Codex (`npm install -g @openai/codex`, or `brew install codex`) and sign in once (`codex login`).
 2. Build the app with `pnpm install && pnpm dist`, then open `release/Poko-<version>-arm64.dmg` and drag Poko to Applications.
 3. Open Poko. If Codex is missing, signed out, or too old, the setup screen names the problem and the fix: copy the install command, use **로그인하기** to sign in, or update. Codex 0.159.0 or newer is required.
+
+**Using Claude Code instead.** Install Claude Code (`npm install -g @anthropic-ai/claude-code`) and sign in once in a terminal (`claude`, then `/login`). Then choose **Claude Code** under 설정 → 엔진. Poko starts your own `claude` with your hooks, plugins, MCP servers, and settings files turned off, offers it only reading tools (plus Edit and Write when you allow edits), and shows every edit as the same approval card with undo. 화면 보기 and 대신 해 줘 always use Codex.
 4. For 화면 보기, macOS asks for **Screen Recording** and **Accessibility** for Poko itself.
 
 Signing: without a certificate, `pnpm dist` signs the app ad hoc. It runs on the Mac that built it, and macOS asks for the screen permissions again after each new build. With a Developer ID certificate (`CSC_LINK` and `CSC_KEY_PASSWORD`, or `CSC_NAME`) the app is signed with it. With Apple credentials (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) it is also notarized, so it opens on other Macs without warnings. Pushing a `v*` tag builds the app in GitHub Actions.

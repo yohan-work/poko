@@ -82,7 +82,7 @@ The probe ran in a temp folder.
   - `settings.engine` is `"codex"` (the default) or `"claude"`.
   - `EngineProvider` (`electron/agent/`) picks the provider when each task starts and routes that task's approvals back to it, so a change applies to the next task and can't affect one in flight.
   - The 설정 control is disabled while a task runs.
-- **Status:** milestone 1 is done.
+- **Status:** milestones 1 and 2 are done.
 - **Setup:**
   - `SetupService` gains a Claude check: find `claude` in the same known places (`~/.local/bin`, Homebrew, npm global, nvm), then run `claude --version` and `claude auth status --json`.
   - `CodexSetup` generalizes to an `EngineSetup` with an `engine` field. The renderer's setup steps use engine-specific copy.

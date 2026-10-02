@@ -856,7 +856,7 @@ const REPOSITORY_FILES = new Set(["head", "commondir", "gitdir", "packed-refs"])
  * that already holds a `HEAD` file. Names ignore case and trailing dots; folders are checked on
  * disk through real paths.
  */
-function buildsRepository(root: string, paths: string[]): boolean {
+export function buildsRepository(root: string, paths: string[]): boolean {
   const realRoot = realPath(resolve(root));
   if (!realRoot) return true;
   for (const path of paths) {
