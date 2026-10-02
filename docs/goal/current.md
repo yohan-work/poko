@@ -2,7 +2,7 @@
 
 - 상태: 진행 중
 - 마지막 갱신: 2026-10-02 Asia/Seoul
-- 현재 작업 단위: Phase 08 승인된 수정과 되돌리기 완료([phase-08](../phases/phase-08.md), #38–#40). CI가 모든 PR에서 검사를 돌린다(#37). 다음: Phase 09 Codex 사용자용 설치형 앱([계획](../phases/phase-09.md)). 이후 Claude Code 등 다른 엔진 검토.
+- 현재 작업 단위: Phase 08 승인된 수정과 되돌리기 완료([phase-08](../phases/phase-08.md), #38–#40). CI가 모든 PR에서 검사를 돌린다(#37). Phase 09 설치형 앱 완료([phase-09](../phases/phase-09.md), #41–#43). 다음 후보: Claude Code 등 다른 엔진, 설정·데이터 관리, 코드 구조 정리.
 
 ## 목표와 성공 기준
 
