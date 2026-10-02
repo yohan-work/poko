@@ -7,6 +7,7 @@ import { signalProcess } from "../codex/CodexProvider";
 const MAX_LINE_LENGTH = 4 * 1024 * 1024;
 const TASK_TIMEOUT_MS = 10 * 60 * 1000;
 const INTERRUPT_GRACE_MS = 1500;
+const KILL_GRACE_MS = 3000;
 
 /** Tools a task may ever see. Shell, web, and agents are never offered. */
 export const READ_TOOLS = ["Read", "Grep", "Glob"] as const;
@@ -78,27 +79,38 @@ export function toolDetail(name: string, input: unknown, cwd: string): string {
 
 class LineQueue implements AsyncIterable<unknown> {
   private items: unknown[] = [];
-  private waiting: ((result: IteratorResult<unknown>) => void) | null = null;
+  private waiting: {
+    resolve: (result: IteratorResult<unknown>) => void;
+    reject: (error: Error) => void;
+  } | null = null;
   private failure: Error | null = null;
   private done = false;
 
   push(value: unknown): void {
     if (this.waiting) {
-      const resolve = this.waiting;
+      const { resolve } = this.waiting;
       this.waiting = null;
       resolve({ value, done: false });
     } else this.items.push(value);
   }
 
+  /** Ends the queue with an error; a reader waiting right now gets it too. */
   fail(error: Error): void {
-    this.failure ??= error;
-    this.finish();
+    if (this.done) return;
+    this.failure = error;
+    this.done = true;
+    if (this.waiting) {
+      const { reject } = this.waiting;
+      this.waiting = null;
+      reject(error);
+    }
   }
 
   finish(): void {
+    if (this.done) return;
     this.done = true;
     if (this.waiting) {
-      const resolve = this.waiting;
+      const { resolve } = this.waiting;
       this.waiting = null;
       resolve({ value: undefined, done: true });
     }
@@ -111,8 +123,8 @@ class LineQueue implements AsyncIterable<unknown> {
           return Promise.resolve({ value: this.items.shift(), done: false });
         if (this.failure) return Promise.reject(this.failure);
         if (this.done) return Promise.resolve({ value: undefined, done: true });
-        return new Promise((resolve) => {
-          this.waiting = resolve;
+        return new Promise((resolve, reject) => {
+          this.waiting = { resolve, reject };
         });
       },
     };
@@ -120,6 +132,15 @@ class LineQueue implements AsyncIterable<unknown> {
 }
 
 class ClaudeFailure extends Error {}
+
+/**
+ * The prompt as sent. Edits through approvals aren't offered on this engine yet, so a request
+ * that needs a change is answered with a description instead of a tool Claude doesn't have.
+ */
+export function promptFor(input: AgentTask): string {
+  if (!input.editsEnabled) return input.prompt;
+  return `${input.prompt}\n\nNote for this engine: Poko can't apply file changes with Claude Code yet, even though edits are allowed. Describe the exact change (file and lines) instead of calling a tool, and say the user can switch the engine to Codex in 설정 to apply it.`;
+}
 
 /**
  * Runs a task with the user's own Claude Code CLI over stream-json. Main process only. Raw CLI
@@ -203,12 +224,27 @@ export class ClaudeCodeProvider implements AgentProvider {
       if (!child.stdin.writable) return;
       child.stdin.write(`${JSON.stringify(message)}\n`);
     };
+    let closed = false;
+    child.once("close", () => {
+      closed = true;
+    });
     const terminate = (): void => {
+      if (closed) return;
       try {
         signalProcess(child, "SIGTERM");
       } catch {
         /* already closed */
       }
+      // A CLI that ignores SIGTERM must not outlive its task.
+      const kill = setTimeout(() => {
+        if (closed) return;
+        try {
+          signalProcess(child, "SIGKILL");
+        } catch {
+          /* already closed */
+        }
+      }, KILL_GRACE_MS);
+      kill.unref?.();
     };
 
     let aborted = false;
@@ -237,7 +273,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         request_id: "poko-init",
         request: { subtype: "initialize" },
       });
-      write({ type: "user", message: { role: "user", content: input.prompt } });
+      write({ type: "user", message: { role: "user", content: promptFor(input) } });
 
       for await (const raw of lines) {
         if (!isRecord(raw)) continue;

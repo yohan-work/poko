@@ -3,7 +3,7 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { ClaudeCodeProvider, claudeArgs, READ_TOOLS } from "./ClaudeCodeProvider";
+import { ClaudeCodeProvider, claudeArgs, promptFor, READ_TOOLS } from "./ClaudeCodeProvider";
 
 type Script = (message: Record<string, unknown>, fake: FakeClaude) => void;
 
@@ -205,6 +205,24 @@ describe("ClaudeCodeProvider", () => {
       type: "error",
       error: "Claude Code 작업을 마치지 못했어. 다시 시도해 줘.",
     });
+  });
+
+  it("keeps the specific error when output breaks while it is waiting", async () => {
+    const { collect } = run((message, claude) => {
+      if (message.type === "user") {
+        claude.send(init());
+        setTimeout(() => claude.stdout.write("not json\n"), 10);
+      }
+    });
+    expect((await collect()).at(-1)).toEqual({
+      type: "error",
+      error: "Claude Code가 읽을 수 없는 응답을 보냈어.",
+    });
+  });
+
+  it("asks for a description instead of an edit while edits aren't offered", () => {
+    expect(promptFor(task)).toBe(task.prompt);
+    expect(promptFor({ ...task, editsEnabled: true })).toContain("Describe the exact change");
   });
 
   it("interrupts on cancel and ends as cancelled", async () => {

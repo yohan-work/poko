@@ -3,6 +3,7 @@ import type { AgentProvider } from "./AgentProvider";
 
 /**
  * Runs each task with the engine chosen when it starts; a change applies to the next task.
+ * Screen tasks always use Codex.
  * Approvals go back to the provider that ran the task.
  */
 export class EngineProvider implements AgentProvider {
@@ -14,7 +15,8 @@ export class EngineProvider implements AgentProvider {
   ) {}
 
   async *runTask(input: AgentTask, options?: { signal?: AbortSignal }): AsyncIterable<AgentEvent> {
-    const provider = this.providers[this.engine()];
+    // Screen tasks are tuned for Codex and always run there.
+    const provider = this.providers[input.profile === "screen" ? "codex" : this.engine()];
     this.byTask.set(input.id, provider);
     try {
       yield* provider.runTask(input, options);

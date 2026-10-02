@@ -41,4 +41,15 @@ describe("EngineProvider", () => {
     for await (const event of provider.runTask(task("b"))) events.push(event);
     expect(events.at(-1)).toEqual({ type: "completed", result: "claude" });
   });
+
+  it("always runs screen tasks on Codex", async () => {
+    const provider = new EngineProvider(
+      { codex: fake("codex"), claude: fake("claude") },
+      () => "claude",
+    );
+    const events: AgentEvent[] = [];
+    for await (const event of provider.runTask({ ...task("s"), profile: "screen" }))
+      events.push(event);
+    expect(events.at(-1)).toEqual({ type: "completed", result: "codex" });
+  });
 });
