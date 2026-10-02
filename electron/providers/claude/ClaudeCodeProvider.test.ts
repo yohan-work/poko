@@ -3,7 +3,15 @@ import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeProvider, claudeArgs, EDIT_TOOLS, READ_TOOLS } from "./ClaudeCodeProvider";
@@ -649,7 +657,7 @@ describe("ClaudeCodeProvider", () => {
       expect(missing).toEqual([
         { type: "error", error: "작업 폴더를 찾을 수 없어. 폴더를 다시 골라 줘." },
       ]);
-      rmSync(link);
+      unlinkSync(link);
       rmSync(fakeHome, { recursive: true, force: true });
     });
 
