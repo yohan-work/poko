@@ -857,13 +857,17 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
   if (adopting || startingSend) return;
   const set = useAppStore.setState;
   const foreign = trackForeign(taskId, conversationId);
-  adopting = { taskId, held: [] };
+  // This call's own hold: a later take-over must never have its hold cleared by this one.
+  const mine: { taskId: string; held: TaskEventPayload[] } = { taskId, held: [] };
+  adopting = mine;
+  const release = (): void => {
+    if (adopting === mine) adopting = null;
+  };
   set({ activeTaskId: taskId });
   // On failure the task stays foreign, and the events held meanwhile go to it, not away.
   const giveBack = (): void => {
-    const held = adopting?.held ?? [];
-    adopting = null;
-    for (const payload of held) applyForeignEvent(payload);
+    release();
+    for (const payload of mine.held) applyForeignEvent(payload);
   };
   try {
     const response = await window.poko.conversations.open(conversationId);
@@ -902,8 +906,8 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
       busyElsewhere: foreignTasks.size > 0,
       foreignApproval: null,
     });
-    const held = adopting.held;
-    adopting = null;
+    const held = mine.held;
+    release();
     // Text held during the take-over is already in the answer snapshot (main sent it before
     // answering task:active), so only the other events are replayed then.
     if (running) {
@@ -926,7 +930,7 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
     });
     giveBack();
   } finally {
-    adopting = null;
+    release();
   }
 }
 
