@@ -1,3 +1,4 @@
+import { isUnavailableModelError } from "../../shared";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -755,6 +756,15 @@ describe("CodexAppServerProvider", () => {
       type: "error",
       error: "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘.",
     });
+  });
+
+  it("recognizes Codex's wording for a model the account can't use", () => {
+    expect(
+      isUnavailableModelError(
+        "The 'gpt-5-codex-mini' model is not supported when using Codex with a ChatGPT account.",
+      ),
+    ).toBe(true);
+    expect(isUnavailableModelError("Image input is not supported by this model")).toBe(false);
   });
 
   it("keeps the usual message for other errors, even with a model picked", async () => {
