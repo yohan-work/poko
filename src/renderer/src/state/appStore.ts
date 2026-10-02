@@ -10,6 +10,7 @@ import type {
   WorkspaceInfo,
   PersistedMemory,
   MemoryInput,
+  PersistedConversation,
   ScreenStatus,
   ScreenWindow,
 } from "../../../../electron/shared";
@@ -50,6 +51,12 @@ export interface SessionTask {
 }
 
 interface AppState {
+  conversations: PersistedConversation[];
+  /** null: a new conversation, created when its first message is sent. */
+  activeConversationId: string | null;
+  conversationError: string | null;
+  newConversation: () => Promise<void>;
+  openConversation: (id: string) => Promise<void>;
   activeView: AppView;
   characterState: CharacterState;
   isSending: boolean;
@@ -188,12 +195,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   memories: [],
   memoryError: null,
   memoryQuery: "",
+  conversations: [],
+  activeConversationId: null,
+  conversationError: null,
+
+  newConversation: () => switchConversation(null),
+
+  openConversation: (id) => switchConversation(id),
 
   initializeWorkspace: async () => {
     try {
       const data = await window.poko.app.bootstrap();
       set({
         workspace: data.workspace,
+        conversations: data.conversations,
+        activeConversationId: data.conversationId,
         messages: data.messages,
         tasks: data.tasks.map((task) => ({
           id: task.id,
@@ -279,7 +295,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     await runTask(
       content,
-      () => window.poko.tasks.start(content),
+      () => window.poko.tasks.start(content, get().activeConversationId),
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
     );
   },
@@ -333,7 +349,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ screen: { ...get().screen, open: false } });
     return runTask(
       `🖱️ ${picked?.app ?? "앱"}에서 해 줘: ${goal.trim()}`,
-      () => window.poko.screen.act(windowId, goal),
+      () => window.poko.screen.act(windowId, goal, get().activeConversationId),
       "화면 작업을 시작하지 못했어. 권한을 확인하고 다시 시도해 줘.",
     );
   },
@@ -345,7 +361,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ screen: { ...get().screen, open: false } });
     return runTask(
       `🖥️ ${picked?.app ?? "앱"} 화면 보기: ${asked}`,
-      () => window.poko.screen.look(windowId, question),
+      () => window.poko.screen.look(windowId, question, get().activeConversationId),
       "화면을 가져오지 못했어. 권한을 확인하고 다시 시도해 줘.",
     );
   },
@@ -416,12 +432,50 @@ export const useAppStore = create<AppState>((set, get) => ({
 }));
 
 /**
+ * Shows a conversation (null: a new, empty one). Main refuses while a task runs, so a running
+ * task's messages, stream, and approval card stay in their own conversation.
+ */
+async function switchConversation(id: string | null): Promise<void> {
+  const set = useAppStore.setState;
+  const state = useAppStore.getState();
+  if (state.isSending) {
+    set({
+      conversationError: "포코가 작업 중이라 다른 대화로 옮길 수 없어. 끝난 뒤에 다시 골라 줘.",
+    });
+    return;
+  }
+  if (id === state.activeConversationId && id !== null) {
+    set({ activeView: "conversation", conversationError: null });
+    return;
+  }
+  try {
+    const response = await window.poko.conversations.open(id);
+    if ("error" in response) {
+      set({ conversationError: response.error });
+      return;
+    }
+    set({
+      activeView: "conversation",
+      activeConversationId: id,
+      messages: response.messages,
+      streaming: null,
+      errorMessage: null,
+      conversationError: null,
+      characterState: "idle",
+      progressMessage: null,
+    });
+  } catch {
+    set({ conversationError: "대화를 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
+  }
+}
+
+/**
  * Shows the user's message, starts a task, and follows its events until it ends. `start`
  * returns the new task id, or an `error` to show instead. Resolves true when the task started.
  */
 async function runTask(
   content: string,
-  start: () => Promise<{ taskId: string } | { error: string }>,
+  start: () => Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }>,
   failure: string,
 ): Promise<boolean> {
   const set = useAppStore.setState;
@@ -470,8 +524,15 @@ async function runTask(
     const startedTaskId = response.taskId;
     taskId = startedTaskId;
     const createdAt = new Date().toISOString();
+    const { conversation } = response;
     set((state) => ({
       activeTaskId: startedTaskId,
+      // A new conversation is created with its first message; either way it moves to the top.
+      activeConversationId: conversation.id,
+      conversations: [
+        conversation,
+        ...state.conversations.filter((item) => item.id !== conversation.id),
+      ],
       tasks: [
         { id: startedTaskId, title: content, status: "running" as const, createdAt },
         ...state.tasks.filter((task) => task.id !== startedTaskId),

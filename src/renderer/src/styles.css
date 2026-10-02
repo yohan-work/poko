@@ -274,17 +274,76 @@ button:disabled {
   text-align: left;
 }
 
-.recent-list__item:hover {
+.recent-list__item:hover:not(:disabled) {
   color: var(--color-text);
   background: var(--color-hover);
 }
 
+.recent-list__item.is-active {
+  color: var(--color-text);
+  background: var(--color-hover);
+}
+
+.recent-list__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .recent-list__title {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   font-size: 0.9rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.recent-list__time {
+  flex: 0 0 auto;
+  color: var(--color-text-faint);
+  font-size: 0.74rem;
+}
+
+.sidebar__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar__new {
+  display: inline-flex;
+  height: 26px;
+  padding: 0 8px;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-soft);
+  background: transparent;
+  font-size: 0.8rem;
+}
+
+.sidebar__new:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-hover);
+}
+
+.sidebar__new:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sidebar__new svg {
+  width: 14px;
+  height: 14px;
+}
+
+.sidebar__error {
+  margin: 0 0 6px;
+  padding: 0 10px;
+  color: var(--color-error);
+  font-size: 0.78rem;
 }
 
 .recent-list__dot {

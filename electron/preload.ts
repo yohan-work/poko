@@ -8,6 +8,7 @@ import {
   type MemoryInput,
   type OverlayScene,
   type PersistedMemory,
+  type PersistedMessage,
   type ScreenLookResponse,
   type ScreenStatus,
   type ScreenWindow,
@@ -23,8 +24,9 @@ const pokoApi = {
     select: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceSelect),
   },
   tasks: {
-    start: (message: string): Promise<TaskStartResponse> =>
-      ipcRenderer.invoke(IPC_CHANNELS.taskStart, message),
+    /** `conversationId` null starts a new conversation titled from the message. */
+    start: (message: string, conversationId: string | null): Promise<TaskStartResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.taskStart, { message, conversationId }),
     cancel: (taskId: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.taskCancel, taskId),
     onEvent: (callback: (payload: TaskEventPayload) => void): (() => void) => {
@@ -41,10 +43,18 @@ const pokoApi = {
       ipcRenderer.invoke(IPC_CHANNELS.screenOpenSettings, kind),
     acceptNotice: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.screenAcceptNotice),
     listWindows: (): Promise<ScreenWindow[]> => ipcRenderer.invoke(IPC_CHANNELS.screenListWindows),
-    look: (windowId: number, question: string): Promise<ScreenLookResponse> =>
-      ipcRenderer.invoke(IPC_CHANNELS.screenLook, { windowId, question }),
-    act: (windowId: number, goal: string): Promise<ScreenLookResponse> =>
-      ipcRenderer.invoke(IPC_CHANNELS.screenAct, { windowId, goal }),
+    look: (
+      windowId: number,
+      question: string,
+      conversationId: string | null,
+    ): Promise<ScreenLookResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.screenLook, { windowId, question, conversationId }),
+    act: (
+      windowId: number,
+      goal: string,
+      conversationId: string | null,
+    ): Promise<ScreenLookResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.screenAct, { windowId, goal, conversationId }),
   },
   overlay: {
     onScene: (listener: (scene: OverlayScene) => void) => {
@@ -65,6 +75,13 @@ const pokoApi = {
       choice: ApprovalChoice,
     ): Promise<ApprovalOutcome> =>
       ipcRenderer.invoke(IPC_CHANNELS.approvalRespond, { taskId, requestId, choice }),
+  },
+  conversations: {
+    /** Opens a conversation (null: a new one) and returns its messages. */
+    open: (
+      conversationId: string | null,
+    ): Promise<{ messages: PersistedMessage[] } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.conversationOpen, conversationId),
   },
   memory: {
     list: (): Promise<PersistedMemory[]> => ipcRenderer.invoke(IPC_CHANNELS.memoryList),

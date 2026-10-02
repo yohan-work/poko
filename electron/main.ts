@@ -14,6 +14,7 @@ import {
   type ApprovalOutcome,
   type ApprovalRequest,
   type MemoryInput,
+  type PersistedConversation,
   type TaskEventPayload,
   type WorkspaceInfo,
 } from "./shared";
@@ -21,7 +22,7 @@ import { AgentCore } from "./agent/AgentCore";
 import { resolveWorkspaceDirectory } from "./agent/workspace";
 import { resolveCodexExecutable } from "./providers/codex/CodexProvider";
 import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
-import { PokoDatabase } from "./database/Database";
+import { ConversationGoneError, PokoDatabase } from "./database/Database";
 import { ScreenService } from "./screen/ScreenService";
 import { type AxElement, HelperError, type WindowSnapshot } from "./screen/axHelper";
 import type { Capture } from "./screen/ScreenAgent";
@@ -96,10 +97,16 @@ function registerIpcHandlers(): void {
     return workspaceInfo(selectedPath);
   });
 
-  ipcMain.handle(IPC_CHANNELS.taskStart, async (event, rawMessage: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.taskStart, async (event, raw: unknown) => {
     if (!isTrustedRenderer(event) || !agentCore) {
       throw new Error("Unknown renderer requested a task.");
     }
+    const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
+      message?: unknown;
+      conversationId?: unknown;
+    };
+    const rawMessage = request.message;
+    const conversationId = readConversationId(request.conversationId);
     if (typeof rawMessage !== "string" || rawMessage.trim().length === 0) {
       throw new TypeError("A non-empty message is required.");
     }
@@ -112,8 +119,10 @@ function registerIpcHandlers(): void {
     const cwd = await resolveWorkspaceDirectory(workspacePath);
     // A screen task may have started while the folder was being checked.
     if (screenRun) throw new Error("Poko is busy with a screen task.");
-    const taskId = database?.createTask(rawMessage.trim(), cwd);
-    if (!taskId) throw new Error("Local storage is unavailable.");
+    if (!database) throw new Error("Local storage is unavailable.");
+    const started = recordTaskStart(database, rawMessage.trim(), cwd, conversationId);
+    if ("error" in started) return started;
+    const { taskId } = started;
     try {
       const context = database?.getTaskContext(taskId);
       agentCore.startTask({ prompt: rawMessage.trim(), cwd, taskId, context });
@@ -126,7 +135,19 @@ function registerIpcHandlers(): void {
       );
       throw error;
     }
-    return { taskId };
+    return started;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.conversationOpen, (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !database || !agentCore)
+      throw new Error("Unknown renderer requested a conversation.");
+    const id = readConversationId(raw);
+    // A running task's messages, stream, and approval card belong to its conversation.
+    if (agentCore.hasActiveTasks || screenRun)
+      return { error: "포코가 작업 중이라 다른 대화로 옮길 수 없어. 끝난 뒤에 다시 골라 줘." };
+    if (id !== null && !database.getConversation(id)) return { error: CONVERSATION_GONE };
+    database.setActiveConversation(id);
+    return { messages: id === null ? [] : database.getConversationMessages(id) };
   });
 
   ipcMain.handle(IPC_CHANNELS.taskCancel, (event, rawTaskId: unknown) => {
@@ -206,6 +227,7 @@ function registerIpcHandlers(): void {
     const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
       windowId?: unknown;
       question?: unknown;
+      conversationId?: unknown;
     };
     if (
       !Number.isSafeInteger(request.windowId) ||
@@ -234,10 +256,17 @@ function registerIpcHandlers(): void {
       return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
     }
     const question = request.question.trim() || "이 화면을 설명해 줘.";
-    const taskId = database.createTask(
+    const started = recordTaskStart(
+      database,
       `🖥️ ${look.app} 화면 보기: ${question}`,
       `screen:${look.app}`,
+      readConversationId(request.conversationId),
     );
+    if ("error" in started) {
+      void screenService.cleanup(look.tempDir);
+      return started;
+    }
+    const { taskId } = started;
     screenTasks.set(taskId, { tempDir: look.tempDir, snapshot: look.snapshot });
     try {
       agentCore.startTask({
@@ -257,7 +286,7 @@ function registerIpcHandlers(): void {
       );
       return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
     }
-    return { taskId };
+    return started;
   });
 
   ipcMain.handle(IPC_CHANNELS.screenAct, async (event, raw: unknown) => {
@@ -266,6 +295,7 @@ function registerIpcHandlers(): void {
     const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
       windowId?: unknown;
       goal?: unknown;
+      conversationId?: unknown;
     };
     if (
       !Number.isSafeInteger(request.windowId) ||
@@ -285,7 +315,14 @@ function registerIpcHandlers(): void {
     if (agentCore.hasActiveTasks || screenRun)
       return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
 
-    const taskId = database.createTask(`🖱️ ${window.app}: ${goal}`, `screen:${window.app}`);
+    const started = recordTaskStart(
+      database,
+      `🖱️ ${window.app}: ${goal}`,
+      `screen:${window.app}`,
+      readConversationId(request.conversationId),
+    );
+    if ("error" in started) return started;
+    const { taskId } = started;
     const service = screenService;
     const provider = screenProvider;
     const agent = new ScreenAgent({
@@ -314,7 +351,7 @@ function registerIpcHandlers(): void {
       if (screenRun?.agent === agent) screenRun = null;
     });
     screenRun = { taskId, agent, done };
-    return { taskId };
+    return started;
   });
 
   ipcMain.handle(IPC_CHANNELS.appBootstrap, (event) => {
@@ -389,6 +426,40 @@ async function askCodex(
     if (event.type === "cancelled") throw new Error("cancelled");
   }
   throw new Error("Codex ended without an answer.");
+}
+
+const CONVERSATION_GONE = "이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘.";
+
+/** A conversation id from the renderer: a short string, or null for a new conversation. */
+function readConversationId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || value.length === 0 || value.length > 100)
+    throw new TypeError("Invalid conversation id.");
+  return value;
+}
+
+/**
+ * Records the user's message and a running task in the conversation (a new one for null),
+ * makes that conversation the active one, and returns it. An id that no longer exists is
+ * refused plainly instead of failing in the database.
+ */
+function recordTaskStart(
+  store: PokoDatabase,
+  message: string,
+  workspace: string,
+  conversationId: string | null,
+): { taskId: string; conversation: PersistedConversation } | { error: string } {
+  let taskId: string;
+  try {
+    taskId = store.createTask(message, workspace, conversationId);
+  } catch (error) {
+    if (error instanceof ConversationGoneError) return { error: CONVERSATION_GONE };
+    throw error;
+  }
+  const conversation = store.getTaskConversation(taskId);
+  if (!conversation) throw new Error("The task's conversation was not recorded.");
+  store.setActiveConversation(conversation.id);
+  return { taskId, conversation };
 }
 
 function showMainWindow(): void {
