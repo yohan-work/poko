@@ -64,13 +64,13 @@ The rule throughout: deny by default, then allow only what a project command nee
 - **Settings passed with `--settings`** (every settings file stays out with `--setting-sources ""`):
   - `permissions.ask: ["Bash"]`, so no command runs without a card, `ls` included;
   - `sandbox.enabled: true`, `autoAllowBashIfSandboxed: false`, `allowUnsandboxedCommands: false`;
-  - `sandbox.filesystem.denyRead`: the home folder, `/tmp`, `/private/tmp`, and `/private/var/folders`;
+  - `sandbox.filesystem.denyRead`: `/Users` (every home folder), `/Volumes` (external drives and backups), `/tmp`, `/private/tmp`, and `/private/var/folders`;
   - `allowRead`:
     - the workspace;
     - the task's temp folder;
-    - known toolchain folders that exist: `~/.nvm`, `~/.fnm`, `~/.local/share/fnm`, `~/.volta`, `~/.asdf`, `~/.bun`, `~/.deno`, `~/.pyenv`, `~/.rbenv`, `~/.rustup`, `~/.cargo/bin`, `~/.local/bin`, `~/.local/share/pnpm`, `~/Library/pnpm`, `~/.npm`, `~/.cache`, `~/.yarn`;
+    - known toolchain folders that exist: `~/.nvm`, `~/.fnm`, `~/.local/share/fnm`, `~/.volta`, `~/.asdf`, `~/.bun`, `~/.deno`, `~/.pyenv`, `~/.rbenv`, `~/.rustup`, `~/.cargo/bin`, `~/.local/bin`, `~/.local/share/pnpm`, `~/Library/pnpm`, `~/.npm`, `~/.cache/node`, `~/.cache/pnpm`, `~/.cache/yarn`, `~/.yarn`;
     - the folder of the `node` Poko found.
-    - Credentials files are never in this list. `~/.cargo` is allowed only as `bin`.
+    - Credentials files are never in this list. `~/.cargo` is allowed only as `bin`, and `~/.cache` only for the subfolders above, because other tools keep tokens there (for example `~/.cache/huggingface/token`).
   - `sandbox.network.allowUnixSockets: []` and `allowLocalBinding: false`.
 - **Temp folder:**
   - Each task gets its own folder under the app's temp directory, passed as `CLAUDE_CODE_TMPDIR`.
@@ -98,12 +98,13 @@ The rule throughout: deny by default, then allow only what a project command nee
 - **Same rules as file changes:** one-shot answers, the 5-minute approval timeout, and decline on cancel or task end. A command card has no file checkpoint.
 - **Task timeout:** an **inactivity** timeout, 10 minutes without any event from the CLI, paused while a card waits for the user, so a fix, test, fix loop isn't cut off.
 - **Leftover processes:**
-  - Groups and parents don't reach orphaned jobs, so Poko asks the system which processes run **inside a sandbox**. A new `sandboxed` command in `poko-ax` calls `sandbox_check(pid, NULL, 0)` for the user's processes.
-  - When the task ends, and right before it allows an Edit or Write in a task that ran a command, Poko stops processes that are all of these:
-    - sandboxed;
-    - started after the task began;
-    - running with their working folder inside the workspace or the task's temp folder;
-    - not a live descendant of the CLI.
+  - Groups and parents don't reach orphaned jobs, so a new `poko-ax` command asks which of the user's processes belong to **this task**. That means both of these:
+    - `sandbox_check(pid, NULL, 0)` reports the process as sandboxed (verified: 1 for a `sandbox-exec` process, 0 otherwise);
+    - its environment, read with `KERN_PROCARGS2`, carries this task's own `CLAUDE_CODE_TMPDIR`.
+  - The second check keeps sandboxed commands from the user's own Claude Code, Codex, or other agents out of the selection, even in the same folder.
+  - **Cleanup timing:**
+    - When the task ends, cleanup runs **after the CLI process has fully exited**, so a command still running at cancel time can't be spared as a live descendant.
+    - Right before an Edit or Write is allowed in a task that ran a command, the CLI is waiting on that card. Task processes other than the CLI's live descendants are stopped then.
   - The user's own editors, terminals, and servers aren't sandboxed this way, so they are never touched.
   - A sandboxed job that moves elsewhere can still escape, but it keeps the inherited limits (workspace and task-temp writes, allowlisted reads, no network). This is documented as a known limit.
 - **Card copy:**
@@ -126,7 +127,9 @@ The rule throughout: deny by default, then allow only what a project command nee
   - `touch ~/…`, a `.git` write, `cat ~/.ssh/…`, `cat ~/.config/gh/hosts.yml`, and `ls /tmp/claude-<uid>` fail;
   - a network command gets no card and fails;
   - `env` shows no `GITHUB_TOKEN`-style variables;
-  - a backgrounded `sleep` is gone after the task, while an editor started meanwhile in the workspace is untouched.
+  - a backgrounded `sleep` is gone after the task, while an editor started meanwhile in the workspace, and a sandboxed command from another agent there, are untouched;
+  - cancelling during a long `npm test` leaves no process from it running;
+  - `cat /Volumes/…` fails.
 - CI passes.
 
 ## Explicitly deferred
