@@ -906,7 +906,8 @@ async function adoptTask(taskId: string, conversationId: string): Promise<void> 
       busyElsewhere: foreignTasks.size > 0,
       foreignApproval: null,
     });
-    const held = mine.held;
+    // Taken out before replaying, so a failure while replaying can't give them back twice.
+    const held = mine.held.splice(0);
     release();
     // Text held during the take-over is already in the answer snapshot (main sent it before
     // answering task:active), so only the other events are replayed then.
