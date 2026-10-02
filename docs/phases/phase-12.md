@@ -102,15 +102,17 @@ The rule throughout: deny by default, then allow only what a project command nee
 - **Same rules as file changes:** one-shot answers, the 5-minute approval timeout, and decline on cancel or task end. A command card has no file checkpoint.
 - **Task timeout:** an **inactivity** timeout, 10 minutes without any event from the CLI, paused while a card waits for the user, so a fix, test, fix loop isn't cut off.
 - **Leftover processes:**
-  - Groups and parents don't reach orphaned jobs, so a new `poko-ax` command asks which of the user's processes belong to **this task**. That means both of these:
-    - `sandbox_check(pid, NULL, 0)` reports the process as sandboxed (verified: 1 for a `sandbox-exec` process, 0 otherwise);
-    - its environment, read with `KERN_PROCARGS2`, carries this task's own `CLAUDE_CODE_TMPDIR`.
-  - The second check keeps sandboxed commands from the user's own Claude Code, Codex, or other agents out of the selection, even in the same folder.
+  - Groups and parents don't reach orphaned jobs, and a process controls its own environment (an `env -u` strips any marker). So a new `poko-ax` command identifies **this task's** processes by their sandbox profile, which a process can't change.
+  - It calls `sandbox_check`, through a small C shim because the call is variadic, and selects a process only if all three hold:
+    - `sandbox_check(pid, NULL, 0)` = 1, so the process is sandboxed;
+    - `file-write-data` on this task's unique temp folder (`<task temp>/claude-<uid>`) is **allowed**, which only this task's profile grants;
+    - `file-read-data` on `/Users` is **denied**, which only Poko's read rules do. Other agents' sandboxes, and Claude Code's default sandbox, allow it.
+  - Verified: an orphaned job started with `env -u CLAUDE_CODE_TMPDIR -u TMPDIR` matched (1 / allowed / denied). A `sandbox-exec` process with an allow-all profile and a normal shell did not.
   - **Cleanup timing:**
     - When the task ends, cleanup runs **after the CLI process has fully exited**, so a command still running at cancel time can't be spared as a live descendant.
     - Right before an Edit or Write is allowed in a task that ran a command, the CLI is waiting on that card. Task processes other than the CLI's live descendants are stopped then.
   - The user's own editors, terminals, and servers aren't sandboxed this way, so they are never touched.
-  - A sandboxed job that moves elsewhere can still escape, but it keeps the inherited limits (workspace and task-temp writes, allowlisted reads, no network). This is documented as a known limit.
+  - No known way around the selection: a process can't change or drop its sandbox profile.
 - **Card copy:**
   - The exact command is the main line.
   - Claude's description is shown smaller, labeled "Claude 설명".
@@ -123,7 +125,7 @@ The rule throughout: deny by default, then allow only what a project command nee
   - the Bash card, and approval with the original input;
   - `dangerouslyDisableSandbox`, `run_in_background`, an oversized command or timeout, and a `host` request are denied;
   - the inactivity timeout pauses during approval;
-  - cleanup selection: only sandboxed processes started after the task, in the workspace or task temp, and not live descendants;
+  - cleanup selection follows the profile rule above (sandboxed, may write this task's temp, may not read `/Users`). At task end it runs after the CLI has exited and spares nothing. Before an Edit or Write it spares only the CLI's live descendants;
   - Codex's decline copy.
 - **Real run with the installed Claude Code, in a temp workspace under the home folder.** With approval:
   - `npm test` (npm from nvm) runs and its result is reported;
