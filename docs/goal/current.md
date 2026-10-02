@@ -2,7 +2,7 @@
 
 - 상태: 진행 중
 - 마지막 갱신: 2026-10-02 Asia/Seoul
-- 현재 작업 단위: Phase 08 승인된 수정과 되돌리기 완료([phase-08](../phases/phase-08.md), #38–#40). CI가 모든 PR에서 검사를 돌린다(#37). 다음: Phase 09 Codex 사용자용 설치형 앱([계획](../phases/phase-09.md)). 이후 Claude Code 등 다른 엔진 검토.
+- 현재 작업 단위: Phase 08 승인된 수정과 되돌리기 완료([phase-08](../phases/phase-08.md), #38–#40). CI가 모든 PR에서 검사를 돌린다(#37). Phase 09 설치형 앱 완료([phase-09](../phases/phase-09.md), #41–#43). 다음 후보: Claude Code 등 다른 엔진, 설정·데이터 관리, 코드 구조 정리.
 
 ## 목표와 성공 기준
 
@@ -47,12 +47,12 @@
 
 ## 마지막 체크포인트
 
-- Handoff: [2026-10-01-1258-phase-05-complete](../handoff/2026-10-01-1258-phase-05-complete.md)
-- Socratic: [2026-10-01-1258-phase-05-complete](../socratic/2026-10-01-1258-phase-05-complete.md)
+- 2026-10-02: Phase 09 완료(#44까지 머지). 이전 기록: Handoff [2026-10-01-1258-phase-05-complete](../handoff/2026-10-01-1258-phase-05-complete.md), Socratic [2026-10-01-1258-phase-05-complete](../socratic/2026-10-01-1258-phase-05-complete.md).
 
 ## 재개 지점
 
 1. 원격 `main`에서 시작한다. 공유 작업 폴더의 브랜치는 바꾸지 말고 git worktree를 사용한다.
-2. Phase 07 완료: [phase-07](../phases/phase-07.md). 사이드바 대화 목록·새 대화·전환(#34), 이름 바꾸기·삭제(#35).
-3. Phase 06 완료(#24–#31): 권한·보기, 오버레이 캐릭터, 행동 하나씩 승인, 실제 사이트 검증(검사 후 마우스 클릭, 승인 카드 전달 수정). 데모 GIF는 README에 있다.
-4. macOS 화면 기록·손쉬운 사용 권한과 실제 Codex 요청은 사용자 환경에서 확인한다.
+2. 모든 PR은 CI(타입체크·린트·포맷·테스트·빌드)가 통과한 뒤 머지한다. CI 실행이 등록될 때까지 기다린 뒤 결과를 확인한다.
+3. 완료: Phase 06 화면 동반자(#24–#31), Phase 07 여러 대화(#33–#35), Phase 08 승인된 수정과 되돌리기(#38–#40), Phase 09 설치형 앱(#41–#43).
+4. 다음 후보는 사용자와 정한다: Claude Code 등 다른 엔진, 설정·데이터 관리, 코드 구조 정리(main.ts·appStore.ts 분리와 상태 로직 테스트).
+5. macOS 화면 기록·손쉬운 사용 권한과 패키징된 앱의 화면 보기는 사용자 환경에서 확인한다.

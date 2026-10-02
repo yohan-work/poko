@@ -37,6 +37,8 @@ Screenshots use sample data.
 - [x] Screen companion: Poko looks at a window you pick and acts in it one approved step at a time, on screen (Phase 06, macOS)
 - [x] Multiple conversations: new, switch, rename, and delete, each with its own context (Phase 07)
 - [x] Approved edits with undo: edits are off by default per folder; each change is shown as a diff, approved once, and can be undone (Phase 08)
+- [x] Installable macOS app with a Codex setup check on first run (Phase 09)
+- [ ] Other engines besides Codex, such as Claude Code (later)
 
 ## What Poko is aiming for
 
