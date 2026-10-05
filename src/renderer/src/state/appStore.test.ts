@@ -144,7 +144,10 @@ describe("sending a message", () => {
     store.setState({ conversations: [conversation("b"), conversation("a", "first")] });
     const sending = store.getState().sendMessage("README 요약해 줘");
     expect(store.getState().isSending).toBe(true);
-    expect(world.calls.at(-1)).toEqual({ method: "tasks.start", args: ["README 요약해 줘", "a"] });
+    expect(world.calls.at(-1)).toEqual({
+      method: "tasks.start",
+      args: ["README 요약해 줘", "a", []],
+    });
 
     world.replyToStart({ taskId: "t1", conversation: conversation("a", "first") });
     await sending;
@@ -155,6 +158,20 @@ describe("sending a message", () => {
       "README 요약해 줘",
       "요약이야.",
     ]);
+  });
+
+  it("sends attachments with the message and shows their names", async () => {
+    const file = {
+      kind: "text" as const,
+      name: "notes.md",
+      mediaType: "text/markdown",
+      data: "# 메모",
+    };
+    const sending = store.getState().sendMessage("요약해 줘", [file]);
+    expect(world.calls.at(-1)).toEqual({ method: "tasks.start", args: ["요약해 줘", "a", [file]] });
+    expect(store.getState().messages.at(-1)?.content).toBe("요약해 줘\n\n📎 notes.md");
+    world.replyToStart({ taskId: "t1", conversation: conversation("a") });
+    await sending;
   });
 
   it("keeps events that arrive before the start reply and applies them in order", async () => {
@@ -171,7 +188,7 @@ describe("sending a message", () => {
   it("shows main's refusal instead of starting", async () => {
     const sending = store.getState().sendMessage("질문");
     world.replyToStart({ error: "이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘." });
-    await sending;
+    expect(await sending).toBe("refused");
     expect(store.getState()).toMatchObject({
       isSending: false,
       errorMessage: "이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘.",
@@ -378,7 +395,7 @@ describe("a task started elsewhere (the quick panel)", () => {
       foreignApproval: { conversationId: "q" },
     });
     expect(store.getState().conversations[0].id).toBe("q");
-    expect(await store.getState().sendMessage("다른 질문")).toBeUndefined();
+    expect(await store.getState().sendMessage("다른 질문")).toBe("refused");
     expect(world.calls.some((call) => call.method === "tasks.start")).toBe(false);
 
     world.setActive({ taskId: "qt", conversationId: "q", approvals: [] });

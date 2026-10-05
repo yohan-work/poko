@@ -2701,3 +2701,63 @@ html.is-quick body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Attachments */
+
+.composer__box[data-dragging] {
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+}
+
+.composer__attachments {
+  display: flex;
+  margin: 0 0 8px;
+  padding: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  max-width: 220px;
+  height: 32px;
+  padding: 0 6px 0 4px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-soft);
+  background: var(--color-surface-raised);
+  font-size: 0.82rem;
+}
+
+.attachment-chip img {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.attachment-chip .icon {
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+}
+
+.attachment-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip button {
+  padding: 0 4px;
+  border: 0;
+  color: var(--color-text-faint);
+  background: transparent;
+}
+
+.attachment-chip button:hover {
+  color: var(--color-text);
+}

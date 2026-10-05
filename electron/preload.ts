@@ -6,6 +6,7 @@ import {
   type QuickState,
   type TaskStartedNotice,
   type AppSettings,
+  type ChatAttachment,
   type EngineId,
   type ModelOption,
   type ClaudeSetup,
@@ -65,8 +66,12 @@ const pokoApi = {
   },
   tasks: {
     /** `conversationId` null starts a new conversation titled from the message. */
-    start: (message: string, conversationId: string | null): Promise<TaskStartResponse> =>
-      ipcRenderer.invoke(IPC_CHANNELS.taskStart, { message, conversationId }),
+    start: (
+      message: string,
+      conversationId: string | null,
+      attachments: ChatAttachment[] = [],
+    ): Promise<TaskStartResponse> =>
+      ipcRenderer.invoke(IPC_CHANNELS.taskStart, { message, conversationId, attachments }),
     cancel: (taskId: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.taskCancel, taskId),
     onEvent: (callback: (payload: TaskEventPayload) => void): (() => void) => {

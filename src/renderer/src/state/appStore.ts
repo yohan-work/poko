@@ -1,9 +1,11 @@
 import { create } from "zustand";
+import { cleanAttachmentName } from "../../../../electron/shared";
 import { applyDeltas, createDeltaBuffer, type StreamingAnswer } from "../lib/streaming";
 import type {
   AgentEvent,
   AppBootstrap,
   AppSettings,
+  ChatAttachment,
   ClaudeSetup,
   DataExportResult,
   EngineId,
@@ -143,7 +145,14 @@ interface AppState {
   saveMemory: (input: MemoryInput) => Promise<boolean>;
   deleteMemory: (id: string) => Promise<void>;
   selectWorkspace: () => Promise<void>;
-  sendMessage: (message: string) => Promise<void>;
+  /**
+   * "refused" means nothing was recorded (no folder, busy, a file main rejected), so the
+   * message box may put the message back; "failed" may have been recorded and must not be.
+   */
+  sendMessage: (
+    message: string,
+    attachments?: ChatAttachment[],
+  ) => Promise<"started" | "refused" | "failed">;
   cancelTask: () => Promise<void>;
   screen: ScreenState;
   openScreen: () => Promise<void>;
@@ -622,22 +631,40 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  sendMessage: async (rawMessage) => {
-    const content = rawMessage.trim();
+  sendMessage: async (rawMessage, attachments = []) => {
+    const message = rawMessage.trim();
     const current = get();
-    if (!content || current.isSending) return;
+    if ((!message && attachments.length === 0) || current.isSending) return "refused";
+    // Shown the way main records it, so the conversation reads the same after a reload.
+    const line = attachments.length
+      ? `📎 ${attachments.map((item) => cleanAttachmentName(item.name)).join(", ")}`
+      : "";
+    const content = line ? (message ? `${message}\n\n${line}` : line) : message;
     if (!current.workspace) {
       set({
         characterState: "error",
         errorMessage: "먼저 작업할 폴더를 선택해 줘.",
       });
-      return;
+      return "refused";
     }
-    await runTask(
+    // Not asked (switching, busy) or a reply with an error: main recorded nothing.
+    let asked = false;
+    let refused = false;
+    const started = await runTask(
       content,
-      () => window.poko.tasks.start(content, get().activeConversationId),
+      async () => {
+        asked = true;
+        const response = await window.poko.tasks.start(
+          message,
+          get().activeConversationId,
+          attachments,
+        );
+        if ("error" in response) refused = true;
+        return response;
+      },
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
     );
+    return started ? "started" : refused || !asked ? "refused" : "failed";
   },
 
   openScreen: async () => {

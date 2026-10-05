@@ -1,6 +1,7 @@
 import { IPC_CHANNELS, type ApprovalRequest, type TaskEventPayload } from "../shared";
 import { replaceCitations } from "../screen/overlayScene";
-import { ctx, pendingApprovalEvents, settleEdits } from "./context";
+import { removeAttachments } from "../attachments/attachments";
+import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { pointAt, screenTasks } from "./screen";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
@@ -28,6 +29,10 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
   // When a task finishes, its last approved change is on disk (or never happened).
   if (finished) {
     void settleEdits(payload.taskId);
+    // Attached images are needed only while the task runs.
+    const attached = attachmentDirs.get(payload.taskId);
+    attachmentDirs.delete(payload.taskId);
+    if (attached) void removeAttachments(attached);
     pendingApprovalEvents.delete(payload.taskId);
   }
   // The quick panel follows only its own task, in a reduced form.

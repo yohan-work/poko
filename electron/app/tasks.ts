@@ -5,6 +5,7 @@ import {
   type ApprovalChoice,
   type ApprovalOutcome,
 } from "../shared";
+import { checkAttachments } from "../attachments/attachments";
 import {
   ctx,
   CONVERSATION_GONE,
@@ -29,17 +30,23 @@ export function registerTaskHandlers(): void {
     const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
       message?: unknown;
       conversationId?: unknown;
+      attachments?: unknown;
     };
     const rawMessage = request.message;
     const conversationId = readConversationId(request.conversationId);
-    if (typeof rawMessage !== "string" || rawMessage.trim().length === 0) {
-      throw new TypeError("A non-empty message is required.");
+    const attachments = checkAttachments(request.attachments);
+    if ("error" in attachments) return attachments;
+    if (
+      typeof rawMessage !== "string" ||
+      (rawMessage.trim().length === 0 && attachments.length === 0)
+    ) {
+      throw new TypeError("A message or an attachment is required.");
     }
     if (rawMessage.length > 10_000) {
       throw new TypeError("The request is too long.");
     }
 
-    return startConversationTask(rawMessage.trim(), conversationId);
+    return startConversationTask(rawMessage.trim(), conversationId, undefined, attachments);
   });
 
   ipcMain.handle(IPC_CHANNELS.conversationOpen, (event, raw: unknown) => {

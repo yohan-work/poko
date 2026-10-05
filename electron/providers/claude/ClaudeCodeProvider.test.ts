@@ -14,7 +14,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ClaudeCodeProvider, claudeArgs, EDIT_TOOLS, READ_TOOLS } from "./ClaudeCodeProvider";
+import {
+  ClaudeCodeProvider,
+  claudeArgs,
+  EDIT_TOOLS,
+  READ_TOOLS,
+  userContent,
+} from "./ClaudeCodeProvider";
 
 type Script = (message: Record<string, unknown>, fake: FakeClaude) => void;
 
@@ -713,5 +719,16 @@ describe("ClaudeCodeProvider", () => {
       expect(fake().killed).toBe(true); // nothing came after the answer, so it timed out
       rmSync(root, { recursive: true, force: true });
     });
+  });
+
+  it("sends attached images as image blocks after the prompt", () => {
+    const dir = mkdtempSync(join(tmpdir(), "poko-attach-"));
+    writeFileSync(join(dir, "1.png"), Buffer.from([1, 2, 3]));
+    expect(userContent("질문", [])).toBe("질문");
+    expect(userContent("질문", [join(dir, "1.png")])).toEqual([
+      { type: "text", text: "질문" },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AQID" } },
+    ]);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

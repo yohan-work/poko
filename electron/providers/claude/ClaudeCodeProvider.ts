@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn, type SpawnOptions } from "node:child_process";
-import { mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { extname, join, relative } from "node:path";
 import type { AgentProvider } from "../../agent/AgentProvider";
 import {
   type AgentEvent,
@@ -200,6 +200,32 @@ class LineQueue implements AsyncIterable<unknown> {
 }
 
 class ClaudeFailure extends Error {}
+
+const IMAGE_MEDIA_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
+/**
+ * The user message: the prompt alone, or the prompt with the attached images as image blocks.
+ * The images were checked and written by main (see electron/attachments).
+ */
+export function userContent(prompt: string, images: string[]): string | unknown[] {
+  if (images.length === 0) return prompt;
+  return [
+    { type: "text", text: prompt },
+    ...images.map((path) => ({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: IMAGE_MEDIA_TYPES[extname(path).slice(1)] ?? "image/png",
+        data: readFileSync(path).toString("base64"),
+      },
+    })),
+  ];
+}
 
 /**
  * Runs a task with the user's own Claude Code CLI over stream-json. Main process only. Raw CLI
@@ -538,7 +564,10 @@ export class ClaudeCodeProvider implements AgentProvider {
         type: "user",
         message: {
           role: "user",
-          content: commands ? `${input.prompt}\n\n${COMMANDS_NOTE}` : input.prompt,
+          content: userContent(
+            commands ? `${input.prompt}\n\n${COMMANDS_NOTE}` : input.prompt,
+            input.images ?? [],
+          ),
         },
       });
 

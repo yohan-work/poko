@@ -7,7 +7,8 @@ import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
 import { ModelSelect } from "./ModelSelect";
 import { EditNoteItem } from "./EditNoteItem";
-import type { EditNote, PersistedMessage } from "../../../../../electron/shared";
+import type { ChatAttachment, EditNote, PersistedMessage } from "../../../../../electron/shared";
+import { MAX_FILES, readAttachment } from "../../lib/attachments";
 import { useNow } from "../../lib/useNow";
 
 function greeting(date = new Date()): string {
@@ -28,6 +29,39 @@ export function timeline(
 
 function Composer({ autoFocus }: { autoFocus: boolean }) {
   const [draft, setDraft] = useState("");
+  // Each file gets an id only for the list; it is not sent.
+  const [attachments, setAttachments] = useState<Array<ChatAttachment & { id: string }>>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  // Files still being read, so sending waits for them, and slots already promised to them.
+  const [reading, setReading] = useState(0);
+  const reserved = useRef(0);
+
+  async function addFiles(files: File[]) {
+    if (files.length === 0) return;
+    setAttachError(null);
+    const room = Math.max(MAX_FILES - attachments.length - reserved.current, 0);
+    const taken = files.slice(0, room);
+    const notes: string[] = [];
+    if (files.length > room) notes.push(`파일은 한 번에 ${MAX_FILES}개까지 붙일 수 있어.`);
+    reserved.current += taken.length;
+    setReading((count) => count + 1);
+    try {
+      const read = await Promise.all(taken.map(readAttachment));
+      for (const item of read) if ("error" in item) notes.push(item.error);
+      const added = read
+        .filter((item): item is ChatAttachment => !("error" in item))
+        .map((item) => ({ ...item, id: crypto.randomUUID() }));
+      // Clamped here too: another drop may have finished since `room` was counted.
+      setAttachments((current) => [...current, ...added].slice(0, MAX_FILES));
+    } finally {
+      reserved.current -= taken.length;
+      setReading((count) => count - 1);
+      if (notes.length > 0) setAttachError(notes.join(" "));
+    }
+  }
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isSending = useAppStore((state) => state.isSending);
   const errorMessage = useAppStore((state) => state.errorMessage);
@@ -57,9 +91,20 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isSending || busyElsewhere) return;
+    if ((!message && attachments.length === 0) || isSending || busyElsewhere || reading > 0) return;
+    const sent = attachments;
     setDraft("");
-    void sendMessage(message);
+    setAttachments([]);
+    setAttachError(null);
+    void sendMessage(
+      message,
+      sent.map(({ id: _id, ...item }) => item),
+    ).then((outcome) => {
+      // A refused send (nothing recorded) keeps what the user prepared.
+      if (outcome !== "refused") return;
+      setDraft((current) => current || message);
+      setAttachments((current) => (current.length ? current : sent));
+    });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -70,8 +115,51 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   }
 
   return (
-    <form className="composer" onSubmit={submitMessage}>
-      <div className="composer__box" data-state={errorMessage ? "error" : "default"}>
+    <form
+      className="composer"
+      onSubmit={submitMessage}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        void addFiles([...event.dataTransfer.files]);
+      }}
+    >
+      <div
+        className="composer__box"
+        data-state={errorMessage ? "error" : "default"}
+        data-dragging={dragging || undefined}
+      >
+        {attachments.length > 0 && (
+          <ul className="composer__attachments" aria-label="붙인 파일">
+            {attachments.map((item) => (
+              <li className="attachment-chip" key={item.id}>
+                {item.kind === "image" ? (
+                  <img src={`data:${item.mediaType};base64,${item.data}`} alt="" />
+                ) : (
+                  <Icon name="file" />
+                )}
+                <span>{item.name}</span>
+                <button
+                  type="button"
+                  aria-label={`${item.name} 빼기`}
+                  onClick={() =>
+                    setAttachments((current) => current.filter((other) => other.id !== item.id))
+                  }
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <label className="sr-only" htmlFor="poko-message">
           포코에게 메시지
         </label>
@@ -79,6 +167,12 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
           ref={inputRef}
           id="poko-message"
           className="composer__input"
+          onPaste={(event) => {
+            const files = [...event.clipboardData.files];
+            if (files.length === 0) return;
+            event.preventDefault();
+            void addFiles(files);
+          }}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleKeyDown}
@@ -129,7 +223,11 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             className="send-button"
             type={isSending ? "button" : "submit"}
             onClick={isSending ? () => void cancelTask() : undefined}
-            disabled={isSending ? !activeTaskId : !draft.trim() || busyElsewhere}
+            disabled={
+              isSending
+                ? !activeTaskId
+                : (!draft.trim() && attachments.length === 0) || busyElsewhere || reading > 0
+            }
             data-state={isSending ? "cancel" : "send"}
             aria-label={isSending ? "작업 멈추기" : "메시지 보내기"}
             title={
@@ -147,6 +245,11 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
       {errorMessage && (
         <p id="composer-error" className="composer__error" role="alert">
           {errorMessage}
+        </p>
+      )}
+      {attachError && (
+        <p className="composer__error" role="alert">
+          {attachError}
         </p>
       )}
       <ScreenPicker question={draft} onPicked={() => setDraft("")} />
