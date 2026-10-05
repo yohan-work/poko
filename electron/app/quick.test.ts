@@ -101,4 +101,22 @@ describe("quick:ask", () => {
       ),
     ).rejects.toThrow();
   });
+
+  it("cancels an opening when the shortcut is pressed again before it shows", async () => {
+    const { panel, calls } = fakePanel();
+    ctx.quickPanel = panel as never;
+    let release = () => {};
+    ctx.screenService = {
+      supported: true,
+      frontWindow: () =>
+        new Promise((resolve) => {
+          release = () => resolve(null);
+        }),
+    } as never;
+    const first = toggleQuickPanel();
+    await toggleQuickPanel(); // pressed again while the front window is still being read
+    release();
+    await first;
+    expect(calls).toEqual([]);
+  });
 });

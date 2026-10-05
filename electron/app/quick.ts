@@ -34,6 +34,27 @@ export async function toggleQuickPanel(): Promise<void> {
   const panel = ctx.quickPanel;
   if (!panel) return;
   if (panel.visible) return panel.hide();
+  // A second press while the panel is still opening cancels that opening.
+  if (opening) {
+    opening.cancelled = true;
+    return;
+  }
+  const attempt = { cancelled: false };
+  opening = attempt;
+  try {
+    await openPanel(panel, attempt);
+  } finally {
+    if (opening === attempt) opening = null;
+  }
+}
+
+/** The opening in progress, so a second press can cancel it. */
+let opening: { cancelled: boolean } | null = null;
+
+async function openPanel(
+  panel: NonNullable<typeof ctx.quickPanel>,
+  attempt: { cancelled: boolean },
+): Promise<void> {
   const front = ctx.screenService?.supported
     ? await ctx.screenService.frontWindow().catch(() => null)
     : null;
@@ -41,6 +62,7 @@ export async function toggleQuickPanel(): Promise<void> {
   // a window other than the one recorded here.
   const hint = front ? await screenHint().catch(() => "화면 정보를 확인하지 못했어.") : null;
   frontWindowId = front && !hint ? front.id : null;
+  if (attempt.cancelled) return;
   panel.setScreen(front ? { app: front.app, title: front.title } : null, hint);
   await panel.show();
 }
