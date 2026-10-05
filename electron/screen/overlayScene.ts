@@ -76,7 +76,7 @@ export function citedElements(
  * Backticks and brackets are removed from names so a label can't change the Markdown around it.
  */
 /** Marks a dropped citation until the spaces before it are removed too. */
-const DROPPED = "\u0000";
+const DROPPED = "\uE000";
 
 export function replaceCitations(answer: string, snapshot: WindowSnapshot): string {
   const byId = listedById(snapshot);
@@ -91,7 +91,7 @@ export function replaceCitations(answer: string, snapshot: WindowSnapshot): stri
         return `‘${elementName(element).replace(/[`[\]*_<>]/g, "")}’`;
       })
       // A dropped citation takes the spaces before it along.
-      .replace(/[ \t]*\u0000/g, ""),
+      .replace(/[ \t]*\uE000/g, ""),
   );
 }
 
