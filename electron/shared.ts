@@ -352,6 +352,10 @@ export interface QuickState {
   message: string | null;
   conversationId: string | null;
   taskId: string | null;
+  /** The window that was in front when the panel opened, which the question can include. */
+  screen: { app: string; title: string } | null;
+  /** Why the window can't be included right now (permissions, notice), or null. */
+  screenHint: string | null;
 }
 
 /** The running task, for a main window that opens while it runs. */

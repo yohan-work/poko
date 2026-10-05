@@ -75,14 +75,23 @@ export function citedElements(
  * The chat shows names instead of element numbers. Unknown numbers are left as written.
  * Backticks and brackets are removed from names so a label can't change the Markdown around it.
  */
+/** Marks a dropped citation until the spaces before it are removed too. */
+const DROPPED = "\u0000";
+
 export function replaceCitations(answer: string, snapshot: WindowSnapshot): string {
   const byId = listedById(snapshot);
   return outsideCode(answer, (prose) =>
-    prose.replace(CITATION, (whole, id: string) => {
-      const element = byId.get(Number(id));
-      if (!element) return whole;
-      return `‘${elementName(element).replace(/[`[\]*_<>]/g, "")}’`;
-    }),
+    prose
+      .replace(CITATION, (whole, id: string) => {
+        const element = byId.get(Number(id));
+        if (!element) return whole;
+        // An element with no name or known role reads as nothing useful ("이 부분"), so the
+        // citation is dropped from the text; Poko still flies to it.
+        if (!element.label?.trim() && !roleNames[element.role]) return DROPPED;
+        return `‘${elementName(element).replace(/[`[\]*_<>]/g, "")}’`;
+      })
+      // A dropped citation takes the spaces before it along.
+      .replace(/[ \t]*\u0000/g, ""),
   );
 }
 

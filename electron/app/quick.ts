@@ -1,8 +1,49 @@
 import { globalShortcut, ipcMain } from "electron";
-import { IPC_CHANNELS, type QuickShortcut, type TaskStartedNotice } from "../shared";
+import {
+  IPC_CHANNELS,
+  type PersistedConversation,
+  type QuickShortcut,
+  type TaskStartedNotice,
+} from "../shared";
 import { ctx, handleTaskStart, isQuickPanel, startConversationTask } from "./context";
+import { startScreenLook } from "./screen";
 
 let registered: string | null = null;
+/**
+ * The window that was in front when the panel opened. Kept in main: the panel only learns its
+ * app and title, and can only ask to include it, never name another window.
+ */
+let frontWindowId: number | null = null;
+
+/** Why a question can't include the screen right now, or null when it can. */
+async function screenHint(): Promise<string | null> {
+  if (!ctx.screenService?.supported || !ctx.database)
+    return "이 컴퓨터에서는 화면 보기를 쓸 수 없어.";
+  const status = await ctx.screenService.status(ctx.database.isScreenNoticeAccepted());
+  if (!status.permissions.screen || !status.permissions.accessibility)
+    return "화면과 함께 물으려면 앱의 화면 보기에서 권한을 먼저 허용해 줘.";
+  if (!status.noticeAccepted) return "화면과 함께 물으려면 앱의 화면 보기 안내를 먼저 확인해 줘.";
+  return null;
+}
+
+/**
+ * Opens the quick panel, or hides it when it is open. The front window is read before the
+ * panel takes focus, so it is the one the user was looking at.
+ */
+export async function toggleQuickPanel(): Promise<void> {
+  const panel = ctx.quickPanel;
+  if (!panel) return;
+  if (panel.visible) return panel.hide();
+  const front = ctx.screenService?.supported
+    ? await ctx.screenService.frontWindow().catch(() => null)
+    : null;
+  frontWindowId = front?.id ?? null;
+  await panel.show();
+  if (!front) return panel.setScreen(null, null);
+  const hint = await screenHint().catch(() => "화면 정보를 확인하지 못했어.");
+  if (hint) frontWindowId = null;
+  panel.setScreen({ app: front.app, title: front.title }, hint);
+}
 
 /** Registers the quick panel's global shortcut; records whether another app already owns it. */
 export function applyQuickShortcut(shortcut: QuickShortcut): void {
@@ -10,7 +51,7 @@ export function applyQuickShortcut(shortcut: QuickShortcut): void {
   registered = null;
   ctx.quickShortcutOk = true;
   if (shortcut === "off") return;
-  const ok = globalShortcut.register(shortcut, () => void ctx.quickPanel?.toggle());
+  const ok = globalShortcut.register(shortcut, () => void toggleQuickPanel());
   ctx.quickShortcutOk = ok;
   if (ok) registered = shortcut;
 }
@@ -19,21 +60,46 @@ export function applyQuickShortcut(shortcut: QuickShortcut): void {
 export function registerQuickHandlers(): void {
   handleTaskStart(IPC_CHANNELS.quickAsk, async (event, raw: unknown) => {
     if (!isQuickPanel(event) || !ctx.quickPanel) throw new Error("Unknown sender asked Poko.");
-    if (typeof raw !== "string" || !raw.trim() || raw.length > 10_000)
+    const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
+      question?: unknown;
+      withScreen?: unknown;
+    };
+    if (
+      typeof request.question !== "string" ||
+      !request.question.trim() ||
+      request.question.length > 10_000
+    )
       throw new TypeError("A non-empty question is required.");
-    const question = raw.trim();
+    const question = request.question.trim();
+    // Only the window main recorded when the panel opened, and only if the user included it.
+    const windowId = request.withScreen === true ? frontWindowId : null;
+    if (request.withScreen === true && windowId === null) {
+      const message = "함께 볼 화면이 없어. 화면 없이 다시 물어봐 줘.";
+      ctx.quickPanel.refuse(question, message);
+      return { error: message };
+    }
     let started: Awaited<ReturnType<typeof startConversationTask>>;
     let recorded: string | null = null;
     try {
       // The panel and the main window learn about the task before it starts: a task can end
       // right away, and its last event must find both ready.
-      started = await startConversationTask(question, null, ({ taskId, conversation }) => {
+      const onRecorded = ({
+        taskId,
+        conversation,
+      }: {
+        taskId: string;
+        conversation: PersistedConversation;
+      }) => {
         recorded = taskId;
         ctx.quickPanel?.begin(question, taskId, conversation.id);
         const notice: TaskStartedNotice = { taskId, title: question, conversation };
         if (ctx.mainWindow && !ctx.mainWindow.isDestroyed())
           ctx.mainWindow.webContents.send(IPC_CHANNELS.taskStarted, notice);
-      });
+      };
+      started =
+        windowId === null
+          ? await startConversationTask(question, null, onRecorded)
+          : await startScreenLook(windowId, question, null, onRecorded);
     } catch (error) {
       // For example no folder selected: the message is already plain Korean.
       started = { error: error instanceof Error ? error.message : "작업을 시작하지 못했어." };

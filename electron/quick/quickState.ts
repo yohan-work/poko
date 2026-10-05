@@ -7,6 +7,8 @@ export const IDLE_STATE: QuickState = {
   message: null,
   conversationId: null,
   taskId: null,
+  screen: null,
+  screenHint: null,
 };
 
 /**

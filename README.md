@@ -42,7 +42,7 @@ Screenshots use sample data.
 - [x] Claude Code as an alternative engine, with the same approvals and undo (Phase 11)
 - [x] Model picker under the message box, per engine
 - [x] Approved project commands (tests, builds) on Claude Code, in a sandbox (Phase 12)
-- [x] Ask Poko from anywhere with ⌥Space or the menu bar icon (Phase 13)
+- [x] Ask Poko from anywhere with ⌥Space or the menu bar icon (Phase 13), optionally about the window in front
 
 ## What Poko is aiming for
 

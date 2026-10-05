@@ -1,6 +1,6 @@
 import { globalShortcut, ipcMain } from "electron";
 import { randomUUID } from "node:crypto";
-import { IPC_CHANNELS } from "../shared";
+import { IPC_CHANNELS, type PersistedConversation } from "../shared";
 import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
 import type { ScreenService } from "../screen/ScreenService";
 import { type AxElement, HelperError, type WindowSnapshot } from "../screen/axHelper";
@@ -85,6 +85,76 @@ export async function pointAt(snapshot: WindowSnapshot, answer: string): Promise
 }
 
 /** 화면 보기 and 대신 해 줘. */
+/**
+ * Captures one window and starts a 화면 보기 task about it, from the main window's picker or
+ * the quick panel. Refuses while another task runs or starts. `onRecorded` runs after the task
+ * is recorded and before it starts, so its first event finds the caller ready.
+ */
+export async function startScreenLook(
+  windowId: number,
+  question: string,
+  conversationId: string | null,
+  onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
+): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
+  if (!ctx.database || !ctx.agentCore || !ctx.screenService)
+    throw new Error("Local storage is unavailable.");
+  // This start is counted in startingTasks, so another start makes it more than one.
+  const busy = () =>
+    Boolean(ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1);
+  if (!ctx.database.isScreenNoticeAccepted()) return { error: "먼저 화면 보기 안내를 확인해 줘." };
+  if (busy()) return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
+
+  let look: Awaited<ReturnType<ScreenService["prepareLook"]>>;
+  try {
+    // Poko leaves the screen before it looks, so it never covers what it reads.
+    await ctx.screenOverlay?.hide();
+    look = await ctx.screenService.prepareLook(windowId, question);
+  } catch (error) {
+    const code = error instanceof HelperError ? error.code : "";
+    return {
+      error: screenErrors[code] ?? "화면을 가져오지 못했어. 권한을 확인하고 다시 시도해 줘.",
+    };
+  }
+  // Another task may have started while the window was being captured.
+  if (busy()) {
+    void ctx.screenService.cleanup(look.tempDir);
+    return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
+  }
+  const asked = question.trim() || "이 화면을 설명해 줘.";
+  const started = recordTaskStart(
+    ctx.database,
+    `🖥️ ${look.app} 화면 보기: ${asked}`,
+    `screen:${look.app}`,
+    conversationId,
+  );
+  if ("error" in started) {
+    void ctx.screenService.cleanup(look.tempDir);
+    return started;
+  }
+  const { taskId } = started;
+  onRecorded?.(started);
+  screenTasks.set(taskId, { tempDir: look.tempDir, snapshot: look.snapshot });
+  try {
+    ctx.agentCore.startTask({
+      prompt: look.prompt,
+      cwd: look.workDir,
+      taskId,
+      screen: { images: [look.imagePath] },
+    });
+  } catch {
+    screenTasks.delete(taskId);
+    void ctx.screenService.cleanup(look.tempDir);
+    ctx.database.recordTaskEvent(
+      taskId,
+      "error",
+      "작업을 시작하지 못했어.",
+      "작업을 시작하지 못했어.",
+    );
+    return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
+  }
+  return started;
+}
+
 export function registerScreenHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.screenStatus, (event) => {
     if (!isTrustedRenderer(event) || !ctx.database || !ctx.screenService)
@@ -128,59 +198,11 @@ export function registerScreenHandlers(): void {
       request.question.length > 10_000
     )
       throw new TypeError("Invalid screen request.");
-    if (!ctx.database.isScreenNoticeAccepted())
-      return { error: "먼저 화면 보기 안내를 확인해 줘." };
-    if (ctx.agentCore.hasActiveTasks || ctx.screenRun)
-      return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
-
-    let look: Awaited<ReturnType<ScreenService["prepareLook"]>>;
-    try {
-      // Poko leaves the screen before it looks, so it never covers what it reads.
-      await ctx.screenOverlay?.hide();
-      look = await ctx.screenService.prepareLook(request.windowId as number, request.question);
-    } catch (error) {
-      const code = error instanceof HelperError ? error.code : "";
-      return {
-        error: screenErrors[code] ?? "화면을 가져오지 못했어. 권한을 확인하고 다시 시도해 줘.",
-      };
-    }
-    // Another task may have started while the window was being captured.
-    if (ctx.agentCore.hasActiveTasks || ctx.screenRun) {
-      void ctx.screenService.cleanup(look.tempDir);
-      return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
-    }
-    const question = request.question.trim() || "이 화면을 설명해 줘.";
-    const started = recordTaskStart(
-      ctx.database,
-      `🖥️ ${look.app} 화면 보기: ${question}`,
-      `screen:${look.app}`,
+    return startScreenLook(
+      request.windowId as number,
+      request.question,
       readConversationId(request.conversationId),
     );
-    if ("error" in started) {
-      void ctx.screenService.cleanup(look.tempDir);
-      return started;
-    }
-    const { taskId } = started;
-    screenTasks.set(taskId, { tempDir: look.tempDir, snapshot: look.snapshot });
-    try {
-      ctx.agentCore.startTask({
-        prompt: look.prompt,
-        cwd: look.workDir,
-        taskId,
-        screen: { images: [look.imagePath] },
-      });
-    } catch {
-      screenTasks.delete(taskId);
-      void ctx.screenService.cleanup(look.tempDir);
-      ctx.database.recordTaskEvent(
-        taskId,
-        "error",
-        "작업을 시작하지 못했어.",
-        "작업을 시작하지 못했어.",
-      );
-      return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
-    }
-    return started;
   });
 
   handleTaskStart(IPC_CHANNELS.screenAct, async (event, raw: unknown) => {

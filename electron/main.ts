@@ -13,7 +13,7 @@ import { ClaudeSetupService } from "./setup/claudeSetup";
 import { EngineProvider } from "./agent/EngineProvider";
 import { ClaudeCodeProvider } from "./providers/claude/ClaudeCodeProvider";
 import { ctx, showMainWindow } from "./app/context";
-import { applyQuickShortcut, registerQuickHandlers } from "./app/quick";
+import { applyQuickShortcut, registerQuickHandlers, toggleQuickPanel } from "./app/quick";
 import { QuickPanel } from "./quick/QuickPanel";
 import { showTray } from "./quick/tray";
 import { deliverTaskEvent } from "./app/events";
@@ -31,7 +31,12 @@ let quitting = false;
 /** The menu bar icon, with the current shortcut shown next to 포코에게 묻기. */
 function refreshTray(): void {
   showTray(
-    { ask: () => void ctx.quickPanel?.show(), open: () => void openMainWindow() },
+    {
+      ask: () => {
+        if (!ctx.quickPanel?.visible) void toggleQuickPanel();
+      },
+      open: () => void openMainWindow(),
+    },
     // A shortcut another app owns isn't shown, since pressing it wouldn't open the panel.
     ctx.quickShortcutOk ? (ctx.database?.getSettings().quickShortcut ?? "Alt+Space") : "off",
   );
