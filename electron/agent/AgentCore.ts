@@ -12,6 +12,8 @@ interface AgentTaskInput {
   screen?: { images: string[] };
   /** The user allowed edits in this workspace. */
   editsEnabled?: boolean;
+  /** Images the user attached, as files in the task's own folder. */
+  images?: string[];
 }
 
 const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "error"]);
@@ -49,6 +51,7 @@ export class AgentCore {
           mode: "read",
           profile: "project",
           editsEnabled: input.editsEnabled === true,
+          ...(input.images?.length ? { images: input.images } : {}),
         };
 
     this.activeTasks.set(taskId, controller);

@@ -144,7 +144,10 @@ describe("sending a message", () => {
     store.setState({ conversations: [conversation("b"), conversation("a", "first")] });
     const sending = store.getState().sendMessage("README 요약해 줘");
     expect(store.getState().isSending).toBe(true);
-    expect(world.calls.at(-1)).toEqual({ method: "tasks.start", args: ["README 요약해 줘", "a"] });
+    expect(world.calls.at(-1)).toEqual({
+      method: "tasks.start",
+      args: ["README 요약해 줘", "a", []],
+    });
 
     world.replyToStart({ taskId: "t1", conversation: conversation("a", "first") });
     await sending;
@@ -155,6 +158,20 @@ describe("sending a message", () => {
       "README 요약해 줘",
       "요약이야.",
     ]);
+  });
+
+  it("sends attachments with the message and shows their names", async () => {
+    const file = {
+      kind: "text" as const,
+      name: "notes.md",
+      mediaType: "text/markdown",
+      data: "# 메모",
+    };
+    const sending = store.getState().sendMessage("요약해 줘", [file]);
+    expect(world.calls.at(-1)).toEqual({ method: "tasks.start", args: ["요약해 줘", "a", [file]] });
+    expect(store.getState().messages.at(-1)?.content).toBe("요약해 줘\n\n📎 notes.md");
+    world.replyToStart({ taskId: "t1", conversation: conversation("a") });
+    await sending;
   });
 
   it("keeps events that arrive before the start reply and applies them in order", async () => {

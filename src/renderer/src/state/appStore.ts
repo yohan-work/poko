@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   AppBootstrap,
   AppSettings,
+  ChatAttachment,
   ClaudeSetup,
   DataExportResult,
   EngineId,
@@ -143,7 +144,7 @@ interface AppState {
   saveMemory: (input: MemoryInput) => Promise<boolean>;
   deleteMemory: (id: string) => Promise<void>;
   selectWorkspace: () => Promise<void>;
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (message: string, attachments?: ChatAttachment[]) => Promise<void>;
   cancelTask: () => Promise<void>;
   screen: ScreenState;
   openScreen: () => Promise<void>;
@@ -622,10 +623,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  sendMessage: async (rawMessage) => {
-    const content = rawMessage.trim();
+  sendMessage: async (rawMessage, attachments = []) => {
+    const message = rawMessage.trim();
     const current = get();
-    if (!content || current.isSending) return;
+    if ((!message && attachments.length === 0) || current.isSending) return;
+    // Shown the way main records it, so the conversation reads the same after a reload.
+    const line = attachments.length ? `📎 ${attachments.map((item) => item.name).join(", ")}` : "";
+    const content = line ? (message ? `${message}\n\n${line}` : line) : message;
     if (!current.workspace) {
       set({
         characterState: "error",
@@ -635,7 +639,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     await runTask(
       content,
-      () => window.poko.tasks.start(content, get().activeConversationId),
+      () => window.poko.tasks.start(message, get().activeConversationId, attachments),
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
     );
   },

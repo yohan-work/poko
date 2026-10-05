@@ -380,3 +380,12 @@ export interface TaskStartedNotice {
   title: string;
   conversation: PersistedConversation;
 }
+
+/** A file the user dropped into the message box: its content, never a path. */
+export interface ChatAttachment {
+  kind: "image" | "text";
+  name: string;
+  mediaType: string;
+  /** Base64 for an image, the text itself for a text file. */
+  data: string;
+}

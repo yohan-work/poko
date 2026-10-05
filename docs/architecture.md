@@ -27,6 +27,7 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── shared.ts            # IPC channels and domain types
 │   ├── database/            # SQLite connection, schema, and persistence
 │   ├── agent/               # Agent Core, provider contract, engine routing
+│   ├── attachments/         # checks and temp files for dropped files and images
 │   ├── export/              # private (0600) file writes for export
 │   ├── quick/               # the quick panel window and its reduced task view
 │   ├── edits/               # checkpoints and undo for approved changes

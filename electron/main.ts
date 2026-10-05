@@ -15,6 +15,7 @@ import { ClaudeCodeProvider } from "./providers/claude/ClaudeCodeProvider";
 import { ctx, showMainWindow } from "./app/context";
 import { applyQuickShortcut, registerQuickHandlers, toggleQuickPanel } from "./app/quick";
 import { QuickPanel } from "./quick/QuickPanel";
+import { removeAttachments } from "./attachments/attachments";
 import { showTray } from "./quick/tray";
 import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
@@ -173,6 +174,9 @@ app
       join(__dirname, "../renderer/index.html"),
     );
     ctx.openMainWindow = openMainWindow;
+    // Images from a crash or a forced quit don't outlive a restart.
+    ctx.attachmentsRoot = join(userDataDirectory, "attachments");
+    await removeAttachments(ctx.attachmentsRoot).catch(() => undefined);
     ctx.refreshTray = refreshTray;
     registerIpcHandlers();
     await createWindow();

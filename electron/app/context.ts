@@ -17,6 +17,13 @@ import type { EditManager } from "../edits/EditManager";
 import type { SetupService } from "../setup/SetupService";
 import type { QuickPanel } from "../quick/QuickPanel";
 import { resolveWorkspaceDirectory } from "../agent/workspace";
+import {
+  attachedTextSection,
+  attachmentLine,
+  type CheckedAttachment,
+  removeAttachments,
+  writeImages,
+} from "../attachments/attachments";
 import type { ClaudeSetupService } from "../setup/claudeSetup";
 
 /**
@@ -44,6 +51,8 @@ export const ctx = {
   quickShortcutOk: true,
   /** Shows the main window, creating it if it was closed. Set by main.ts. */
   openMainWindow: null as (() => Promise<void>) | null,
+  /** Where a task's attached images are written while it runs. Set by main.ts. */
+  attachmentsRoot: null as string | null,
   /** Rebuilds the menu bar menu (for example after the shortcut changed). Set by main.ts. */
   refreshTray: null as (() => void) | null,
 };
@@ -59,6 +68,9 @@ export function isQuickPanel(event: IpcMainInvokeEvent): boolean {
   return ctx.quickPanel?.owns(event) ?? false;
 }
 
+/** Folders holding a running task's attached images, removed when the task ends. */
+export const attachmentDirs = new Map<string, string>();
+
 export const BUSY_MESSAGE = "포코가 이미 다른 작업을 하고 있어. 끝난 뒤에 다시 물어봐 줘.";
 
 /**
@@ -71,6 +83,7 @@ export async function startConversationTask(
   conversationId: string | null,
   /** Runs after the task is recorded and before it starts, so its first event finds it known. */
   onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
+  attachments: CheckedAttachment[] = [],
 ): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
   if (!ctx.agentCore || !ctx.database) throw new Error("Local storage is unavailable.");
   // This start is already counted in startingTasks, so another start makes it more than one.
@@ -79,19 +92,31 @@ export async function startConversationTask(
   const cwd = await resolveWorkspaceDirectory(ctx.database.getWorkspace());
   // Another task may have started while the folder was being checked.
   if (busy()) return { error: BUSY_MESSAGE };
-  const started = recordTaskStart(ctx.database, message, cwd, conversationId);
+  // The conversation shows which files were attached; their content goes only to the engine.
+  const line = attachmentLine(attachments);
+  const shown = line ? (message ? `${message}\n\n${line}` : line) : message;
+  const started = recordTaskStart(ctx.database, shown, cwd, conversationId);
   if ("error" in started) return started;
   const { taskId } = started;
   onRecorded?.(started);
   try {
+    const written = ctx.attachmentsRoot
+      ? await writeImages(ctx.attachmentsRoot, taskId, attachments)
+      : null;
+    if (written) attachmentDirs.set(taskId, written.dir);
+    const text = attachedTextSection(attachments);
     ctx.agentCore.startTask({
-      prompt: message,
+      prompt: [message || "첨부한 파일을 살펴봐 줘.", text].filter(Boolean).join("\n\n"),
       cwd,
       taskId,
       context: ctx.database.getTaskContext(taskId),
       editsEnabled: ctx.database.isEditsEnabled(cwd),
+      images: written?.images,
     });
   } catch (error) {
+    const dir = attachmentDirs.get(taskId);
+    attachmentDirs.delete(taskId);
+    if (dir) void removeAttachments(dir);
     ctx.database.recordTaskEvent(
       taskId,
       "error",
