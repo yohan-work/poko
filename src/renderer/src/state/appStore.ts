@@ -647,11 +647,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       return "refused";
     }
-    // A reply with an error means main refused before recording anything.
+    // Not asked (switching, busy) or a reply with an error: main recorded nothing.
+    let asked = false;
     let refused = false;
     const started = await runTask(
       content,
       async () => {
+        asked = true;
         const response = await window.poko.tasks.start(
           message,
           get().activeConversationId,
@@ -662,7 +664,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
     );
-    return started ? "started" : refused ? "refused" : "failed";
+    return started ? "started" : refused || !asked ? "refused" : "failed";
   },
 
   openScreen: async () => {
