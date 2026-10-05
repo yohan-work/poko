@@ -356,6 +356,8 @@ export interface QuickState {
   screen: { app: string; title: string } | null;
   /** Why the window can't be included right now (permissions, notice), or null. */
   screenHint: string | null;
+  /** Counts openings, so the panel resets "include the screen" each time it opens. */
+  opened: number;
 }
 
 /** The running task, for a main window that opens while it runs. */

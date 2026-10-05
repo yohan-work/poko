@@ -37,12 +37,12 @@ export async function toggleQuickPanel(): Promise<void> {
   const front = ctx.screenService?.supported
     ? await ctx.screenService.frontWindow().catch(() => null)
     : null;
-  frontWindowId = front?.id ?? null;
+  // Everything the chip shows is settled before the panel appears, so it never shows (or sends)
+  // a window other than the one recorded here.
+  const hint = front ? await screenHint().catch(() => "화면 정보를 확인하지 못했어.") : null;
+  frontWindowId = front && !hint ? front.id : null;
+  panel.setScreen(front ? { app: front.app, title: front.title } : null, hint);
   await panel.show();
-  if (!front) return panel.setScreen(null, null);
-  const hint = await screenHint().catch(() => "화면 정보를 확인하지 못했어.");
-  if (hint) frontWindowId = null;
-  panel.setScreen({ app: front.app, title: front.title }, hint);
 }
 
 /** Registers the quick panel's global shortcut; records whether another app already owns it. */

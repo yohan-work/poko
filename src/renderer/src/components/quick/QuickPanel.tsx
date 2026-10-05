@@ -12,6 +12,7 @@ const IDLE: QuickState = {
   taskId: null,
   screen: null,
   screenHint: null,
+  opened: 0,
 };
 
 const characterFor = {
@@ -28,11 +29,9 @@ export function QuickPanel() {
   const [draft, setDraft] = useState("");
   // Off by default: a screenshot leaves the Mac only when the user includes it.
   const [withScreen, setWithScreen] = useState(false);
-  const screenKey = state.screen ? `${state.screen.app}\u0000${state.screen.title}` : "";
-
-  // A newly opened panel (another front window) starts without the screen again.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset whenever the window changes
-  useEffect(() => setWithScreen(false), [screenKey]);
+  // Every opening starts without the screen again, even over the same window.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on each opening
+  useEffect(() => setWithScreen(false), [state.opened]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
 

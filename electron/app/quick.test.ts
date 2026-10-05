@@ -62,7 +62,8 @@ describe("quick:ask", () => {
       }),
     } as never;
     await toggleQuickPanel();
-    expect(calls).toEqual(["show", 'screen:{"app":"Safari","title":"메일"}:null']);
+    // The chip is settled before the panel appears.
+    expect(calls).toEqual(['screen:{"app":"Safari","title":"메일"}:null', "show"]);
 
     // The panel can't name a window; only "include it" is read.
     await ask({ question: "요약해 줘", withScreen: true, windowId: 7 });
@@ -85,7 +86,7 @@ describe("quick:ask", () => {
       }),
     } as never;
     await toggleQuickPanel();
-    expect(calls.at(-1)).toContain("안내를 먼저 확인해 줘");
+    expect(calls).toEqual([expect.stringContaining("안내를 먼저 확인해 줘"), "show"]);
     await ask({ question: "요약해 줘", withScreen: true });
     expect(startScreenLook).not.toHaveBeenCalled();
     expect(calls.at(-1)).toBe("refuse:함께 볼 화면이 없어. 화면 없이 다시 물어봐 줘.");

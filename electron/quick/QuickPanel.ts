@@ -42,6 +42,8 @@ export class QuickPanel {
   async show(): Promise<void> {
     const window = await this.ensureWindow();
     if (window.isDestroyed()) return;
+    // Each opening starts with the screen left out; the user includes it again if they want.
+    this.state = { ...this.state, opened: this.state.opened + 1 };
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
     window.setBounds({
       x: Math.round(display.x + (display.width - WIDTH) / 2),
@@ -75,7 +77,6 @@ export class QuickPanel {
   /** The window that was in front when the panel opened (see app/quick.ts). */
   setScreen(screen: QuickState["screen"], screenHint: string | null): void {
     this.state = { ...this.state, screen, screenHint };
-    this.send();
   }
 
   /** A new question started a task. */
@@ -95,8 +96,8 @@ export class QuickPanel {
 
   /** A question that couldn't start: busy, no folder, and so on. */
   refuse(question: string, message: string): void {
-    const { screen, screenHint } = this.state;
-    this.state = { ...IDLE_STATE, phase: "error", question, message, screen, screenHint };
+    const { screen, screenHint, opened } = this.state;
+    this.state = { ...IDLE_STATE, phase: "error", question, message, screen, screenHint, opened };
     this.send();
   }
 
