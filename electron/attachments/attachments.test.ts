@@ -37,6 +37,19 @@ describe("checkAttachments", () => {
     expect(checkAttachments([{ ...text, data: "a\u0000b" }])).toHaveProperty("error");
     expect(checkAttachments([{ kind: "file", name: "a" }])).toHaveProperty("error");
     expect(checkAttachments(undefined)).toEqual([]);
+    // Five images of 3.4 MB each are fine one by one but too much together.
+    const big = Buffer.alloc(Math.floor(3.4 * 1024 * 1024));
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(big);
+    const image = {
+      kind: "image",
+      name: "a.png",
+      mediaType: "image/png",
+      data: big.toString("base64"),
+    };
+    expect(checkAttachments([image])).not.toHaveProperty("error");
+    expect(checkAttachments(Array(5).fill(image))).toEqual({
+      error: "이미지는 모두 합쳐 15MB까지 붙일 수 있어.",
+    });
   });
 });
 

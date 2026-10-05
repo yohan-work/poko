@@ -1,5 +1,5 @@
 import { app, type BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import {
   type AppBootstrap,
   IPC_CHANNELS,
@@ -114,9 +114,9 @@ export async function startConversationTask(
       images: written?.images,
     });
   } catch (error) {
-    const dir = attachmentDirs.get(taskId);
+    // Also a folder writeImages left half written before it failed.
     attachmentDirs.delete(taskId);
-    if (dir) void removeAttachments(dir);
+    if (ctx.attachmentsRoot) void removeAttachments(join(ctx.attachmentsRoot, taskId));
     ctx.database.recordTaskEvent(
       taskId,
       "error",

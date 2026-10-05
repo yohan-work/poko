@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { cleanAttachmentName } from "../../../../electron/shared";
 import { applyDeltas, createDeltaBuffer, type StreamingAnswer } from "../lib/streaming";
 import type {
   AgentEvent,
@@ -144,7 +145,8 @@ interface AppState {
   saveMemory: (input: MemoryInput) => Promise<boolean>;
   deleteMemory: (id: string) => Promise<void>;
   selectWorkspace: () => Promise<void>;
-  sendMessage: (message: string, attachments?: ChatAttachment[]) => Promise<void>;
+  /** Resolves true when the task started; false leaves the message for the user to resend. */
+  sendMessage: (message: string, attachments?: ChatAttachment[]) => Promise<boolean>;
   cancelTask: () => Promise<void>;
   screen: ScreenState;
   openScreen: () => Promise<void>;
@@ -626,18 +628,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   sendMessage: async (rawMessage, attachments = []) => {
     const message = rawMessage.trim();
     const current = get();
-    if ((!message && attachments.length === 0) || current.isSending) return;
+    if ((!message && attachments.length === 0) || current.isSending) return false;
     // Shown the way main records it, so the conversation reads the same after a reload.
-    const line = attachments.length ? `📎 ${attachments.map((item) => item.name).join(", ")}` : "";
+    const line = attachments.length
+      ? `📎 ${attachments.map((item) => cleanAttachmentName(item.name)).join(", ")}`
+      : "";
     const content = line ? (message ? `${message}\n\n${line}` : line) : message;
     if (!current.workspace) {
       set({
         characterState: "error",
         errorMessage: "먼저 작업할 폴더를 선택해 줘.",
       });
-      return;
+      return false;
     }
-    await runTask(
+    return runTask(
       content,
       () => window.poko.tasks.start(message, get().activeConversationId, attachments),
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",

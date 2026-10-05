@@ -34,19 +34,33 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   const [attachError, setAttachError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  // Files still being read, so sending waits for them, and slots already promised to them.
+  const [reading, setReading] = useState(0);
+  const reserved = useRef(0);
+
   async function addFiles(files: File[]) {
     if (files.length === 0) return;
     setAttachError(null);
-    const room = MAX_FILES - attachments.length;
-    if (files.length > room) setAttachError(`파일은 한 번에 ${MAX_FILES}개까지 붙일 수 있어.`);
-    const read = await Promise.all(files.slice(0, Math.max(room, 0)).map(readAttachment));
-    const errors = read.filter((item): item is { error: string } => "error" in item);
-    if (errors.length > 0) setAttachError(errors.map((item) => item.error).join(" "));
-    const added = read
-      .filter((item): item is ChatAttachment => !("error" in item))
-      .map((item) => ({ ...item, id: crypto.randomUUID() }));
-    setAttachments((current) => [...current, ...added].slice(0, MAX_FILES));
+    const room = Math.max(MAX_FILES - attachments.length - reserved.current, 0);
+    const taken = files.slice(0, room);
+    const notes: string[] = [];
+    if (files.length > room) notes.push(`파일은 한 번에 ${MAX_FILES}개까지 붙일 수 있어.`);
+    reserved.current += taken.length;
+    setReading((count) => count + 1);
+    try {
+      const read = await Promise.all(taken.map(readAttachment));
+      for (const item of read) if ("error" in item) notes.push(item.error);
+      const added = read
+        .filter((item): item is ChatAttachment => !("error" in item))
+        .map((item) => ({ ...item, id: crypto.randomUUID() }));
+      setAttachments((current) => [...current, ...added]);
+    } finally {
+      reserved.current -= taken.length;
+      setReading((count) => count - 1);
+      if (notes.length > 0) setAttachError(notes.join(" "));
+    }
   }
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isSending = useAppStore((state) => state.isSending);
   const errorMessage = useAppStore((state) => state.errorMessage);
@@ -76,14 +90,20 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = draft.trim();
-    if ((!message && attachments.length === 0) || isSending || busyElsewhere) return;
+    if ((!message && attachments.length === 0) || isSending || busyElsewhere || reading > 0) return;
+    const sent = attachments;
     setDraft("");
     setAttachments([]);
     setAttachError(null);
     void sendMessage(
       message,
-      attachments.map(({ id: _id, ...item }) => item),
-    );
+      sent.map(({ id: _id, ...item }) => item),
+    ).then((started) => {
+      // A refused send (no folder, a file main rejected) keeps what the user prepared.
+      if (started) return;
+      setDraft((current) => current || message);
+      setAttachments((current) => (current.length ? current : sent));
+    });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -205,7 +225,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             disabled={
               isSending
                 ? !activeTaskId
-                : (!draft.trim() && attachments.length === 0) || busyElsewhere
+                : (!draft.trim() && attachments.length === 0) || busyElsewhere || reading > 0
             }
             data-state={isSending ? "cancel" : "send"}
             aria-label={isSending ? "작업 멈추기" : "메시지 보내기"}

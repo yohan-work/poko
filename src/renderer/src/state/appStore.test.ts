@@ -395,7 +395,7 @@ describe("a task started elsewhere (the quick panel)", () => {
       foreignApproval: { conversationId: "q" },
     });
     expect(store.getState().conversations[0].id).toBe("q");
-    expect(await store.getState().sendMessage("다른 질문")).toBeUndefined();
+    expect(await store.getState().sendMessage("다른 질문")).toBe(false);
     expect(world.calls.some((call) => call.method === "tasks.start")).toBe(false);
 
     world.setActive({ taskId: "qt", conversationId: "q", approvals: [] });

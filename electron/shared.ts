@@ -389,3 +389,28 @@ export interface ChatAttachment {
   /** Base64 for an image, the text itself for a text file. */
   data: string;
 }
+
+/** Limits for attached files, shared by the message box and main. */
+export const ATTACHMENT_LIMITS = {
+  count: 5,
+  /** Raw bytes per image: as base64 it stays under Claude's 5 MB per image. */
+  imageBytes: 3.5 * 1024 * 1024,
+  /** Raw bytes of all images together: as base64 well under a 32 MB request. */
+  totalImageBytes: 15 * 1024 * 1024,
+  textChars: 200_000,
+} as const;
+
+/** A file name for display: no folders, control characters, or backticks; short. */
+export function cleanAttachmentName(value: unknown): string {
+  const name = typeof value === "string" ? value : "";
+  const base = name.split(/[\\/]/).pop() ?? "";
+  const clean = [...base]
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 0x20 && code !== 0x7f && char !== "`";
+    })
+    .join("")
+    .trim()
+    .slice(0, 120);
+  return clean || "첨부 파일";
+}

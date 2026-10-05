@@ -1,10 +1,10 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ChatAttachment } from "../shared";
+import { ATTACHMENT_LIMITS, type ChatAttachment, cleanAttachmentName } from "../shared";
 
-export const MAX_ATTACHMENTS = 5;
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-export const MAX_TEXT_CHARS = 200_000;
+export const MAX_ATTACHMENTS = ATTACHMENT_LIMITS.count;
+export const MAX_IMAGE_BYTES = ATTACHMENT_LIMITS.imageBytes;
+export const MAX_TEXT_CHARS = ATTACHMENT_LIMITS.textChars;
 
 /** Image types both engines read, with the bytes each file must start with. */
 const IMAGE_TYPES: Record<string, { extension: string; magic: (bytes: Buffer) => boolean }> = {
@@ -28,21 +28,6 @@ export type CheckedAttachment =
   | { kind: "image"; name: string; mediaType: string; bytes: Buffer }
   | { kind: "text"; name: string; text: string };
 
-function cleanName(value: unknown): string {
-  const name = typeof value === "string" ? value : "";
-  // A display name only: no folders, no control characters, short.
-  const base = name.split(/[\\/]/).pop() ?? "";
-  const clean = [...base]
-    .filter((char) => {
-      const code = char.charCodeAt(0);
-      return code >= 0x20 && code !== 0x7f && char !== "`";
-    })
-    .join("")
-    .trim()
-    .slice(0, 120);
-  return clean || "첨부 파일";
-}
-
 /**
  * Checks attachments from the renderer. They carry content, never a path: the renderer read
  * the files the user dropped. Returns the checked list, or a plain refusal.
@@ -53,19 +38,23 @@ export function checkAttachments(raw: unknown): CheckedAttachment[] | { error: s
   if (raw.length > MAX_ATTACHMENTS)
     return { error: `파일은 한 번에 ${MAX_ATTACHMENTS}개까지 붙일 수 있어.` };
   const checked: CheckedAttachment[] = [];
+  let imageBytes = 0;
   for (const item of raw as Partial<ChatAttachment>[]) {
     if (typeof item !== "object" || item === null) return { error: "첨부 파일을 읽을 수 없어." };
-    const name = cleanName(item.name);
+    const name = cleanAttachmentName(item.name);
     if (item.kind === "image") {
       const type = typeof item.mediaType === "string" ? IMAGE_TYPES[item.mediaType] : undefined;
       if (!type || typeof item.data !== "string")
         return { error: `${name}: PNG, JPEG, GIF, WebP 이미지만 붙일 수 있어.` };
       // Base64 of at most 5 MB, checked before decoding.
       if (item.data.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 4)
-        return { error: `${name}: 이미지는 5MB까지 붙일 수 있어.` };
+        return { error: `${name}: 이미지는 3.5MB까지 붙일 수 있어.` };
       const bytes = Buffer.from(item.data, "base64");
       if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES || !type.magic(bytes))
         return { error: `${name}: 이미지 내용을 읽을 수 없어.` };
+      imageBytes += bytes.length;
+      if (imageBytes > ATTACHMENT_LIMITS.totalImageBytes)
+        return { error: "이미지는 모두 합쳐 15MB까지 붙일 수 있어." };
       checked.push({ kind: "image", name, mediaType: item.mediaType as string, bytes });
     } else if (item.kind === "text") {
       if (typeof item.data !== "string" || item.data.length > MAX_TEXT_CHARS)
