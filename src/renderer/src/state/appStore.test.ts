@@ -188,7 +188,7 @@ describe("sending a message", () => {
   it("shows main's refusal instead of starting", async () => {
     const sending = store.getState().sendMessage("질문");
     world.replyToStart({ error: "이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘." });
-    await sending;
+    expect(await sending).toBe("refused");
     expect(store.getState()).toMatchObject({
       isSending: false,
       errorMessage: "이 대화를 찾을 수 없어. 새 대화로 다시 보내 줘.",
@@ -395,7 +395,7 @@ describe("a task started elsewhere (the quick panel)", () => {
       foreignApproval: { conversationId: "q" },
     });
     expect(store.getState().conversations[0].id).toBe("q");
-    expect(await store.getState().sendMessage("다른 질문")).toBe(false);
+    expect(await store.getState().sendMessage("다른 질문")).toBe("refused");
     expect(world.calls.some((call) => call.method === "tasks.start")).toBe(false);
 
     world.setActive({ taskId: "qt", conversationId: "q", approvals: [] });

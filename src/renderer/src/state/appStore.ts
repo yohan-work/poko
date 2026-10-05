@@ -145,8 +145,14 @@ interface AppState {
   saveMemory: (input: MemoryInput) => Promise<boolean>;
   deleteMemory: (id: string) => Promise<void>;
   selectWorkspace: () => Promise<void>;
-  /** Resolves true when the task started; false leaves the message for the user to resend. */
-  sendMessage: (message: string, attachments?: ChatAttachment[]) => Promise<boolean>;
+  /**
+   * "refused" means nothing was recorded (no folder, busy, a file main rejected), so the
+   * message box may put the message back; "failed" may have been recorded and must not be.
+   */
+  sendMessage: (
+    message: string,
+    attachments?: ChatAttachment[],
+  ) => Promise<"started" | "refused" | "failed">;
   cancelTask: () => Promise<void>;
   screen: ScreenState;
   openScreen: () => Promise<void>;
@@ -628,7 +634,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sendMessage: async (rawMessage, attachments = []) => {
     const message = rawMessage.trim();
     const current = get();
-    if ((!message && attachments.length === 0) || current.isSending) return false;
+    if ((!message && attachments.length === 0) || current.isSending) return "refused";
     // Shown the way main records it, so the conversation reads the same after a reload.
     const line = attachments.length
       ? `📎 ${attachments.map((item) => cleanAttachmentName(item.name)).join(", ")}`
@@ -639,13 +645,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         characterState: "error",
         errorMessage: "먼저 작업할 폴더를 선택해 줘.",
       });
-      return false;
+      return "refused";
     }
-    return runTask(
+    // A reply with an error means main refused before recording anything.
+    let refused = false;
+    const started = await runTask(
       content,
-      () => window.poko.tasks.start(message, get().activeConversationId, attachments),
+      async () => {
+        const response = await window.poko.tasks.start(
+          message,
+          get().activeConversationId,
+          attachments,
+        );
+        if ("error" in response) refused = true;
+        return response;
+      },
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
     );
+    return started ? "started" : refused ? "refused" : "failed";
   },
 
   openScreen: async () => {

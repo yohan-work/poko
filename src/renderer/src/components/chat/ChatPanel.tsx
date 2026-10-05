@@ -53,7 +53,8 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
       const added = read
         .filter((item): item is ChatAttachment => !("error" in item))
         .map((item) => ({ ...item, id: crypto.randomUUID() }));
-      setAttachments((current) => [...current, ...added]);
+      // Clamped here too: another drop may have finished since `room` was counted.
+      setAttachments((current) => [...current, ...added].slice(0, MAX_FILES));
     } finally {
       reserved.current -= taken.length;
       setReading((count) => count - 1);
@@ -98,9 +99,9 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
     void sendMessage(
       message,
       sent.map(({ id: _id, ...item }) => item),
-    ).then((started) => {
-      // A refused send (no folder, a file main rejected) keeps what the user prepared.
-      if (started) return;
+    ).then((outcome) => {
+      // A refused send (nothing recorded) keeps what the user prepared.
+      if (outcome !== "refused") return;
       setDraft((current) => current || message);
       setAttachments((current) => (current.length ? current : sent));
     });
