@@ -171,6 +171,16 @@ export class ScreenService {
     return rm(tempDir, { recursive: true, force: true });
   }
 
+  /**
+   * The window in front of everything else, from another app, or null (Poko's own window is in
+   * front, or there is none). Windows are listed front to back.
+   */
+  async frontWindow(): Promise<{ id: number; app: string; title: string } | null> {
+    const front = (await this.windows())[0];
+    if (!front || front.pid === process.pid) return null;
+    return { id: front.id, app: front.owner || front.bundleId || "앱", title: front.title };
+  }
+
   /** Processes still running under one command task's sandbox profile. */
   async findTaskProcesses(writableTempDir: string, workspace: string): Promise<number[]> {
     const result = await runHelper(this.helperPath, ["task-processes", writableTempDir, workspace]);

@@ -10,6 +10,9 @@ const IDLE: QuickState = {
   message: null,
   conversationId: null,
   taskId: null,
+  screen: null,
+  screenHint: null,
+  opened: 0,
 };
 
 const characterFor = {
@@ -24,6 +27,11 @@ const characterFor = {
 export function QuickPanel() {
   const [state, setState] = useState<QuickState>(IDLE);
   const [draft, setDraft] = useState("");
+  // Off by default: a screenshot leaves the Mac only when the user includes it.
+  const [withScreen, setWithScreen] = useState(false);
+  // Every opening starts without the screen again, even over the same window.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on each opening
+  useEffect(() => setWithScreen(false), [state.opened]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -63,7 +71,7 @@ export function QuickPanel() {
     const question = draft.trim();
     if (!question || busy) return;
     setDraft("");
-    void window.poko.quick.ask(question);
+    void window.poko.quick.ask(question, withScreen && !state.screenHint);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -87,7 +95,13 @@ export function QuickPanel() {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={busy ? "포코가 답하는 중이야…" : "포코에게 물어봐"}
+          placeholder={
+            busy
+              ? "포코가 답하는 중이야…"
+              : withScreen
+                ? "이 화면에 대해 물어봐"
+                : "포코에게 물어봐"
+          }
           rows={1}
           maxLength={10_000}
           disabled={busy}
@@ -95,6 +109,33 @@ export function QuickPanel() {
           autoFocus
         />
       </form>
+      {state.screen && !busy && (
+        <div className="quick__screen">
+          <button
+            type="button"
+            className="quick__screen-chip"
+            aria-pressed={withScreen}
+            disabled={Boolean(state.screenHint)}
+            onClick={() => {
+              setWithScreen((value) => !value);
+              inputRef.current?.focus();
+            }}
+            title={
+              withScreen
+                ? "이 창의 스크린샷과 화면 요소 이름을 Codex로 보내. 다시 누르면 빼."
+                : "누르면 이 창을 질문에 함께 넣어."
+            }
+          >
+            <span aria-hidden="true">{withScreen ? "✓" : "+"}</span>
+            <span className="quick__screen-name">
+              {state.screen.app}
+              {state.screen.title ? ` · ${state.screen.title}` : ""}
+            </span>
+            <span>{withScreen ? "함께 보는 중" : "화면과 함께 묻기"}</span>
+          </button>
+          {state.screenHint && <span className="quick__hint">{state.screenHint}</span>}
+        </div>
+      )}
       {state.phase !== "idle" && (
         <div className="quick__result">
           {state.question && <p className="quick__question">{state.question}</p>}

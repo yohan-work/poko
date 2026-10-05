@@ -42,6 +42,8 @@ export class QuickPanel {
   async show(): Promise<void> {
     const window = await this.ensureWindow();
     if (window.isDestroyed()) return;
+    // Each opening starts with the screen left out; the user includes it again if they want.
+    this.state = { ...this.state, opened: this.state.opened + 1 };
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
     window.setBounds({
       x: Math.round(display.x + (display.width - WIDTH) / 2),
@@ -68,15 +70,20 @@ export class QuickPanel {
     if (this.window && !this.window.isDestroyed()) this.window.hide();
   }
 
-  toggle(): Promise<void> | void {
-    if (this.window?.isVisible()) return this.hide();
-    return this.show();
+  get visible(): boolean {
+    return Boolean(this.window && !this.window.isDestroyed() && this.window.isVisible());
+  }
+
+  /** The window that was in front when the panel opened (see app/quick.ts). */
+  setScreen(screen: QuickState["screen"], screenHint: string | null): void {
+    this.state = { ...this.state, screen, screenHint };
   }
 
   /** A new question started a task. */
   begin(question: string, taskId: string, conversationId: string): void {
     this.itemId.current = null;
     this.state = {
+      ...this.state,
       phase: "running",
       question,
       answer: "",
@@ -89,7 +96,8 @@ export class QuickPanel {
 
   /** A question that couldn't start: busy, no folder, and so on. */
   refuse(question: string, message: string): void {
-    this.state = { ...IDLE_STATE, phase: "error", question, message };
+    const { screen, screenHint, opened } = this.state;
+    this.state = { ...IDLE_STATE, phase: "error", question, message, screen, screenHint, opened };
     this.send();
   }
 

@@ -129,7 +129,6 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
 
 ## Explicitly deferred
 
-- Asking about the window under the panel (화면과 함께 묻기). It builds on 화면 보기 and is a natural next step.
 - Custom shortcut recording.
 - Continuing an existing conversation from the panel.
 - Approving inside the panel.
@@ -156,3 +155,17 @@ Verified in the built app:
   - the menu bar item appears with the three items;
   - 포코에게 묻기 opens the panel (1 → 2 windows);
   - 종료 quits the app.
+
+## Follow-up: 화면과 함께 묻기
+
+- **Which window:**
+  - When the panel opens (⌥Space or the menu bar), main reads the front window **before** the panel takes focus. Windows are listed front to back, and Poko's own window doesn't count.
+  - The panel learns only that window's app and title.
+- **Asking with the screen:**
+  - A chip under the input, "＋ {app} · {title} 화면과 함께 묻기", includes that window. It is **off by default**, so nothing leaves the Mac unless the user turns it on.
+  - `quick:ask` reads only `withScreen`. The window id stays in main, so the panel can never name a different window.
+- **Not ready:** the chip is disabled with a hint when permissions or the 화면 보기 notice are missing.
+- **The task:**
+  - It runs as a normal 화면 보기 task (`startScreenLook`, shared with the main window's picker), so Poko also flies to what it mentions.
+  - It starts a new conversation and can be continued with 앱에서 이어서.
+- **Screen answers:** citations of elements with no name or known role (plain text blocks) are dropped from the text instead of reading "‘이 부분’". Poko still flies to them.

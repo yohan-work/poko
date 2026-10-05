@@ -88,8 +88,9 @@ const pokoApi = {
     },
   },
   quick: {
-    ask: (question: string): Promise<{ ok: true } | { error: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.quickAsk, question),
+    /** `withScreen` includes the window that was in front when the panel opened. */
+    ask: (question: string, withScreen: boolean): Promise<{ ok: true } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.quickAsk, { question, withScreen }),
     hide: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickHide),
     resize: (height: number): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.quickResize, height),

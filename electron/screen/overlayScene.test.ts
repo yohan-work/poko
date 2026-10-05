@@ -73,6 +73,24 @@ describe("overlay scene", () => {
     expect(elementName({ ...snapshot.elements[0], label: "a".repeat(60) })).toHaveLength(40);
   });
 
+  it("drops citations of unnamed elements from the text and tidies the gap", () => {
+    const unnamed = parseSnapshot({
+      ...snapshotJson(),
+      elements: [
+        { id: 7, role: "AXStaticText", frame: { x: 1900, y: 150, width: 60, height: 24 } },
+        {
+          id: 8,
+          role: "AXGroup",
+          label: "할 일",
+          frame: { x: 1900, y: 200, width: 60, height: 24 },
+        },
+      ],
+    });
+    expect(replaceCitations("할 일은 세 가지예요 [7]. 목록 [8] [7] [7]", unnamed)).toBe(
+      "할 일은 세 가지예요. 목록 ‘할 일’",
+    );
+  });
+
   it("maps frames onto the display holding the window and drops points outside it", () => {
     const scene = buildOverlayScene(
       snapshot,
