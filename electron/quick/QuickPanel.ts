@@ -2,7 +2,7 @@ import { BrowserWindow, type IpcMainInvokeEvent, screen } from "electron";
 import { type AgentEvent, IPC_CHANNELS, type QuickState } from "../shared";
 import { IDLE_STATE, reduceQuickState } from "./quickState";
 
-const WIDTH = 640;
+const WIDTH = 672;
 const HEIGHT = 440;
 
 /**
@@ -150,7 +150,8 @@ export class QuickPanel {
       maximizable: false,
       fullscreenable: false,
       skipTaskbar: true,
-      hasShadow: true,
+      // The panel draws its own shadow; a window shadow would outline the transparent margin.
+      hasShadow: false,
       webPreferences: {
         preload: this.preloadPath,
         contextIsolation: true,

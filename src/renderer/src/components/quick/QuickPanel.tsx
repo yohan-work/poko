@@ -41,7 +41,7 @@ export function QuickPanel() {
     const panel = panelRef.current;
     if (!panel) return;
     const observer = new ResizeObserver(() => {
-      void window.poko.quick.resize(panel.getBoundingClientRect().height + 16);
+      void window.poko.quick.resize(panel.getBoundingClientRect().height + 32);
     });
     observer.observe(panel);
     return () => observer.disconnect();

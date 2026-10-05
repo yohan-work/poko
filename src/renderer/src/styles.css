@@ -2569,20 +2569,22 @@ html.is-overlay body {
 
 html.is-quick,
 html.is-quick body {
+  overflow: hidden;
   background: transparent;
 }
 
 .quick {
   display: flex;
   /* The window follows the panel, so the cap is fixed rather than the window's height. */
-  max-height: 424px;
-  margin: 8px;
+  max-height: 408px;
+  /* Room inside the transparent window for the panel's own shadow. */
+  margin: 16px;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
   background: var(--color-bg);
-  box-shadow: 0 12px 40px -12px oklch(0% 0 0 / 50%);
+  box-shadow: 0 8px 20px -10px oklch(0% 0 0 / 45%);
 }
 
 .quick__ask {
