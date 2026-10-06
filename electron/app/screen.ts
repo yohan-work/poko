@@ -171,10 +171,13 @@ export function registerScreenHandlers(): void {
     if (kind !== "screen" && kind !== "accessibility") throw new TypeError("Invalid settings.");
     return ctx.screenService.openSettings(kind);
   });
-  ipcMain.handle(IPC_CHANNELS.screenAcceptNotice, (event) => {
+  // The renderer names the engine whose notice the user read, so a switch in between can't
+  // record the acceptance for a different engine.
+  ipcMain.handle(IPC_CHANNELS.screenAcceptNotice, (event, engine: unknown) => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer accepted the screen notice.");
-    ctx.database.acceptScreenNotice();
+    if (engine !== "codex" && engine !== "claude") throw new TypeError("Unknown engine.");
+    ctx.database.acceptScreenNotice(engine);
     return true;
   });
   ipcMain.handle(IPC_CHANNELS.screenResetNotice, (event) => {

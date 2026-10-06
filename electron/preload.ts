@@ -113,7 +113,9 @@ const pokoApi = {
     status: (): Promise<ScreenStatus> => ipcRenderer.invoke(IPC_CHANNELS.screenStatus),
     openSettings: (kind: "screen" | "accessibility"): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.screenOpenSettings, kind),
-    acceptNotice: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.screenAcceptNotice),
+    /** Accepts the notice the user read, which names this engine. */
+    acceptNotice: (engine: EngineId): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.screenAcceptNotice, engine),
     /** Shows the data-use notice again before the next screen task. */
     resetNotice: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.screenResetNotice),
     listWindows: (): Promise<ScreenWindow[]> => ipcRenderer.invoke(IPC_CHANNELS.screenListWindows),
