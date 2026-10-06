@@ -197,7 +197,7 @@ Routines are the first work Poko starts on its own, so they get a narrower bound
 - **Read-only, always:** `startRoutineTask` (`electron/app/routines.ts`) forces `editsEnabled: false`, and Agent Core's `routine` flag uses an unattended read-only prompt with no memory suggestion. Command approvals are declined as in any read-only task.
 - **Same guards as a message:** a run counts in `startingTasks`, refuses while data is being deleted, checks busy before and after resolving the routine's folder, and records nothing until it can start.
 - **Its own conversation:** a run is recorded in the routine's 🔁 conversation and doesn't change the active conversation. The main window learns about it through `taskStarted`, and takes it over only if that conversation is on screen.
-- **Scheduling is pure and tested:** `electron/routines/schedule.ts` decides due times from local calendar fields:
+- **Scheduling is pure and tested:** `electron/routines/schedule.ts` computes daily and weekly times from local calendar fields, and counts intervals from when the routine was last set:
   - every scheduled time is handled once (`lastSlotAt`), run or skipped;
   - a time before the routine was last set (`scheduleChangedAt`) never runs;
   - a missed time runs only on its own day, or within 35 minutes across midnight.
