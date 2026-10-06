@@ -276,6 +276,7 @@ const memoryTypeNames = {
 function MemorySuggestionCard() {
   const suggestion = useAppStore((state) => state.memorySuggestion);
   const answer = useAppStore((state) => state.answerMemorySuggestion);
+  const error = useAppStore((state) => state.memorySuggestionError);
   if (!suggestion) return null;
   return (
     <li className="memory-suggestion" aria-label="기억 제안">
@@ -284,6 +285,11 @@ function MemorySuggestionCard() {
         <span className="memory-suggestion__type">{memoryTypeNames[suggestion.type]}</span>
         {suggestion.content}
       </p>
+      {error && (
+        <p className="composer__error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="memory-suggestion__actions">
         <button className="secondary-button" type="button" onClick={() => void answer(false)}>
           괜찮아

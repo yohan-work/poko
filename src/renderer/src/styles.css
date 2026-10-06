@@ -2855,3 +2855,7 @@ html.is-quick body {
   justify-content: flex-end;
   gap: 8px;
 }
+
+.quick__memory {
+  margin: 0;
+}

@@ -27,9 +27,15 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
   // A suggestion matching a saved memory isn't worth asking about again.
   if (payload.event.type === "completed" && payload.event.memory && ctx.database) {
     const wanted = payload.event.memory.content.trim().toLowerCase();
-    const known = ctx.database
-      .listMemories()
-      .some((memory) => memory.content.trim().toLowerCase() === wanted);
+    let known = false;
+    try {
+      known = ctx.database
+        .listMemories()
+        .some((memory) => memory.content.trim().toLowerCase() === wanted);
+    } catch (error) {
+      // Only the duplicate check is lost; the task still finishes normally.
+      console.error("Could not check saved memories.", error);
+    }
     if (known) {
       const { memory: _known, ...rest } = payload.event;
       payload = { ...payload, event: rest };

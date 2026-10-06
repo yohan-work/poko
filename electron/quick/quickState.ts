@@ -10,6 +10,7 @@ export const IDLE_STATE: QuickState = {
   screen: null,
   screenHint: null,
   opened: 0,
+  memory: null,
 };
 
 /**
@@ -45,7 +46,13 @@ export function reduceQuickState(
         ? { ...state, phase: "approval", message: "확인이 필요해. 앱에서 확인해 줘." }
         : state;
     case "completed":
-      return { ...state, phase: "done", answer: event.result, message: null };
+      return {
+        ...state,
+        phase: "done",
+        answer: event.result,
+        message: null,
+        memory: event.memory ?? null,
+      };
     case "error":
       return { ...state, phase: "error", message: event.error };
     case "cancelled":

@@ -129,6 +129,7 @@ interface AppState {
   memorySuggestion: MemorySuggestion | null;
   /** Saves the suggested memory (yes) or drops it (no). */
   answerMemorySuggestion: (keep: boolean) => Promise<void>;
+  memorySuggestionError: string | null;
   /** A task started elsewhere (the quick panel) is running, so this window can't start one. */
   busyElsewhere: boolean;
   /** A task started elsewhere waits for approval in this conversation (null: unknown yet). */
@@ -288,10 +289,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   memorySuggestion: null,
   answerMemorySuggestion: async (keep) => {
     const suggestion = get().memorySuggestion;
-    set({ memorySuggestion: null });
-    if (keep && suggestion)
-      await get().saveMemory({ type: suggestion.type, content: suggestion.content, importance: 3 });
+    if (!keep || !suggestion) {
+      set({ memorySuggestion: null, memorySuggestionError: null });
+      return;
+    }
+    // The card stays until the memory is really saved, and says so when it isn't.
+    const saved = await get().saveMemory({
+      type: suggestion.type,
+      content: suggestion.content,
+      importance: 3,
+    });
+    set(
+      saved
+        ? { memorySuggestion: null, memorySuggestionError: null }
+        : { memorySuggestionError: "기억을 저장하지 못했어. 다시 눌러 줘." },
+    );
   },
+  memorySuggestionError: null,
   busyElsewhere: false,
   foreignApproval: null,
   showForeignTask: async () => {

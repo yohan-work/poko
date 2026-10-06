@@ -41,6 +41,8 @@ export const IPC_CHANNELS = {
   quickOpenInApp: "quick:open-in-app",
   /** The panel's content height, so the window never covers more than the panel. */
   quickResize: "quick:resize",
+  /** The panel's yes or no to its answer's memory suggestion. */
+  quickRemember: "quick:remember",
   /** main → quick panel: what the panel shows. */
   quickState: "quick:state",
   /** The running task and its pending approval cards, for a main window that just opened. */
@@ -374,6 +376,8 @@ export interface QuickState {
   screenHint: string | null;
   /** Counts openings, so the panel resets "include the screen" each time it opens. */
   opened: number;
+  /** A memory the panel's answer suggested; main keeps it and saves it only on yes. */
+  memory: MemorySuggestion | null;
 }
 
 /** The running task, for a main window that opens while it runs. */
@@ -454,23 +458,35 @@ export interface MemorySuggestion {
   content: string;
 }
 
-const MEMORY_TAG =
-  /<poko-memory\s+type="(preference|project|person|decision|fact|routine)">([\s\S]*?)<\/poko-memory>/;
+const MEMORY_LINE =
+  /^<poko-memory\s+type="(preference|project|person|decision|fact|routine)">([\s\S]*?)<\/poko-memory>\s*$/;
+
+/** The answer before its last line, and that line, when the line starts a memory tag. */
+function trailingTag(answer: string): { text: string; line: string } | null {
+  const trimmed = answer.trimEnd();
+  const lineStart = trimmed.lastIndexOf("\n") + 1;
+  const line = trimmed.slice(lineStart).trim();
+  return line.startsWith("<poko-memory")
+    ? { text: trimmed.slice(0, lineStart).trimEnd(), line }
+    : null;
+}
 
 /**
  * Splits an answer into the text to show and an optional memory suggestion. The engine is
- * asked to add `<poko-memory type="…">…</poko-memory>` when the user said something worth
- * keeping; only the first one counts, and every tag is removed from the text.
+ * asked to put `<poko-memory type="…">…</poko-memory>` on the answer's **last line**; only
+ * that line counts and is removed. A tag quoted anywhere else (from a file, say) stays in the
+ * text as it is and is never taken as a suggestion.
  */
 export function takeMemorySuggestion(answer: string): {
   text: string;
   memory: MemorySuggestion | null;
 } {
-  const match = MEMORY_TAG.exec(answer);
+  const tail = trailingTag(answer);
+  if (!tail) return { text: answer, memory: null };
+  const match = MEMORY_LINE.exec(tail.line);
   const content = match?.[2].replace(/\s+/g, " ").trim() ?? "";
-  const text = answer.replace(/<poko-memory[\s\S]*?<\/poko-memory>/g, "").trimEnd();
   return {
-    text,
+    text: tail.text,
     memory:
       match && content && content.length <= 300
         ? { type: match[1] as MemorySuggestion["type"], content }
@@ -478,13 +494,14 @@ export function takeMemorySuggestion(answer: string): {
   };
 }
 
-/** Streaming text without a memory tag, even a half-written one at the end. */
+/**
+ * Streaming text without the memory tag line, by the same last-line rule as
+ * takeMemorySuggestion, including a line still being written ("<pok…").
+ */
 export function hideMemoryTag(text: string): string {
-  const start = text.indexOf("<poko-memory");
-  if (start >= 0) return text.slice(0, start).trimEnd();
-  // A tag still being written: "<", "<pok", "<poko-mem", …
-  const partial = /<p?o?k?o?-?m?e?m?o?r?y?$/.exec(text);
-  return partial && partial[0].length > 0 && "<poko-memory".startsWith(partial[0])
-    ? text.slice(0, partial.index).trimEnd()
-    : text;
+  const lineStart = text.lastIndexOf("\n") + 1;
+  const line = text.slice(lineStart).trimStart();
+  const writing =
+    line.length > 0 && ("<poko-memory".startsWith(line) || line.startsWith("<poko-memory"));
+  return writing ? text.slice(0, lineStart).trimEnd() : text;
 }

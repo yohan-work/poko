@@ -98,6 +98,9 @@ const pokoApi = {
     ask: (question: string, withScreen: boolean): Promise<{ ok: true } | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.quickAsk, { question, withScreen }),
     hide: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickHide),
+    /** Yes or no to the answer's memory suggestion; main saves the one it kept. */
+    remember: (keep: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.quickRemember, keep),
     resize: (height: number): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.quickResize, height),
     openInApp: (conversationId: string | null): Promise<boolean> =>

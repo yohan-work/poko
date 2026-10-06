@@ -139,6 +139,15 @@ export function registerQuickHandlers(): void {
     return { ok: true };
   });
 
+  // The panel can only say yes or no; the memory itself is the one main kept from the answer.
+  ipcMain.handle(IPC_CHANNELS.quickRemember, (event, keep: unknown) => {
+    if (!isQuickPanel(event) || !ctx.quickPanel) throw new Error("Unknown sender answered.");
+    const memory = ctx.quickPanel.takeMemory(keep === true);
+    if (memory && ctx.database)
+      ctx.database.saveMemory({ type: memory.type, content: memory.content, importance: 3 });
+    return Boolean(memory);
+  });
+
   ipcMain.handle(IPC_CHANNELS.quickHide, (event) => {
     if (!isQuickPanel(event)) throw new Error("Unknown sender hid the panel.");
     ctx.quickPanel?.hide();

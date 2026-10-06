@@ -58,4 +58,14 @@ describe("reduceQuickState", () => {
       "approval",
     );
   });
+
+  it("keeps a memory suggestion from the answer", () => {
+    const item = { current: null, raw: "" };
+    const done = reduceQuickState(
+      running,
+      { type: "completed", result: "좋아요.", memory: { type: "preference", content: "짧게" } },
+      item,
+    );
+    expect(done.memory).toEqual({ type: "preference", content: "짧게" });
+  });
 });

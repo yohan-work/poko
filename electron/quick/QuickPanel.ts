@@ -85,6 +85,7 @@ export class QuickPanel {
     this.itemId.raw = "";
     this.state = {
       ...this.state,
+      memory: null,
       phase: "running",
       question,
       answer: "",
@@ -100,6 +101,14 @@ export class QuickPanel {
     const { screen, screenHint, opened } = this.state;
     this.state = { ...IDLE_STATE, phase: "error", question, message, screen, screenHint, opened };
     this.send();
+  }
+
+  /** The panel's yes or no to its answer's suggestion: returns the memory to save, if any. */
+  takeMemory(keep: boolean): QuickState["memory"] {
+    const memory = this.state.memory;
+    this.state = { ...this.state, memory: null, message: keep && memory ? "기억해 뒀어." : null };
+    this.send();
+    return keep ? memory : null;
   }
 
   /** The main window answered the panel task's approval; it goes on working. */
