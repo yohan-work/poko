@@ -69,11 +69,21 @@ const effortLabels: Record<ReasoningEffort, string> = {
 /** How hard the chosen engine thinks; deeper is slower and uses more of the plan. */
 export function EffortSelect() {
   const settings = useAppStore((state) => state.settings);
+  const models = useAppStore((state) => (settings ? state.models[settings.engine] : undefined));
   const updateSettings = useAppStore((state) => state.updateSettings);
   const isSending = useAppStore((state) => state.isSending);
   if (!settings) return null;
   const engine = settings.engine;
   const value = (engine === "claude" ? settings.claudeEffort : settings.codexEffort) ?? "";
+  // Only the levels the chosen model accepts (Codex lists them per model).
+  const modelId = engine === "claude" ? settings.claudeModel : settings.codexModel;
+  const model = modelId
+    ? models?.find((item) => item.id === modelId)
+    : models?.find((item) => item.isDefault);
+  const offered = REASONING_EFFORTS.filter(
+    (effort) => !model?.efforts || model.efforts.includes(effort),
+  );
+  const unsupported = value !== "" && !offered.includes(value);
   return (
     <label
       className="model-select"
@@ -91,11 +101,16 @@ export function EffortSelect() {
         }}
       >
         <option value="">추론: 기본값</option>
-        {REASONING_EFFORTS.map((effort) => (
+        {offered.map((effort) => (
           <option key={effort} value={effort}>
             추론: {effortLabels[effort]}
           </option>
         ))}
+        {unsupported && (
+          <option value={value}>
+            추론: {effortLabels[value as ReasoningEffort]} (이 모델은 기본값)
+          </option>
+        )}
       </select>
     </label>
   );

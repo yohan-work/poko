@@ -324,6 +324,8 @@ export interface ModelOption {
   label: string;
   /** The CLI's default model. */
   isDefault?: boolean;
+  /** Reasoning efforts this model accepts, when the CLI says; absent means all. */
+  efforts?: ReasoningEffort[];
 }
 
 /**

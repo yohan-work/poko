@@ -12,7 +12,9 @@ import {
   type AgentEvent,
   type AgentTask,
   type ApprovalChoice,
+  isReasoningEffort,
   isUnavailableModelError,
+  type ModelOption,
 } from "../../shared";
 import type { AgentProvider } from "../../agent/AgentProvider";
 import { signalProcess } from "./CodexProvider";
@@ -589,7 +591,7 @@ export class CodexAppServerProvider implements AgentProvider {
   }
 
   /** The models this account can use, as Codex lists them; empty when it can't be asked. */
-  async listModels(): Promise<Array<{ id: string; label: string; isDefault?: boolean }>> {
+  async listModels(): Promise<ModelOption[]> {
     const runtime = this.runtime();
     let connection: AppServerConnection;
     try {
@@ -629,6 +631,13 @@ export class CodexAppServerProvider implements AgentProvider {
             id,
             label: readString(entry.displayName) ?? id,
             ...(entry.isDefault === true ? { isDefault: true } : {}),
+            ...(Array.isArray(entry.supportedReasoningEfforts)
+              ? {
+                  efforts: entry.supportedReasoningEfforts
+                    .map((item) => (isRecord(item) ? item.reasoningEffort : undefined))
+                    .filter(isReasoningEffort),
+                }
+              : {}),
           },
         ];
       });

@@ -21,7 +21,7 @@ import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
-import { registerSettingsHandlers } from "./app/settings";
+import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
 import { registerSetupHandlers } from "./app/setup";
 import { registerTaskHandlers } from "./app/tasks";
 import { registerWorkspaceHandlers } from "./app/workspace";
@@ -166,7 +166,11 @@ app
         },
         (engine) => {
           const settings = ctx.database?.getSettings();
-          return (engine === "claude" ? settings?.claudeEffort : settings?.codexEffort) ?? null;
+          if (engine === "claude") return settings?.claudeEffort ?? null;
+          const effort = settings?.codexEffort ?? null;
+          // A level the chosen model doesn't accept falls back to the model's default.
+          const accepted = codexEffortsFor(settings?.codexModel ?? null);
+          return effort && accepted && !accepted.includes(effort) ? null : effort;
         },
       ),
       deliverTaskEvent,

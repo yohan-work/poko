@@ -813,7 +813,18 @@ describe("CodexAppServerProvider", () => {
             id: message.id,
             result: {
               data: [
-                { id: "a", model: "gpt-a", displayName: "GPT-A", isDefault: true, hidden: false },
+                {
+                  id: "a",
+                  model: "gpt-a",
+                  displayName: "GPT-A",
+                  isDefault: true,
+                  hidden: false,
+                  supportedReasoningEfforts: [
+                    { reasoningEffort: "low" },
+                    { reasoningEffort: "high" },
+                    { reasoningEffort: "ultra" },
+                  ],
+                },
                 { id: "b", model: "gpt-b", displayName: "GPT-B", hidden: true },
                 { id: "c", model: "gpt-c", hidden: false },
               ],
@@ -822,7 +833,7 @@ describe("CodexAppServerProvider", () => {
       }
     });
     expect(await providerFor(server).listModels()).toEqual([
-      { id: "gpt-a", label: "GPT-A", isDefault: true },
+      { id: "gpt-a", label: "GPT-A", isDefault: true, efforts: ["low", "high"] },
       { id: "gpt-c", label: "gpt-c" },
     ]);
     expect(server.killed).toBe(true);
