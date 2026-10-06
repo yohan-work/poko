@@ -43,6 +43,8 @@ export const IPC_CHANNELS = {
   quickResize: "quick:resize",
   /** The panel's yes or no to its answer's memory suggestion. */
   quickRemember: "quick:remember",
+  /** Starts macOS Dictation in the focused text field of the asking window. */
+  dictationStart: "dictation:start",
   /** main → quick panel: what the panel shows. */
   quickState: "quick:state",
   /** The running task and its pending approval cards, for a main window that just opened. */

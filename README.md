@@ -47,6 +47,7 @@ Screenshots use sample data.
 - [x] Notifications when a task ends or needs approval while Poko isn't in front
 - [x] Search conversations by title and message
 - [x] Poko suggests memories from what you say; nothing is saved without your yes
+- [x] Ask by voice with macOS Dictation from the composer or the quick panel
 
 ## What Poko is aiming for
 

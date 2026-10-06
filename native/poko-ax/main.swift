@@ -4,6 +4,8 @@
 //   poko-ax windows              -> {"windows": [{id, pid, owner, bundleId, title, frame}]}
 //   poko-ax snapshot <windowId>  -> {"window": {...}, "elements": [...]} or {"error": ...}
 //   poko-ax raise <windowId>     -> brings the window to the front
+//   poko-ax dictate <pid>        -> presses Start Dictation in Poko's own Edit menu (pid must be
+//                                   the helper's parent, so it never touches another app)
 //   poko-ax act <windowId>       -> reads {kind, path, role, label, frame, text?, intent?,
 //                                   ignorePid?} from stdin; kind "check" only validates (for
 //                                   the action named by `intent`).
@@ -518,6 +520,35 @@ case "raise":
   AXUIElementPerformAction(window, kAXRaiseAction as CFString)
   usleep(300_000)
   emit(["ok": true])
+case "dictate":
+  // AppKit adds Start Dictation to the Edit menu; pressing it starts Dictation in the focused
+  // field. Only Poko's own process (the helper's parent) is accepted.
+  guard args.count > 2, let pid = Int32(args[2]) else { fail("usage", "dictate <pid>") }
+  guard pid == getppid() else { fail("not_parent", "Only Poko's own menu can be pressed.") }
+  guard AXIsProcessTrusted() else { fail("no_accessibility", "Accessibility permission is missing.") }
+  let poko = AXUIElementCreateApplication(pid)
+  func children(_ element: AXUIElement) -> [AXUIElement] {
+    var value: AnyObject?
+    AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value)
+    return value as? [AXUIElement] ?? []
+  }
+  var menuBar: AnyObject?
+  AXUIElementCopyAttributeValue(poko, kAXMenuBarAttribute as CFString, &menuBar)
+  guard let bar = menuBar else { fail("not_found", "Poko has no menu bar.") }
+  for top in children(bar as! AXUIElement) {
+    for menu in children(top) {
+      for item in children(menu) {
+        var identifier: AnyObject?
+        AXUIElementCopyAttributeValue(item, "AXIdentifier" as CFString, &identifier)
+        if identifier as? String == "startDictation:" {
+          let result = AXUIElementPerformAction(item, kAXPressAction as CFString)
+          if result == .success { emit(["ok": true]) } else { fail("press_failed", "\(result.rawValue)") }
+          exit(0)
+        }
+      }
+    }
+  }
+  fail("not_found", "Start Dictation is not in the Edit menu.")
 case "task-processes":
   // Processes left behind by one Poko command task, identified by their sandbox profile.
   guard args.count > 3, args[2].hasPrefix("/"), args[3].hasPrefix("/") else {

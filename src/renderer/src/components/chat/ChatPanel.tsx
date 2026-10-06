@@ -6,6 +6,7 @@ import { ApprovalCard } from "./ApprovalCard";
 import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
 import { EffortSelect, ModelSelect } from "./ModelSelect";
+import { DictationButton } from "./DictationButton";
 import { EditNoteItem } from "./EditNoteItem";
 import {
   type ChatAttachment,
@@ -209,6 +210,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             <Icon name="screen" />
             <span>화면 보기</span>
           </button>
+          <DictationButton target={inputRef} disabled={isSending} />
           <button
             className="composer__mode"
             type="button"
