@@ -45,7 +45,7 @@ A routine starts without the user's approval each time, so it is held to a narro
   - **every outcome marks its slot handled.** A run, a skip because the folder is gone, and a skip after the busy wait all set `lastSlotAt`, so the same slot is never retried;
   - a one-minute timer in main, which also checks right after startup and after `powerMonitor` `resume` / `unlock-screen`;
   - times are local. Daylight-saving changes are handled by computing slots from local calendar fields.
-- **Running a routine:** `startRoutineTask(routine)` in `electron/app/context.ts` is the routine's own entry point, sharing the message path's guards:
+- **Running a routine:** `startRoutineTask(routine)` in `electron/app/routines.ts` is the routine's own entry point, sharing the message path's guards:
   - it counts in `startingTasks` and refuses while 모든 데이터 삭제 is running, like `handleTaskStart`;
   - it checks busy before and after resolving the folder, like `startConversationTask`;
   - it uses the **routine's** folder, not the selected one;
@@ -94,3 +94,9 @@ A routine starts without the user's approval each time, so it is held to a narro
 - Running while Poko is quit (a launch agent or login item).
 - Poko proposing a routine from the conversation, e.g. from a `routine` memory.
 - Sending results anywhere outside Poko (email, Slack).
+
+## Status
+
+- **Milestone 1 (storage and scheduler) is done.**
+  - It includes the `routines:list/save/delete/run` IPC that the page will use. The checks run in main.
+  - Run results go to `lastResult` when the task ends (`recordRoutineEnd` in `deliverTaskEvent`).

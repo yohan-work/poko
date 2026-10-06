@@ -23,6 +23,8 @@ import {
   type OverlayScene,
   type PersistedMemory,
   type PersistedMessage,
+  type Routine,
+  type RoutineInput,
   type ScreenLookResponse,
   type ScreenStatus,
   type ScreenWindow,
@@ -92,6 +94,15 @@ const pokoApi = {
         ipcRenderer.removeListener(IPC_CHANNELS.taskStarted, handler);
       };
     },
+  },
+  routines: {
+    list: (): Promise<Routine[]> => ipcRenderer.invoke(IPC_CHANNELS.routinesList),
+    save: (input: RoutineInput): Promise<{ routine: Routine } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.routinesSave, input),
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.routinesDelete, id),
+    /** 지금 실행: starts the routine now, outside its schedule. */
+    run: (id: string): Promise<{ ok: true } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.routinesRun, id),
   },
   /** macOS Dictation in the focused text field; resolves false where it isn't available. */
   dictation: {

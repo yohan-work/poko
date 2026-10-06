@@ -43,6 +43,10 @@ export const IPC_CHANNELS = {
   quickResize: "quick:resize",
   /** The panel's yes or no to its answer's memory suggestion. */
   quickRemember: "quick:remember",
+  routinesList: "routines:list",
+  routinesSave: "routines:save",
+  routinesDelete: "routines:delete",
+  routinesRun: "routines:run",
   /** Starts macOS Dictation in the focused text field of the asking window. */
   dictationStart: "dictation:start",
   /** main → quick panel: what the panel shows. */
@@ -522,4 +526,69 @@ export function hideMemoryTag(text: string): string {
   return partial && "<poko-memory".startsWith(partial[0])
     ? text.slice(0, partial.index).trimEnd()
     : text;
+}
+
+/** When a routine runs: local times; an interval counts from when the routine was last set. */
+export type RoutineSchedule =
+  | { kind: "daily"; time: string }
+  | { kind: "weekly"; days: number[]; time: string }
+  | { kind: "interval"; hours: number };
+
+/** How a routine's last run went. */
+export interface RoutineResult {
+  status: "running" | "completed" | "failed" | "skipped";
+  /** Why it was skipped or failed, in plain Korean. */
+  message?: string;
+  at: string;
+}
+
+export interface Routine {
+  id: string;
+  title: string;
+  prompt: string;
+  schedule: RoutineSchedule;
+  workspacePath: string;
+  conversationId: string | null;
+  enabled: boolean;
+  lastRunAt: string | null;
+  lastResult: RoutineResult | null;
+  /** The next scheduled run while enabled, for the page. */
+  nextRunAt: string | null;
+}
+
+/** What the page sends to create (no id) or change a routine; main checks it again. */
+export interface RoutineInput {
+  id?: string;
+  title: string;
+  prompt: string;
+  schedule: RoutineSchedule;
+  enabled: boolean;
+}
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** A schedule from outside main, or null when any part of it is off. */
+export function readRoutineSchedule(raw: unknown): RoutineSchedule | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const value = raw as Record<string, unknown>;
+  if (value.kind === "daily" && typeof value.time === "string" && TIME.test(value.time))
+    return { kind: "daily", time: value.time };
+  if (
+    value.kind === "weekly" &&
+    typeof value.time === "string" &&
+    TIME.test(value.time) &&
+    Array.isArray(value.days) &&
+    value.days.length > 0 &&
+    value.days.length <= 7 &&
+    value.days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+  )
+    return { kind: "weekly", days: [...new Set(value.days as number[])].sort(), time: value.time };
+  if (
+    value.kind === "interval" &&
+    Number.isInteger(value.hours) &&
+    (value.hours as number) >= 1 &&
+    (value.hours as number) <= 24
+  )
+    return { kind: "interval", hours: value.hours as number };
+  return null;
 }

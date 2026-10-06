@@ -110,4 +110,24 @@ describe("AgentCore", () => {
     await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(2));
     expect(publish.mock.calls[1][0].event).toEqual({ type: "completed", result: answer });
   });
+
+  it("runs a routine read-only and unattended, with no memory suggestion", async () => {
+    const publish = vi.fn();
+    const seen: AgentTask[] = [];
+    const answer = '정리했어요.\n<poko-memory type="fact">x</poko-memory>';
+    const provider: AgentProvider = {
+      async *runTask(task) {
+        seen.push(task);
+        yield { type: "completed", result: answer };
+      },
+    };
+    const core = new AgentCore(provider, publish);
+    core.startTask({ prompt: "변경 사항 정리해 줘", cwd: "/w", editsEnabled: true, routine: true });
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    expect(seen[0].editsEnabled).toBe(false);
+    expect(seen[0].prompt).toContain("scheduled, unattended, read-only run");
+    expect(seen[0].prompt).not.toContain("poko-memory");
+    expect(seen[0].prompt).not.toContain("‘읽기 전용’ button");
+    expect(publish.mock.calls[0][0].event).toEqual({ type: "completed", result: answer });
+  });
 });

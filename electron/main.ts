@@ -20,6 +20,7 @@ import { showTray } from "./quick/tray";
 import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
 import { registerDictationHandlers } from "./app/dictation";
+import { registerRoutineHandlers, startRoutineScheduler } from "./app/routines";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
 import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
@@ -60,6 +61,7 @@ function registerIpcHandlers(): void {
   registerDataHandlers();
   registerQuickHandlers();
   registerDictationHandlers();
+  registerRoutineHandlers();
 }
 
 async function createWindow(): Promise<void> {
@@ -193,6 +195,8 @@ app
     await createWindow();
     applyQuickShortcut(ctx.database.getSettings().quickShortcut);
     refreshTray();
+    // Routines run while Poko runs, window open or not (see docs/phases/phase-15.md).
+    startRoutineScheduler();
 
     // The hidden main window, the quick panel, and the overlay all count as windows, so a Dock
     // click shows the main window instead of checking whether any window exists.
