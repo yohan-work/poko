@@ -41,7 +41,7 @@ A routine starts without the user's approval each time, so it is held to a narro
   - 모든 데이터 삭제 deletes routines too, since they are the user's data.
 - **Scheduler** (`electron/routines/`):
   - a pure `nextRun(schedule, after)` function and a pure `dueRuns(routines, now)` function, both unit-tested with fixed clocks;
-  - **a slot is due** when it is after `lastSlotAt` and after `scheduleChangedAt` (set when the routine is created, edited, or turned back on), and on the same local day as `now`. Creating or editing a routine therefore never runs it for a time already past;
+  - **a slot is due** when it is after `lastSlotAt` and after `scheduleChangedAt` (set when the routine is created, edited, or turned back on), and on the same local day as `now` or at most 35 minutes old (so a run just before midnight, or one waiting for Poko, isn't lost). Creating or editing a routine therefore never runs it for a time already past;
   - **every outcome marks its slot handled.** A run, a skip because the folder is gone, and a skip after the busy wait all set `lastSlotAt`, so the same slot is never retried;
   - a one-minute timer in main, which also checks right after startup and after `powerMonitor` `resume` / `unlock-screen`;
   - times are local. Daylight-saving changes are handled by computing slots from local calendar fields.

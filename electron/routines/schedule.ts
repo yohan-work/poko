@@ -43,6 +43,12 @@ export function nextRun(schedule: RoutineSchedule, anchor: Date, after: Date): D
   return null;
 }
 
+/**
+ * How long a scheduled time stays due across midnight: the 30-minute busy wait plus a few
+ * minutes for the one-minute check, so a run just before midnight isn't lost.
+ */
+export const DUE_GRACE_MS = 35 * 60 * 1000;
+
 const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() &&
   a.getMonth() === b.getMonth() &&
@@ -51,8 +57,8 @@ const sameDay = (a: Date, b: Date) =>
 /**
  * The slot a routine should run for now, or null. A slot counts only when it is newer than the
  * last one handled (run or skipped) and than the last time the routine was set, and falls on
- * today: a run missed on an earlier day is skipped, and setting a routine never runs it for a
- * time already past.
+ * today (or is only minutes old, across midnight): a run missed on an earlier day is skipped,
+ * and setting a routine never runs it for a time already past.
  */
 export function dueSlot(
   routine: { schedule: RoutineSchedule; scheduleChangedAt: Date; lastSlotAt: Date | null },
@@ -62,5 +68,5 @@ export function dueSlot(
   if (!slot) return null;
   if (slot <= routine.scheduleChangedAt) return null;
   if (routine.lastSlotAt && slot <= routine.lastSlotAt) return null;
-  return sameDay(slot, now) ? slot : null;
+  return sameDay(slot, now) || now.getTime() - slot.getTime() <= DUE_GRACE_MS ? slot : null;
 }

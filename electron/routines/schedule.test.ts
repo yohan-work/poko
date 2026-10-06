@@ -37,6 +37,16 @@ describe("routine schedules", () => {
     expect(dueSlot(routine, local(7, 8))).toBeNull();
   });
 
+  it("keeps a time just before midnight due for a while after it", () => {
+    const routine = {
+      schedule: { kind: "daily" as const, time: "23:45" },
+      scheduleChangedAt: local(1, 0),
+      lastSlotAt: null,
+    };
+    expect(dueSlot(routine, local(7, 0, 15))).toEqual(local(6, 23, 45));
+    expect(dueSlot(routine, local(7, 0, 25))).toBeNull();
+  });
+
   it("never runs for a time that passed before the routine was set", () => {
     const routine = {
       schedule: { kind: "daily" as const, time: "09:00" },
