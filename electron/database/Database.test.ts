@@ -206,6 +206,12 @@ describe("PokoDatabase", () => {
     expect(percent[0].snippet).toContain("50% 할인");
     expect(database.searchConversations("dist")[0]).toMatchObject({ title: "배포 방법 알려줘" });
     expect(database.searchConversations("_")).toEqual([]);
+    // Many recent matches never crowd out an older conversation.
+    for (let index = 0; index < 30; index += 1) {
+      const task = database.createTask(`최근 ${index}`, "/tmp/project");
+      database.recordTaskEvent(task, "completed", "끝", "프로젝트 이야기");
+    }
+    expect(database.searchConversations("프로젝트", 100)).toHaveLength(31);
     expect(database.searchConversations("  ")).toEqual([]);
     database.close();
   });

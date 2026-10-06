@@ -170,7 +170,8 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Escape") setQuery("");
+                // Escape while composing (Korean IME) only cancels the syllable.
+                if (event.key === "Escape" && !event.nativeEvent.isComposing) setQuery("");
               }}
               placeholder="대화 검색"
               maxLength={200}

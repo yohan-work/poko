@@ -778,22 +778,32 @@ export class PokoDatabase {
       .from(conversations)
       .where(sql`${conversations.title} LIKE ${pattern} ESCAPE '\\'`)
       .all();
-    const hits = this.db
-      .select({ conversationId: messages.conversationId, content: messages.content })
+    // Grouped by conversation first, so a common word can't crowd out older conversations.
+    const inMessages = this.db
+      .selectDistinct({ conversationId: messages.conversationId })
       .from(messages)
       .where(sql`${messages.content} LIKE ${pattern} ESCAPE '\\'`)
-      .orderBy(desc(messages.createdAt))
-      .limit(1000)
       .all();
-    const snippets = new Map<string, string>();
-    for (const hit of hits)
-      if (!snippets.has(hit.conversationId))
-        snippets.set(hit.conversationId, snippetAround(hit.content, needle));
-    const ids = new Set([...titled.map((row) => row.id), ...snippets.keys()]);
-    return this.listConversations()
+    const ids = new Set([
+      ...titled.map((row) => row.id),
+      ...inMessages.map((row) => row.conversationId),
+    ]);
+    const found = this.listConversations()
       .filter((conversation) => ids.has(conversation.id))
-      .slice(0, limit)
-      .map((conversation) => ({ ...conversation, snippet: snippets.get(conversation.id) ?? null }));
+      .slice(0, limit);
+    // Only the shown conversations need a snippet: their newest matching message.
+    return found.map((conversation) => {
+      const hit = this.db
+        .select({ content: messages.content })
+        .from(messages)
+        .where(
+          sql`${messages.conversationId} = ${conversation.id} AND ${messages.content} LIKE ${pattern} ESCAPE '\\'`,
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1)
+        .get();
+      return { ...conversation, snippet: hit ? snippetAround(hit.content, needle) : null };
+    });
   }
 
   searchMemories(query: string): MemoryRecord[] {
