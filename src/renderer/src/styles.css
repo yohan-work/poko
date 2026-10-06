@@ -2915,3 +2915,119 @@ html.is-quick body {
   width: 14px;
   height: 14px;
 }
+
+.routine-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 12px;
+  list-style: none;
+}
+
+.routine-card,
+.routine-form {
+  display: grid;
+  padding: 16px 18px;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.routine-card[data-enabled="false"] {
+  opacity: 0.7;
+}
+
+.routine-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.routine-card__title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.routine-card__prompt {
+  margin: 0;
+  color: var(--color-text-soft);
+  white-space: pre-wrap;
+}
+
+.routine-card__meta,
+.routine-card__result,
+.routine-card__message,
+.routine-form__folder {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: 0.84rem;
+}
+
+.routine-card__result[data-status="failed"],
+.routine-card__result[data-status="skipped"] {
+  color: var(--color-error);
+}
+
+.routine-card__actions {
+  display: flex;
+  margin-top: 4px;
+  align-items: center;
+  gap: 8px;
+}
+
+.routine-card__delete {
+  color: var(--color-error);
+}
+
+.routine-form__field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.86rem;
+}
+
+.routine-form__field > span {
+  color: var(--color-text-soft);
+}
+
+.routine-form input,
+.routine-form textarea,
+.routine-form select {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.routine-form__when {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.routine-form__days {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  border: 0;
+}
+
+.routine-form__day {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-soft);
+  cursor: pointer;
+}
+
+.routine-form__day.is-active {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}

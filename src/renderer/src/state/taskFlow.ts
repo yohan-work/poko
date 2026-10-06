@@ -192,7 +192,21 @@ async function focusConversation(conversationId: string): Promise<void> {
     await adoptTask(live.taskId, conversationId);
     return;
   }
-  await switchConversation(conversationId);
+  // Already on screen (a routine that ran in the background): load it again, so its new
+  // messages show.
+  const state = store.getState();
+  if (state.activeConversationId === conversationId && !state.isSending) {
+    const response = await window.poko.conversations.open(conversationId).catch(() => null);
+    const now = store.getState();
+    // Only if that conversation is still the one on screen.
+    if (
+      response &&
+      !("error" in response) &&
+      !now.isSending &&
+      now.activeConversationId === conversationId
+    )
+      store.setState({ messages: response.messages, conversationError: null });
+  } else await switchConversation(conversationId);
   store.setState({ activeView: "conversation" });
 }
 
@@ -465,6 +479,14 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
         ...state.tasks.filter((task) => task.id !== notice.taskId),
       ].slice(0, 50),
     }));
+    // A run in the conversation on screen (a routine's) is taken over, so it shows live.
+    const state = store.getState();
+    if (
+      state.activeView === "conversation" &&
+      state.activeConversationId === notice.conversation.id &&
+      !state.isSending
+    )
+      void adoptTask(notice.taskId, notice.conversation.id);
   });
   poko?.app?.onFocusConversation?.((id) => void focusConversation(id));
 }

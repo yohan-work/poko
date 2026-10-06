@@ -56,6 +56,11 @@ const paths = {
     </>
   ),
   plus: <path d="M10 4.5v11M4.5 10h11" />,
+  repeat: (
+    <>
+      <path d="M4 9V8a3 3 0 0 1 3-3h8l-2-2M16 11v1a3 3 0 0 1-3 3H5l2 2" />
+    </>
+  ),
   more: (
     <>
       <circle cx="5" cy="10" r="1.2" />
