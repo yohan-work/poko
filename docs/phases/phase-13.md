@@ -169,3 +169,10 @@ Verified in the built app:
   - It runs as a normal 화면 보기 task (`startScreenLook`, shared with the main window's picker), so Poko also flies to what it mentions.
   - It starts a new conversation and can be continued with 앱에서 이어서.
 - **Screen answers:** citations of elements with no name or known role (plain text blocks) are dropped from the text instead of reading "‘이 부분’". Poko still flies to them.
+
+## Follow-up: task notifications
+
+- **When:** a macOS notification is shown when a task **completes, fails, or waits for approval** while no Poko window is focused, for example with the main window hidden, the quick panel closed, or another app in front. Cancels and progress don't notify.
+- **Content:** the body is one short plain line (Markdown stripped, at most 120 characters): the answer, the error, or the approval summary.
+- **Clicking** opens the main window on that conversation (`app:focus-conversation`). A waiting approval is adopted there with its card.
+- **Setting:** 설정 → 알림 → 작업 알림, on by default.
