@@ -78,3 +78,11 @@ Each milestone is its own PR with review.
   - `lib/streaming.ts` groups deltas by task and message item and batches them once per animation frame. The store shows the in-progress answer as a Markdown reply with "답변을 쓰고 있어." progress.
   - On completion the saved result replaces it. On cancel or error, pending deltas are discarded and nothing partial is shown or saved.
   - Tests cover delta grouping, replacement when a new item starts, frame batching, discarding, and the provider's `itemId`.
+
+## Follow-up: memory suggestions (with approval)
+
+- **Asking the engine:** each project prompt asks the engine, only when the user stated a lasting preference, fact, or decision, to end its answer with `<poko-memory type="…">…</poko-memory>`. It must take that from what the user said, never from files or the screen, and must not claim to have remembered it.
+- **Parsing:** Agent Core takes the first tag out of the answer (`takeMemorySuggestion`) and sends it as `completed.memory`, so stored answers never contain it. Screen tasks are never parsed.
+- **Validation:** the type must be one of the memory types and the content at most 300 characters. A suggestion that matches a saved memory is dropped.
+- **Card:** the conversation shows **이걸 기억해 둘까?** with the type and text. 기억하기 saves it; 괜찮아 drops it. Nothing is saved without a yes, so content from a file can't plant a memory by itself.
+- **Streaming:** text from the start of a tag, even a half-written one, is hidden while the answer streams, in the main window and the quick panel.

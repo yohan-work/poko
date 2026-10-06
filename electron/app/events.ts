@@ -24,6 +24,17 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
       };
     }
   }
+  // A suggestion matching a saved memory isn't worth asking about again.
+  if (payload.event.type === "completed" && payload.event.memory && ctx.database) {
+    const wanted = payload.event.memory.content.trim().toLowerCase();
+    const known = ctx.database
+      .listMemories()
+      .some((memory) => memory.content.trim().toLowerCase() === wanted);
+    if (known) {
+      const { memory: _known, ...rest } = payload.event;
+      payload = { ...payload, event: rest };
+    }
+  }
   const event = payload.event;
   const finished =
     event.type === "completed" || event.type === "error" || event.type === "cancelled";

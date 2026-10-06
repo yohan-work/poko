@@ -135,7 +135,8 @@ export type AgentEvent =
   | { type: "tool"; tool: string; detail?: string }
   /** `itemId` groups deltas by agent message, so the UI can replace text when a new message starts. */
   | { type: "output"; content: string; itemId?: string }
-  | { type: "completed"; result: string }
+  /** `memory`: something the answer suggests remembering; saved only if the user agrees. */
+  | { type: "completed"; result: string; memory?: MemorySuggestion }
   | { type: "cancelled" }
   | {
       type: "approvalRequired";
@@ -445,4 +446,45 @@ export function isReasoningEffort(value: unknown): value is ReasoningEffort {
 export interface ConversationMatch extends PersistedConversation {
   /** A short piece of the newest message that matched, or null when only the title did. */
   snippet: string | null;
+}
+
+/** A memory the engine suggested from the conversation; the user decides whether to keep it. */
+export interface MemorySuggestion {
+  type: MemoryInput["type"];
+  content: string;
+}
+
+const MEMORY_TAG =
+  /<poko-memory\s+type="(preference|project|person|decision|fact|routine)">([\s\S]*?)<\/poko-memory>/;
+
+/**
+ * Splits an answer into the text to show and an optional memory suggestion. The engine is
+ * asked to add `<poko-memory type="…">…</poko-memory>` when the user said something worth
+ * keeping; only the first one counts, and every tag is removed from the text.
+ */
+export function takeMemorySuggestion(answer: string): {
+  text: string;
+  memory: MemorySuggestion | null;
+} {
+  const match = MEMORY_TAG.exec(answer);
+  const content = match?.[2].replace(/\s+/g, " ").trim() ?? "";
+  const text = answer.replace(/<poko-memory[\s\S]*?<\/poko-memory>/g, "").trimEnd();
+  return {
+    text,
+    memory:
+      match && content && content.length <= 300
+        ? { type: match[1] as MemorySuggestion["type"], content }
+        : null,
+  };
+}
+
+/** Streaming text without a memory tag, even a half-written one at the end. */
+export function hideMemoryTag(text: string): string {
+  const start = text.indexOf("<poko-memory");
+  if (start >= 0) return text.slice(0, start).trimEnd();
+  // A tag still being written: "<", "<pok", "<poko-mem", …
+  const partial = /<p?o?k?o?-?m?e?m?o?r?y?$/.exec(text);
+  return partial && partial[0].length > 0 && "<poko-memory".startsWith(partial[0])
+    ? text.slice(0, partial.index).trimEnd()
+    : text;
 }

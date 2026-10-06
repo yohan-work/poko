@@ -46,6 +46,7 @@ Screenshots use sample data.
 - [x] Drop or paste files and images into the message box (Phase 14)
 - [x] Notifications when a task ends or needs approval while Poko isn't in front
 - [x] Search conversations by title and message
+- [x] Poko suggests memories from what you say; nothing is saved without your yes
 
 ## What Poko is aiming for
 

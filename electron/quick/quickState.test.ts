@@ -11,7 +11,7 @@ describe("reduceQuickState", () => {
   };
 
   it("streams text, replaces it on a new message, and finishes with the result", () => {
-    const item = { current: null as string | null };
+    const item = { current: null as string | null, raw: "" };
     let state = reduceQuickState(running, { type: "output", content: "안", itemId: "m1" }, item);
     state = reduceQuickState(state, { type: "output", content: "녕", itemId: "m1" }, item);
     expect(state.answer).toBe("안녕");
@@ -22,7 +22,7 @@ describe("reduceQuickState", () => {
   });
 
   it("hands approvals to the app without their details, and shows errors plainly", () => {
-    const item = { current: null };
+    const item = { current: null, raw: "" };
     const approval = reduceQuickState(
       running,
       {
@@ -48,7 +48,7 @@ describe("reduceQuickState", () => {
   });
 
   it("keeps the approval phase through output until the app answers", () => {
-    const item = { current: null };
+    const item = { current: null, raw: "" };
     const waiting = {
       ...running,
       phase: "approval" as const,

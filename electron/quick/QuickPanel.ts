@@ -15,7 +15,7 @@ export class QuickPanel {
   private state: QuickState = IDLE_STATE;
   /** The last height that fits the panel's content (see resize). */
   private height = HEIGHT;
-  private readonly itemId = { current: null as string | null };
+  private readonly itemId = { current: null as string | null, raw: "" };
 
   constructor(
     private readonly preloadPath: string,
@@ -82,6 +82,7 @@ export class QuickPanel {
   /** A new question started a task. */
   begin(question: string, taskId: string, conversationId: string): void {
     this.itemId.current = null;
+    this.itemId.raw = "";
     this.state = {
       ...this.state,
       phase: "running",

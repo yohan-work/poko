@@ -32,7 +32,14 @@ export function isTaskEventPayload(value: unknown): value is TaskEventPayload {
         (event.itemId === undefined || typeof event.itemId === "string")
       );
     case "completed":
-      return typeof event.result === "string";
+      return (
+        typeof event.result === "string" &&
+        (event.memory === undefined ||
+          (typeof event.memory === "object" &&
+            event.memory !== null &&
+            typeof (event.memory as { content?: unknown }).content === "string" &&
+            typeof (event.memory as { type?: unknown }).type === "string"))
+      );
     case "error":
       return typeof event.error === "string";
     case "approvalRequired":

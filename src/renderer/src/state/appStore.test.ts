@@ -196,6 +196,31 @@ describe("sending a message", () => {
   });
 });
 
+describe("memory suggestions", () => {
+  it("shows a suggested memory after an answer and saves it only on yes", async () => {
+    const saved: unknown[] = [];
+    (world.poko as unknown as { memory: unknown }).memory = {
+      save: async (input: unknown) => {
+        saved.push(input);
+        return true;
+      },
+      search: async () => [],
+    };
+    const sending = store.getState().sendMessage("앞으로 답은 짧게 해 줘");
+    world.replyToStart({ taskId: "t1", conversation: conversation("a") });
+    await sending;
+    world.emit("t1", {
+      type: "completed",
+      result: "좋아요.",
+      memory: { type: "preference", content: "답은 짧게" },
+    });
+    expect(store.getState().memorySuggestion).toEqual({ type: "preference", content: "답은 짧게" });
+    await store.getState().answerMemorySuggestion(false);
+    expect(saved).toEqual([]);
+    expect(store.getState().memorySuggestion).toBeNull();
+  });
+});
+
 describe("switching conversations", () => {
   it("refuses to switch while sending, but returning to the shown conversation is fine", async () => {
     void store.getState().sendMessage("질문");

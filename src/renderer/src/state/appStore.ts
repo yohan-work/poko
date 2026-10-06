@@ -9,6 +9,7 @@ import type {
   ClaudeSetup,
   DataExportResult,
   EngineId,
+  MemorySuggestion,
   ModelOption,
   PendingApprovalEvent,
   DeleteAllResponse,
@@ -124,6 +125,10 @@ interface AppState {
   streaming: StreamingAnswer | null;
   /** Oldest first; Codex may ask again before the user answers. */
   pendingApprovals: PendingApproval[];
+  /** A memory the last answer suggested, waiting for the user's yes or no. */
+  memorySuggestion: MemorySuggestion | null;
+  /** Saves the suggested memory (yes) or drops it (no). */
+  answerMemorySuggestion: (keep: boolean) => Promise<void>;
   /** A task started elsewhere (the quick panel) is running, so this window can't start one. */
   busyElsewhere: boolean;
   /** A task started elsewhere waits for approval in this conversation (null: unknown yet). */
@@ -280,6 +285,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeTaskId: null,
   streaming: null,
   pendingApprovals: [],
+  memorySuggestion: null,
+  answerMemorySuggestion: async (keep) => {
+    const suggestion = get().memorySuggestion;
+    set({ memorySuggestion: null });
+    if (keep && suggestion)
+      await get().saveMemory({ type: suggestion.type, content: suggestion.content, importance: 3 });
+  },
   busyElsewhere: false,
   foreignApproval: null,
   showForeignTask: async () => {
@@ -1037,6 +1049,7 @@ async function switchConversation(id: string | null): Promise<void> {
       activeView: "conversation",
       activeConversationId: id,
       editNotes: [],
+      memorySuggestion: null,
       messages: response.messages,
       streaming: null,
       errorMessage: null,
@@ -1202,6 +1215,13 @@ function applyTaskEvent(payload: TaskEventPayload): void {
         : state.pendingApprovals.filter((item) => item.taskId !== taskId);
 
     return {
+      // A new answer replaces an unanswered suggestion; a suggestion comes with its answer.
+      memorySuggestion:
+        event.type === "completed"
+          ? (event.memory ?? null)
+          : status
+            ? null
+            : state.memorySuggestion,
       characterState:
         status === null && pendingApprovals.length > 0 ? "approval" : eventCharacterState(event),
       errorMessage: event.type === "error" ? event.error : null,

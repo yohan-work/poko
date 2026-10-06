@@ -2819,3 +2819,39 @@ html.is-quick body {
   min-width: 0;
   flex: 1 1 0;
 }
+
+/* Memory suggestion */
+
+.memory-suggestion {
+  display: grid;
+  margin: 4px 0 4px 40px;
+  padding: 12px 14px;
+  gap: 8px;
+  border: 1px dashed var(--color-accent-border);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  list-style: none;
+}
+
+.memory-suggestion__title {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 0.82rem;
+}
+
+.memory-suggestion__content {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.memory-suggestion__type {
+  margin-right: 8px;
+  color: var(--color-accent);
+  font-size: 0.78rem;
+}
+
+.memory-suggestion__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
