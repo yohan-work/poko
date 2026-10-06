@@ -75,8 +75,12 @@ export class QuickPanel {
   }
 
   /** The window that was in front when the panel opened (see app/quick.ts). */
-  setScreen(screen: QuickState["screen"], screenHint: string | null): void {
-    this.state = { ...this.state, screen, screenHint };
+  setScreen(
+    screen: QuickState["screen"],
+    screenHint: string | null,
+    selection: QuickState["selection"],
+  ): void {
+    this.state = { ...this.state, screen, screenHint, selection };
   }
 
   /** A new question started a task. */
@@ -98,8 +102,17 @@ export class QuickPanel {
 
   /** A question that couldn't start: busy, no folder, and so on. */
   refuse(question: string, message: string): void {
-    const { screen, screenHint, opened } = this.state;
-    this.state = { ...IDLE_STATE, phase: "error", question, message, screen, screenHint, opened };
+    const { screen, screenHint, selection, opened } = this.state;
+    this.state = {
+      ...IDLE_STATE,
+      phase: "error",
+      question,
+      message,
+      screen,
+      screenHint,
+      selection,
+      opened,
+    };
     this.send();
   }
 

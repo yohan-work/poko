@@ -185,3 +185,12 @@ Verified in the built app:
   - the helper accepts only its parent's pid, so it never presses another app's menu;
   - it needs Accessibility permission, which screen tasks already use.
 - **When it fails:** the button says to press fn twice instead.
+
+## Follow-up: asking about selected text
+
+- **What the user does:** selects text in any app and opens the quick panel. A chip shows the start of the selection, already included ("선택한 글과 함께"), and the input asks what to do with it. Clicking the chip leaves the text out. It and the screen chip exclude each other.
+- **Reading:** `poko-ax selection` reads the focused element of the app in front, before the panel takes focus:
+  - it reads `AXSelectedText`, enabling `AXManualAccessibility` first for Chromium apps;
+  - it never reads Poko itself or a secure (password) field;
+  - it caps the text at 20,000 characters.
+- **Main keeps the text.** The panel gets a one-line preview and the length, and `quick:ask` only says `withSelection`. The text goes to the engine as a text attachment named 선택한 글, so it is fenced as untrusted content, and the conversation shows `📎 선택한 글`.

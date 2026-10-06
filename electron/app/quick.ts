@@ -14,6 +14,14 @@ let registered: string | null = null;
  * app and title, and can only ask to include it, never name another window.
  */
 let frontWindowId: number | null = null;
+/** The text selected in the app in front when the panel opened; the panel sees a preview only. */
+let selectedText: string | null = null;
+
+/** One line for the chip: the selection's start, spaces folded. */
+function selectionPreview(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > 60 ? `${line.slice(0, 60)}…` : line;
+}
 
 /** Why a question can't include the screen right now, or null when it can. */
 async function screenHint(): Promise<string | null> {
@@ -61,9 +69,18 @@ async function openPanel(
   // Everything the chip shows is settled before the panel appears, so it never shows (or sends)
   // a window other than the one recorded here.
   const hint = front ? await screenHint().catch(() => "화면 정보를 확인하지 못했어.") : null;
+  // Read while the other app still has focus; the panel taking focus would clear it.
+  const selected = ctx.screenService?.supported
+    ? await ctx.screenService.selectedText().catch(() => null)
+    : null;
   frontWindowId = front && !hint ? front.id : null;
+  selectedText = selected;
   if (attempt.cancelled) return;
-  panel.setScreen(front ? { app: front.app, title: front.title } : null, hint);
+  panel.setScreen(
+    front ? { app: front.app, title: front.title } : null,
+    hint,
+    selected ? { preview: selectionPreview(selected), chars: selected.length } : null,
+  );
   await panel.show();
 }
 
@@ -85,6 +102,7 @@ export function registerQuickHandlers(): void {
     const request = (typeof raw === "object" && raw !== null ? raw : {}) as {
       question?: unknown;
       withScreen?: unknown;
+      withSelection?: unknown;
     };
     if (
       typeof request.question !== "string" ||
@@ -100,6 +118,12 @@ export function registerQuickHandlers(): void {
       ctx.quickPanel.refuse(question, message);
       return { error: message };
     }
+    // The selection main read when the panel opened, as a text attachment: shown in the
+    // conversation as 📎 선택한 글, and given to the engine as quoted, untrusted text.
+    const selection =
+      request.withSelection === true && windowId === null && selectedText
+        ? [{ kind: "text" as const, name: "선택한 글", text: selectedText }]
+        : [];
     let started: Awaited<ReturnType<typeof startConversationTask>>;
     let recorded: string | null = null;
     try {
@@ -120,7 +144,7 @@ export function registerQuickHandlers(): void {
       };
       started =
         windowId === null
-          ? await startConversationTask(question, null, onRecorded)
+          ? await startConversationTask(question, null, onRecorded, selection)
           : await startScreenLook(windowId, question, null, onRecorded);
     } catch (error) {
       // For example no folder selected: the message is already plain Korean.

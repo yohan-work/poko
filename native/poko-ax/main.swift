@@ -4,6 +4,8 @@
 //   poko-ax windows              -> {"windows": [{id, pid, owner, bundleId, title, frame}]}
 //   poko-ax snapshot <windowId>  -> {"window": {...}, "elements": [...]} or {"error": ...}
 //   poko-ax raise <windowId>     -> brings the window to the front
+//   poko-ax selection            -> {"text": String?}: the text selected in the focused field of
+//                                   the app in front (never Poko's own, never a password field)
 //   poko-ax dictate <pid>        -> presses Start Dictation in Poko's own Edit menu (pid must be
 //                                   the helper's parent, so it never touches another app)
 //   poko-ax act <windowId>       -> reads {kind, path, role, label, frame, text?, intent?,
@@ -520,6 +522,49 @@ case "raise":
   AXUIElementPerformAction(window, kAXRaiseAction as CFString)
   usleep(300_000)
   emit(["ok": true])
+case "selection":
+  // Read when the quick panel opens, before it takes focus. Nothing when Accessibility is off.
+  guard AXIsProcessTrusted() else {
+    emit(["text": NSNull()])
+    exit(0)
+  }
+  guard let front = NSWorkspace.shared.frontmostApplication,
+    front.processIdentifier != getppid()
+  else {
+    emit(["text": NSNull()])
+    exit(0)
+  }
+  let frontApp = AXUIElementCreateApplication(front.processIdentifier)
+  var focused: AnyObject?
+  AXUIElementCopyAttributeValue(frontApp, kAXFocusedUIElementAttribute as CFString, &focused)
+  if focused == nil {
+    // Chromium and Electron apps build their accessibility tree only once asked to.
+    AXUIElementSetAttributeValue(frontApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    usleep(200_000)
+    AXUIElementCopyAttributeValue(frontApp, kAXFocusedUIElementAttribute as CFString, &focused)
+  }
+  guard let field = focused else {
+    emit(["text": NSNull()])
+    exit(0)
+  }
+  let element = field as! AXUIElement
+  var owner: pid_t = 0
+  AXUIElementGetPid(element, &owner)
+  var role: AnyObject?
+  AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+  var subrole: AnyObject?
+  AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole)
+  var selected: AnyObject?
+  AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selected)
+  let secure =
+    (role as? String) == "AXSecureTextField" || (subrole as? String) == "AXSecureTextField"
+  guard owner != getppid(), !secure, let text = selected as? String,
+    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  else {
+    emit(["text": NSNull()])
+    exit(0)
+  }
+  emit(["text": String(text.prefix(20_000))])
 case "dictate":
   // AppKit adds Start Dictation to the Edit menu; pressing it starts Dictation in the focused
   // field. Only Poko's own process (the helper's parent) is accepted.

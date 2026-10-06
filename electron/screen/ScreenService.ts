@@ -160,6 +160,16 @@ export class ScreenService {
     parseActResult(await runHelper(this.helperPath, ["raise", String(windowId)]));
   }
 
+  /** The text selected in the app in front, or null (none, a password field, or no permission). */
+  async selectedText(): Promise<string | null> {
+    const result = await runHelper(this.helperPath, ["selection"]);
+    const text =
+      typeof result === "object" && result !== null && "text" in result
+        ? (result as { text: unknown }).text
+        : null;
+    return typeof text === "string" && text.trim() ? text.slice(0, 20_000) : null;
+  }
+
   /** Presses Start Dictation in Poko's own Edit menu; the helper accepts only its parent. */
   async dictate(): Promise<void> {
     parseActResult(await runHelper(this.helperPath, ["dictate", String(process.pid)]));

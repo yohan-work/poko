@@ -376,6 +376,11 @@ export interface QuickState {
   screen: { app: string; title: string } | null;
   /** Why the window can't be included right now (permissions, notice), or null. */
   screenHint: string | null;
+  /**
+   * The text selected in the app in front when the panel opened: only a preview and its
+   * length; main keeps the text and adds it when the user asks with it.
+   */
+  selection: { preview: string; chars: number } | null;
   /** Counts openings, so the panel resets "include the screen" each time it opens. */
   opened: number;
   /** A memory the panel's answer suggested; main keeps it and saves it only on yes. */

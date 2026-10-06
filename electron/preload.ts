@@ -98,9 +98,16 @@ const pokoApi = {
     start: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.dictationStart),
   },
   quick: {
-    /** `withScreen` includes the window that was in front when the panel opened. */
-    ask: (question: string, withScreen: boolean): Promise<{ ok: true } | { error: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.quickAsk, { question, withScreen }),
+    /**
+     * `withScreen` includes the window that was in front when the panel opened, and
+     * `withSelection` the text selected there; main keeps both and adds them itself.
+     */
+    ask: (
+      question: string,
+      withScreen: boolean,
+      withSelection = false,
+    ): Promise<{ ok: true } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.quickAsk, { question, withScreen, withSelection }),
     hide: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickHide),
     /** Yes or no to the answer's memory suggestion; main saves the one it kept. */
     remember: (keep: boolean): Promise<boolean> =>
