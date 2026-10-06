@@ -190,3 +190,16 @@ Phase 06 adds privileged main-process capabilities, all behind narrow IPC:
 - a global stop shortcut
 
 The renderer never captures, reads, or acts on other apps. Each action is approved individually, re-verified right before it runs, and limited to the picked app. During a screen task, Codex is meant to run with a permission profile that reads only an empty temp folder, and its command and file-change requests are declined. That profile must pass a real-run check in milestone 1 before screen tasks ship. Actions are limited to the web content of `http`/`https` pages in browsers. Browser automation (Playwright) remains out of scope.
+
+## Routines (Phase 15)
+
+Routines are the first work Poko starts on its own, so they get a narrower boundary than tasks the user starts:
+- **Read-only, always:** `startRoutineTask` (`electron/app/routines.ts`) forces `editsEnabled: false`, and Agent Core's `routine` flag uses an unattended read-only prompt with no memory suggestion. Command approvals are declined as in any read-only task.
+- **Same guards as a message:** a run counts in `startingTasks`, refuses while data is being deleted, checks busy before and after resolving the routine's folder, and records nothing until it can start.
+- **Its own conversation:** a run is recorded in the routine's 🔁 conversation and doesn't change the active conversation. The main window learns about it through `taskStarted`, and takes it over only if that conversation is on screen.
+- **Scheduling is pure and tested:** `electron/routines/schedule.ts` computes daily and weekly times from local calendar fields, and counts intervals from when the routine was last set:
+  - every scheduled time is handled once (`lastSlotAt`), run or skipped;
+  - a time before the routine was last set (`scheduleChangedAt`) never runs;
+  - a missed time runs only on its own day, or within 35 minutes across midnight.
+- **The timer lives in main:** `RoutineRunner` is checked every minute, at startup, and on wake or unlock, and runs one routine at a time. It runs only while Poko runs; a login item or launch agent is deferred.
+

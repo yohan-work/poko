@@ -106,4 +106,5 @@ A routine starts without the user's approval each time, so it is held to a narro
     - a run that starts in the conversation on screen is taken over at once, so it streams;
     - a notification click on the conversation already shown reloads it;
     - a follow-up in a routine's conversation is refused unless the routine's folder is selected.
+- **Milestone 3 (finish) is done:** README, the architecture note, and the resume list (including what still needs a check on the user's Mac).
 
