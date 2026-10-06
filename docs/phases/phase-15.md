@@ -34,32 +34,58 @@ A routine starts without the user's approval each time, so it is held to a narro
 ## Design
 
 - **Storage:**
-  - a `routines` table, added in a migration: `id`, `title`, `prompt`, `schedule` (JSON), `workspacePath`, `conversationId`, `enabled`, `lastRunAt`, `lastResult`, `createdAt`;
-  - `schedule` is validated in main: `{ kind: "daily", time }`, `{ kind: "weekly", days, time }`, or `{ kind: "interval", hours }`.
+  - a `routines` table, added in a migration: `id`, `title`, `prompt`, `schedule` (JSON), `workspacePath`, `conversationId`, `enabled`, `scheduleChangedAt`, `lastSlotAt`, `lastRunAt`, `lastResult`, `createdAt`;
+  - `schedule` is validated in main: `{ kind: "daily", time }`, `{ kind: "weekly", days, time }`, or `{ kind: "interval", hours }`;
+  - `conversationId` references `conversations` with `ON DELETE SET NULL`. If the user deletes the routine's conversation, the routine stays, and its next run creates a new 🔁 conversation;
+  - the 🔁 conversation is created explicitly, titled "🔁 {title}", rather than titled from the first message;
+  - 모든 데이터 삭제 deletes routines too, since they are the user's data.
 - **Scheduler** (`electron/routines/`):
-  - a pure `nextRun(schedule, after)` function and a pure `dueRuns(routines, now, lastCheck)` function, both unit-tested with fixed clocks, including the same-day catch-up rule;
+  - a pure `nextRun(schedule, after)` function and a pure `dueRuns(routines, now)` function, both unit-tested with fixed clocks;
+  - **a slot is due** when it is after `lastSlotAt` and after `scheduleChangedAt` (set when the routine is created, edited, or turned back on), and on the same local day as `now`. Creating or editing a routine therefore never runs it for a time already past;
+  - **every outcome marks its slot handled.** A run, a skip because the folder is gone, and a skip after the busy wait all set `lastSlotAt`, so the same slot is never retried;
   - a one-minute timer in main, which also checks right after startup and after `powerMonitor` `resume` / `unlock-screen`;
-  - times are local, and daylight-saving changes are handled by computing the next run from local calendar fields.
-- **Running a routine:**
-  - it goes through the same path as a message (`recordTaskStart` and Agent Core), in the routine's conversation, with the profile forced read-only (`editsEnabled: false`);
-  - command approvals are always declined, as in read-only conversations;
+  - times are local. Daylight-saving changes are handled by computing slots from local calendar fields.
+- **Running a routine:** `startRoutineTask(routine)` in `electron/app/context.ts` is the routine's own entry point, sharing the message path's guards:
+  - it counts in `startingTasks` and refuses while 모든 데이터 삭제 is running, like `handleTaskStart`;
+  - it checks busy before and after resolving the folder, like `startConversationTask`;
+  - it uses the **routine's** folder, not the selected one;
+  - it records the task with the routine's request as the shown text, and passes the engine prompt separately;
+  - it forces `editsEnabled: false` and `suggestMemory: false`;
   - screen tasks and attachments are never part of a routine.
+- **Agent Core:**
+  - a `routine` flag replaces the read-only advice to press '읽기 전용' (wrong here) with: "This is a scheduled, unattended, read-only run. Don't ask follow-up questions. If changes are needed, describe them; the user can continue in this conversation.";
+  - `suggestMemory: false` leaves out the memory note and doesn't parse a tag, so a run never offers a memory card;
+  - command approvals are always declined, as in read-only conversations.
+- **Reaching the main window:**
+  - the runner sends `taskStarted` as soon as the task is recorded, as the quick panel does, so the run appears in the task and conversation lists;
+  - if the window is showing the routine's conversation, it takes the run over at once (the existing `adoptTask`), so the request and the answer appear live;
+  - `focusConversation` (a notification click) reloads the conversation even when it is already shown, so a run that ended in the background is never left hidden.
 - **Busy:**
   - Poko runs one task at a time. If another task is running when a routine is due, the routine waits and is checked again each minute.
-  - After 30 minutes it is skipped, and `lastResult` says why.
+  - After 30 minutes the slot is skipped, and `lastResult` says why.
   - Two routines due together run one after another.
-- **Prompt:**
-  - the run prefixes the request with one line telling the engine this is a scheduled, unattended, read-only run, so it doesn't ask follow-up questions;
-  - memory suggestions are not taken from routine runs, because the user didn't say anything this time.
+- **Continuing in a routine's conversation:**
+  - a follow-up message there runs in the routine's folder only;
+  - if a different folder is selected, main refuses with "이 대화는 {folder} 폴더의 루틴이야. 그 폴더를 고른 뒤 이어서 물어봐 줘.", so a follow-up (possibly with edits on) never runs against the wrong project.
 - **Renderer:**
   - the 루틴 page sends routine fields through narrow, typed IPC (`routines:list/save/delete/run`), and main validates everything again;
   - the renderer never picks the folder by path; a new routine takes the current workspace in main.
-  - A run appears in the main window like a task started elsewhere (the existing foreign-task path), so a window showing another conversation is never switched.
 
 ## Milestones (one PR each)
 
-1. **Storage and scheduler:** the migration, validation, `nextRun` / `dueRuns`, the runner in main, and tests (fake clock, busy wait, catch-up, folder missing). No UI yet; checked through tests and a dev-only IPC call.
-2. **The 루틴 page:** the list, the add/edit form, the switch, 지금 실행, delete, and last results. Includes a real-app check of a routine that runs a minute after it is created.
+1. **Storage and scheduler:** the migration, validation, `nextRun` / `dueRuns`, `startRoutineTask` with its guards, the Agent Core flags, and the `taskStarted` notice. Tests use a fake clock and cover:
+   - catch-up only after `scheduleChangedAt`;
+   - every outcome marking its slot handled;
+   - the busy wait;
+   - a missing folder;
+   - a deleted conversation.
+
+   No UI yet; it is checked through tests and a dev-only IPC call.
+2. **The 루틴 page and the window:**
+   - the page: the list, the add/edit form, the switch, 지금 실행, delete, and last results;
+   - the window: live take-over of a run in the shown conversation, the notification reload, and the folder check for follow-ups.
+
+   Includes a real-app check of a routine that runs a minute after it is created.
 3. **Finish:** README, architecture notes, and the resume list.
 
 ## Explicitly deferred
