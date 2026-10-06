@@ -50,6 +50,7 @@ Screenshots use sample data.
 - [x] Ask by voice with macOS Dictation from the composer or the quick panel
 - [x] Select text in any app and ask about it from the quick panel
 - [x] Hear an answer read aloud with the Mac's voice
+- [x] Routines: requests Poko runs on a schedule, always read-only, each in its own conversation (Phase 15)
 
 ## What Poko is aiming for
 
