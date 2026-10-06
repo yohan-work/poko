@@ -143,7 +143,9 @@ export function registerQuickHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.quickRemember, (event, keep: unknown) => {
     if (!isQuickPanel(event) || !ctx.quickPanel) throw new Error("Unknown sender answered.");
     const memory = ctx.quickPanel.pendingMemory;
-    if (!memory || keep !== true) {
+    // Already answered (a second click): nothing to change.
+    if (!memory) return false;
+    if (keep !== true) {
       ctx.quickPanel.settleMemory("dropped");
       return false;
     }
