@@ -110,7 +110,12 @@ export function QuickPanel() {
           // biome-ignore lint/a11y/noAutofocus: the panel exists to type one question
           autoFocus
         />
-        <DictationButton target={inputRef} disabled={busy} className="icon-button" />
+        <DictationButton
+          target={inputRef}
+          disabled={busy}
+          className="icon-button"
+          inlineHint={false}
+        />
       </form>
       {state.screen && !busy && (
         <div className="quick__screen">
