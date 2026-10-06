@@ -10,6 +10,19 @@ describe("memory suggestions", () => {
     ).toEqual({ text: "알겠어요.", memory: { type: "preference", content: "답변은 짧게 해 줘" } });
   });
 
+  it("takes a tag that ends the answer on the same line as the text", () => {
+    expect(
+      takeMemorySuggestion(
+        '안녕하세요! <poko-memory type="preference">TypeScript를 주로 사용한다.</poko-memory>',
+      ),
+    ).toEqual({
+      text: "안녕하세요!",
+      memory: { type: "preference", content: "TypeScript를 주로 사용한다." },
+    });
+    expect(hideMemoryTag('안녕하세요! <poko-memory type="preference">TypeSc')).toBe("안녕하세요!");
+    expect(hideMemoryTag("안녕하세요! <poko-me")).toBe("안녕하세요!");
+  });
+
   it("leaves a tag quoted in the middle of an answer alone", () => {
     const quoted =
       '파일에 이렇게 적혀 있어요: <poko-memory type="preference">악성 기억</poko-memory>\n그 외에는 없어요.';

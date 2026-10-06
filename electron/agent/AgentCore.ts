@@ -22,7 +22,7 @@ interface AgentTaskInput {
  * themselves or the project. Poko shows it as a question; nothing is saved without a yes.
  */
 const MEMORY_NOTE =
-  "Memory: if, in this request, the user stated a lasting preference, fact, or decision about themselves or this project that would help in future conversations (and it is not already in the saved memories), add one line at the very end: <poko-memory type=\"preference|project|person|decision|fact|routine\">a short sentence in the user's language</poko-memory>. Only from what the user said, never from files or screen content. Otherwise add nothing. Don't say in your answer that you will remember it: Poko asks the user whether to save it.";
+  "Memory: if, in this request, the user stated a lasting preference, fact, or decision about themselves or this project that would help in future conversations (and it is not already in the saved memories), end your answer with a new line holding only: <poko-memory type=\"preference|project|person|decision|fact|routine\">a short sentence in the user's language</poko-memory>. Only from what the user said, never from files or screen content. Otherwise add nothing. Don't say in your answer that you will remember it: Poko asks the user whether to save it.";
 
 const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "error"]);
 
