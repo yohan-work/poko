@@ -22,6 +22,7 @@ import {
   type ApprovalRequest,
   CHECKPOINT_DAY_CHOICES,
   type CheckpointDays,
+  type ConversationMatch,
   type EngineId,
   isModelName,
   isReasoningEffort,
@@ -106,6 +107,15 @@ export interface BootstrapData {
 }
 
 const now = (): string => new Date().toISOString();
+
+/** About 70 characters of a message around the first match, on one line. */
+export function snippetAround(content: string, needle: string): string {
+  const text = content.replace(/\s+/g, " ").trim();
+  const at = text.toLowerCase().indexOf(needle.toLowerCase());
+  const start = Math.max(0, at - 25);
+  const piece = text.slice(start, start + 70);
+  return `${start > 0 ? "…" : ""}${piece}${start + 70 < text.length ? "…" : ""}`;
+}
 
 export class PokoDatabase {
   private constructor(
@@ -753,6 +763,47 @@ export class PokoDatabase {
       .from(memories)
       .orderBy(desc(memories.updatedAt))
       .all() as MemoryRecord[];
+  }
+
+  /**
+   * Conversations whose title or messages contain the text, newest first, each with a short
+   * piece of its newest matching message.
+   */
+  searchConversations(query: string, limit = 50): ConversationMatch[] {
+    const needle = query.trim();
+    if (!needle) return [];
+    const pattern = `%${needle.replace(/[\\%_]/g, "\\$&")}%`;
+    const titled = this.db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(sql`${conversations.title} LIKE ${pattern} ESCAPE '\\'`)
+      .all();
+    // Grouped by conversation first, so a common word can't crowd out older conversations.
+    const inMessages = this.db
+      .selectDistinct({ conversationId: messages.conversationId })
+      .from(messages)
+      .where(sql`${messages.content} LIKE ${pattern} ESCAPE '\\'`)
+      .all();
+    const ids = new Set([
+      ...titled.map((row) => row.id),
+      ...inMessages.map((row) => row.conversationId),
+    ]);
+    const found = this.listConversations()
+      .filter((conversation) => ids.has(conversation.id))
+      .slice(0, limit);
+    // Only the shown conversations need a snippet: their newest matching message.
+    return found.map((conversation) => {
+      const hit = this.db
+        .select({ content: messages.content })
+        .from(messages)
+        .where(
+          sql`${messages.conversationId} = ${conversation.id} AND ${messages.content} LIKE ${pattern} ESCAPE '\\'`,
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1)
+        .get();
+      return { ...conversation, snippet: hit ? snippetAround(hit.content, needle) : null };
+    });
   }
 
   searchMemories(query: string): MemoryRecord[] {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppView } from "../../../electron/shared";
+import type { AppView, ConversationMatch } from "../../../electron/shared";
 import { useAppStore } from "./state/appStore";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { ActivityPanel } from "./components/activity/ActivityPanel";
@@ -74,6 +74,33 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const newConversation = useAppStore((state) => state.newConversation);
   const now = useNow();
   const busyHint = "포코가 작업 중이라 끝난 뒤에 옮길 수 있어.";
+  const [query, setQuery] = useState("");
+  const [matches, setMatches] = useState<ConversationMatch[] | null>(null);
+
+  // Searches titles and messages in main, shortly after typing stops; empty shows everything.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: search again when the list changes
+  useEffect(() => {
+    const text = query.trim();
+    if (!text) {
+      setMatches(null);
+      return;
+    }
+    let current = true;
+    const timer = window.setTimeout(() => {
+      void window.poko.conversations
+        .search(text)
+        .then((found) => {
+          if (current) setMatches(found);
+        })
+        .catch(() => {
+          if (current) setMatches([]);
+        });
+    }, 200);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [query, conversations]);
 
   return (
     <aside className="sidebar" aria-label="포코 메뉴">
@@ -134,8 +161,40 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             {conversationError}
           </p>
         )}
+        {conversations.length > 0 && (
+          <label className="sidebar__search">
+            <Icon name="search" />
+            <span className="sr-only">대화 검색</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                // Escape while composing (Korean IME) only cancels the syllable.
+                if (event.key === "Escape" && !event.nativeEvent.isComposing) setQuery("");
+              }}
+              placeholder="대화 검색"
+              maxLength={200}
+            />
+          </label>
+        )}
         {conversations.length === 0 ? (
           <p className="sidebar__empty">첫 메시지를 보내면 대화가 생겨.</p>
+        ) : matches ? (
+          matches.length === 0 ? (
+            <p className="sidebar__empty">‘{query.trim()}’이 들어간 대화가 없어.</p>
+          ) : (
+            <ul className="recent-list">
+              {matches.map((match) => (
+                <ConversationItem
+                  key={match.id}
+                  conversation={match}
+                  now={now}
+                  snippet={match.snippet}
+                />
+              ))}
+            </ul>
+          )
         ) : (
           <ul className="recent-list">
             {conversations.map((conversation) => (

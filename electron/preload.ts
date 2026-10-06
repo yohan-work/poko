@@ -7,6 +7,7 @@ import {
   type TaskStartedNotice,
   type AppSettings,
   type ChatAttachment,
+  type ConversationMatch,
   type EngineId,
   type ModelOption,
   type ClaudeSetup,
@@ -162,6 +163,9 @@ const pokoApi = {
       ipcRenderer.invoke(IPC_CHANNELS.conversationRename, { conversationId, title }),
     delete: (conversationId: string): Promise<{ ok: true } | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.conversationDelete, conversationId),
+    /** Conversations whose title or messages contain the text. */
+    search: (query: string): Promise<ConversationMatch[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.conversationSearch, query),
   },
   setup: {
     /** Re-checks Codex: install, version and features, and ChatGPT sign-in. */
