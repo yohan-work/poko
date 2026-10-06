@@ -60,7 +60,11 @@ function RoutineForm({
 
   const schedule: RoutineSchedule =
     kind === "daily" ? { kind, time } : kind === "weekly" ? { kind, days, time } : { kind, hours };
-  const ready = title.trim() && prompt.trim() && (kind !== "weekly" || days.length > 0) && time;
+  const ready =
+    title.trim() &&
+    prompt.trim() &&
+    (kind !== "weekly" || days.length > 0) &&
+    (kind === "interval" || time);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -195,22 +199,35 @@ function RoutineCard({
   onEdit,
 }: {
   routine: Routine;
-  onChanged: () => void;
+  onChanged: () => Promise<void>;
   onEdit: () => void;
 }) {
   const now = useNow();
   const openConversation = useAppStore((state) => state.openConversation);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // While a switch change saves, the switch is off-limits: the routine shown is stale until the
+  // list reloads, so a second tap would send the same value again.
+  const [toggling, setToggling] = useState(false);
   const result = resultLabel(routine, now);
 
+  // An armed delete disarms itself, so a stray click later can't delete.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const timer = window.setTimeout(() => setConfirmDelete(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [confirmDelete]);
+
   async function toggle() {
+    if (toggling) return;
+    setToggling(true);
     const { id, title, prompt, schedule } = routine;
     const response = await window.poko.routines
       .save({ id, title, prompt, schedule, enabled: !routine.enabled })
       .catch(() => ({ error: "바꾸지 못했어. 다시 시도해 줘." }));
     setMessage("error" in response ? response.error : null);
-    onChanged();
+    await onChanged();
+    setToggling(false);
   }
 
   async function runNow() {
@@ -222,8 +239,10 @@ function RoutineCard({
   }
 
   async function remove() {
-    await window.poko.routines.delete(routine.id).catch(() => false);
-    onChanged();
+    setConfirmDelete(false);
+    const deleted = await window.poko.routines.delete(routine.id).catch(() => false);
+    if (!deleted) setMessage("루틴을 지우지 못했어. 다시 시도해 줘.");
+    await onChanged();
   }
 
   return (
@@ -237,6 +256,7 @@ function RoutineCard({
           aria-label={`${routine.title} 루틴`}
           aria-checked={routine.enabled}
           checked={routine.enabled}
+          disabled={toggling}
           onChange={() => void toggle()}
         />
       </div>
@@ -282,13 +302,22 @@ function RoutineCard({
           <Icon name="pencil" />
         </button>
         {confirmDelete ? (
-          <button
-            className="secondary-button routine-card__delete"
-            type="button"
-            onClick={() => void remove()}
-          >
-            정말 지울게
-          </button>
+          <>
+            <button
+              className="secondary-button routine-card__delete"
+              type="button"
+              onClick={() => void remove()}
+            >
+              정말 지울게
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+            >
+              취소
+            </button>
+          </>
         ) : (
           <button
             className="icon-button"
@@ -388,7 +417,7 @@ export function RoutinesPanel() {
               <RoutineCard
                 key={routine.id}
                 routine={routine}
-                onChanged={() => void load()}
+                onChanged={load}
                 onEdit={() => setEditing(routine)}
               />
             ),

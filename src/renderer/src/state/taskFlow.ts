@@ -197,7 +197,14 @@ async function focusConversation(conversationId: string): Promise<void> {
   const state = store.getState();
   if (state.activeConversationId === conversationId && !state.isSending) {
     const response = await window.poko.conversations.open(conversationId).catch(() => null);
-    if (response && !("error" in response) && !store.getState().isSending)
+    const now = store.getState();
+    // Only if that conversation is still the one on screen.
+    if (
+      response &&
+      !("error" in response) &&
+      !now.isSending &&
+      now.activeConversationId === conversationId
+    )
       store.setState({ messages: response.messages, conversationError: null });
   } else await switchConversation(conversationId);
   store.setState({ activeView: "conversation" });

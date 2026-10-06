@@ -99,6 +99,10 @@ export async function startConversationTask(
   const routine = conversationId ? ctx.database.routineForConversation(conversationId) : null;
   if (routine) {
     const routineFolder = await resolveWorkspaceDirectory(routine.workspacePath).catch(() => null);
+    if (!routineFolder)
+      return {
+        error: `이 루틴의 ${basename(routine.workspacePath)} 폴더를 찾지 못했어. 새 대화에서 물어봐 줘.`,
+      };
     if (routineFolder !== cwd)
       return {
         error: `이 대화는 ${basename(routine.workspacePath)} 폴더의 루틴이야. 그 폴더를 고른 뒤 이어서 물어봐 줘.`,
