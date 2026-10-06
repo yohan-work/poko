@@ -318,6 +318,10 @@ describe("ClaudeCodeProvider", () => {
     it("passes a picked model and nothing otherwise", () => {
       expect(claudeArgs(READ_TOOLS, "opus")).toEqual(expect.arrayContaining(["--model", "opus"]));
       expect(claudeArgs(READ_TOOLS)).not.toContain("--model");
+      expect(claudeArgs(READ_TOOLS, undefined, undefined, "high")).toEqual(
+        expect.arrayContaining(["--effort", "high"]),
+      );
+      expect(claudeArgs(READ_TOOLS)).not.toContain("--effort");
     });
 
     it("offers edit tools only when edits are on", () => {

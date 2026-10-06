@@ -164,6 +164,10 @@ app
           const settings = ctx.database?.getSettings();
           return (engine === "claude" ? settings?.claudeModel : settings?.codexModel) ?? null;
         },
+        (engine) => {
+          const settings = ctx.database?.getSettings();
+          return (engine === "claude" ? settings?.claudeEffort : settings?.codexEffort) ?? null;
+        },
       ),
       deliverTaskEvent,
       codingSkill,

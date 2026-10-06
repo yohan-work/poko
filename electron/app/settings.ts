@@ -53,6 +53,8 @@ export function registerSettingsHandlers(): void {
       quickShortcut: input.quickShortcut,
       codexModel: input.codexModel,
       claudeModel: input.claudeModel,
+      codexEffort: input.codexEffort,
+      claudeEffort: input.claudeEffort,
       memoriesInContext: input.memoriesInContext,
       checkpointDays: input.checkpointDays,
     });

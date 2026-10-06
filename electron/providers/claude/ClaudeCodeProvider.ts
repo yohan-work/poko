@@ -95,7 +95,12 @@ interface ProviderOptions {
  * user or project rule can allow a tool or change the permission mode; `--safe-mode` turns off
  * hooks, plugins, skills, MCP servers, and CLAUDE.md. Every permission prompt comes to Poko.
  */
-export function claudeArgs(tools: readonly string[], model?: string, settings?: string): string[] {
+export function claudeArgs(
+  tools: readonly string[],
+  model?: string,
+  settings?: string,
+  effort?: string,
+): string[] {
   return [
     "-p",
     "--input-format",
@@ -115,6 +120,7 @@ export function claudeArgs(tools: readonly string[], model?: string, settings?: 
     "--no-session-persistence",
     ...(settings ? ["--settings", settings] : []),
     ...(model ? ["--model", model] : []),
+    ...(effort ? ["--effort", effort] : []),
     "--tools",
     tools.join(","),
   ];
@@ -404,13 +410,17 @@ export class ClaudeCodeProvider implements AgentProvider {
       : undefined;
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = this.spawnProcess(runtime.executable, claudeArgs(tools, input.model, settings), {
-        cwd: input.cwd,
-        env: taskTemp ? commandEnvironment(runtime.environment, taskTemp) : runtime.environment,
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: process.platform !== "win32",
-        windowsHide: true,
-      });
+      child = this.spawnProcess(
+        runtime.executable,
+        claudeArgs(tools, input.model, settings, input.effort),
+        {
+          cwd: input.cwd,
+          env: taskTemp ? commandEnvironment(runtime.environment, taskTemp) : runtime.environment,
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: process.platform !== "win32",
+          windowsHide: true,
+        },
+      );
     } catch {
       if (taskTemp) rmSync(taskTemp, { recursive: true, force: true });
       yield { type: "error", error: "Claude Code를 시작하지 못했어. 설치를 확인해 줘." };

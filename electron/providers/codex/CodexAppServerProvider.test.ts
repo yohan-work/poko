@@ -737,10 +737,12 @@ describe("CodexAppServerProvider", () => {
 
   it("starts the thread with the picked model and explains a model the account can't use", async () => {
     const server = new FakeAppServer();
-    const run = consume(providerFor(server).runTask({ ...task, model: "gpt-6-astra" }));
+    const run = consume(
+      providerFor(server).runTask({ ...task, model: "gpt-6-astra", effort: "high" }),
+    );
     await turnStarted(server);
     expect(server.received.find((message) => message.method === "thread/start")).toMatchObject({
-      params: { model: "gpt-6-astra" },
+      params: { model: "gpt-6-astra", config: { model_reasoning_effort: "high" } },
     });
     server.send({
       method: "error",

@@ -1,4 +1,9 @@
 import { useEffect } from "react";
+import {
+  isReasoningEffort,
+  REASONING_EFFORTS,
+  type ReasoningEffort,
+} from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
 
 /** The model for the chosen engine; "기본값" leaves the choice to the CLI. */
@@ -46,6 +51,49 @@ export function ModelSelect() {
         {options.map((model) => (
           <option key={model.id} value={model.id}>
             {model.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const effortLabels: Record<ReasoningEffort, string> = {
+  low: "가볍게",
+  medium: "보통",
+  high: "깊게",
+  xhigh: "더 깊게",
+  max: "최대",
+};
+
+/** How hard the chosen engine thinks; deeper is slower and uses more of the plan. */
+export function EffortSelect() {
+  const settings = useAppStore((state) => state.settings);
+  const updateSettings = useAppStore((state) => state.updateSettings);
+  const isSending = useAppStore((state) => state.isSending);
+  if (!settings) return null;
+  const engine = settings.engine;
+  const value = (engine === "claude" ? settings.claudeEffort : settings.codexEffort) ?? "";
+  return (
+    <label
+      className="model-select"
+      title="깊게 생각할수록 답이 느려지고 사용량이 늘어. 다음 메시지부터 적용돼."
+    >
+      <span className="sr-only">추론 강도</span>
+      <select
+        value={value}
+        disabled={isSending}
+        onChange={(event) => {
+          const effort = isReasoningEffort(event.target.value) ? event.target.value : null;
+          void updateSettings(
+            engine === "claude" ? { claudeEffort: effort } : { codexEffort: effort },
+          );
+        }}
+      >
+        <option value="">추론: 기본값</option>
+        {REASONING_EFFORTS.map((effort) => (
+          <option key={effort} value={effort}>
+            추론: {effortLabels[effort]}
           </option>
         ))}
       </select>

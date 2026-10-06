@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentTask, ApprovalChoice, EngineId } from "../shared";
+import type { AgentEvent, AgentTask, ApprovalChoice, EngineId, ReasoningEffort } from "../shared";
 import type { AgentProvider } from "./AgentProvider";
 
 /**
@@ -13,6 +13,7 @@ export class EngineProvider implements AgentProvider {
     private readonly providers: Record<EngineId, AgentProvider>,
     private readonly engine: () => EngineId,
     private readonly model: (engine: EngineId) => string | null = () => null,
+    private readonly effort: (engine: EngineId) => ReasoningEffort | null = () => null,
   ) {}
 
   async *runTask(input: AgentTask, options?: { signal?: AbortSignal }): AsyncIterable<AgentEvent> {
@@ -21,9 +22,13 @@ export class EngineProvider implements AgentProvider {
     const engine = screen ? "codex" : this.engine();
     const provider = this.providers[engine];
     const model = screen ? null : this.model(engine);
+    const effort = screen ? null : this.effort(engine);
     this.byTask.set(input.id, provider);
     try {
-      yield* provider.runTask(model ? { ...input, model } : input, options);
+      yield* provider.runTask(
+        { ...input, ...(model ? { model } : {}), ...(effort ? { effort } : {}) },
+        options,
+      );
     } finally {
       this.byTask.delete(input.id);
     }

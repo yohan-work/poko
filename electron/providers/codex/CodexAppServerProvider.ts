@@ -476,6 +476,7 @@ export class CodexAppServerProvider implements AgentProvider {
           approvalsReviewer: "user",
           sandbox: "read-only",
           config: {
+            ...(input.effort ? { model_reasoning_effort: input.effort } : {}),
             default_permissions: "poko-readonly",
             permissions: { "poko-readonly": permissionProfile(profile) },
             mcp_servers: {},

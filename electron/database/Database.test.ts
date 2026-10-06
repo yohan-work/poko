@@ -199,10 +199,20 @@ describe("PokoDatabase", () => {
       quickShortcut: "Alt+Space",
       codexModel: null,
       claudeModel: null,
+      codexEffort: null,
+      claudeEffort: null,
       memoriesInContext: true,
       checkpointDays: 30,
     });
     expect(database.setSettings({ quickShortcut: "off" }).quickShortcut).toBe("off");
+    expect(database.setSettings({ codexEffort: "high", claudeEffort: "max" })).toMatchObject({
+      codexEffort: "high",
+      claudeEffort: "max",
+    });
+    expect(
+      database.setSettings({ codexEffort: "ultra" as unknown as "max", claudeEffort: null }),
+    ).toMatchObject({ codexEffort: "high", claudeEffort: null });
+    database.setSettings({ codexEffort: null });
     expect(database.setSettings({ quickShortcut: "Cmd+Q" as unknown as "off" }).quickShortcut).toBe(
       "off",
     );
