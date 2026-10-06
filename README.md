@@ -48,6 +48,7 @@ Screenshots use sample data.
 - [x] Search conversations by title and message
 - [x] Poko suggests memories from what you say; nothing is saved without your yes
 - [x] Ask by voice with macOS Dictation from the composer or the quick panel
+- [x] Select text in any app and ask about it from the quick panel
 
 ## What Poko is aiming for
 

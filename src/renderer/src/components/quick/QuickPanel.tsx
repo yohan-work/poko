@@ -13,6 +13,7 @@ const IDLE: QuickState = {
   taskId: null,
   screen: null,
   screenHint: null,
+  selection: null,
   opened: 0,
   memory: null,
 };
@@ -31,9 +32,16 @@ export function QuickPanel() {
   const [draft, setDraft] = useState("");
   // Off by default: a screenshot leaves the Mac only when the user includes it.
   const [withScreen, setWithScreen] = useState(false);
-  // Every opening starts without the screen again, even over the same window.
+  // On by default: selecting text and then opening the panel is the request to ask about it.
+  const [withSelection, setWithSelection] = useState(true);
+  // Every opening starts without the screen and with the selection again.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on each opening
-  useEffect(() => setWithScreen(false), [state.opened]);
+  useEffect(() => {
+    setWithScreen(false);
+    setWithSelection(true);
+  }, [state.opened]);
+  // One or the other: a screen task looks at the window, a question reads the selection.
+  const selectionOn = Boolean(state.selection) && withSelection && !withScreen;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -73,7 +81,7 @@ export function QuickPanel() {
     const question = draft.trim();
     if (!question || busy) return;
     setDraft("");
-    void window.poko.quick.ask(question, withScreen && !state.screenHint);
+    void window.poko.quick.ask(question, withScreen && !state.screenHint, selectionOn);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -102,7 +110,9 @@ export function QuickPanel() {
               ? "포코가 답하는 중이야…"
               : withScreen
                 ? "이 화면에 대해 물어봐"
-                : "포코에게 물어봐"
+                : selectionOn
+                  ? "선택한 글로 무엇을 할까? (예: 다듬어 줘, 요약해 줘)"
+                  : "포코에게 물어봐"
           }
           rows={1}
           maxLength={10_000}
@@ -117,6 +127,30 @@ export function QuickPanel() {
           inlineHint={false}
         />
       </form>
+      {state.selection && !busy && (
+        <div className="quick__screen">
+          <button
+            type="button"
+            className="quick__screen-chip"
+            aria-pressed={selectionOn}
+            onClick={() => {
+              const next = !selectionOn;
+              setWithSelection(next);
+              if (next) setWithScreen(false);
+              inputRef.current?.focus();
+            }}
+            title={
+              selectionOn
+                ? `선택한 글 ${state.selection.chars.toLocaleString()}자를 질문에 함께 넣어. 다시 누르면 빼.`
+                : "누르면 선택한 글을 질문에 함께 넣어."
+            }
+          >
+            <span aria-hidden="true">{selectionOn ? "✓" : "+"}</span>
+            <span className="quick__screen-name">“{state.selection.preview}”</span>
+            <span>{selectionOn ? "선택한 글과 함께" : "선택한 글과 함께 묻기"}</span>
+          </button>
+        </div>
+      )}
       {state.screen && !busy && (
         <div className="quick__screen">
           <button

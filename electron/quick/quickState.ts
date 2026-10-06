@@ -9,6 +9,7 @@ export const IDLE_STATE: QuickState = {
   taskId: null,
   screen: null,
   screenHint: null,
+  selection: null,
   opened: 0,
   memory: null,
 };

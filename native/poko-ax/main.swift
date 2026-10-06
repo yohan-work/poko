@@ -4,6 +4,8 @@
 //   poko-ax windows              -> {"windows": [{id, pid, owner, bundleId, title, frame}]}
 //   poko-ax snapshot <windowId>  -> {"window": {...}, "elements": [...]} or {"error": ...}
 //   poko-ax raise <windowId>     -> brings the window to the front
+//   poko-ax selection            -> {"text": String?}: the text selected in the focused field of
+//                                   the app in front (never Poko's own, never a password field)
 //   poko-ax dictate <pid>        -> presses Start Dictation in Poko's own Edit menu (pid must be
 //                                   the helper's parent, so it never touches another app)
 //   poko-ax act <windowId>       -> reads {kind, path, role, label, frame, text?, intent?,
@@ -501,6 +503,59 @@ func act(windowId: Int) {
   emit(out)
 }
 
+/**
+ * The text selected in the focused field of the app in front: never Poko's own (the helper's
+ * parent) or a password field. Chromium and Electron apps build their accessibility tree only
+ * once asked to; if this read had to turn that on, it is turned back off before returning.
+ */
+func selectedText() -> String? {
+  guard AXIsProcessTrusted(), let front = NSWorkspace.shared.frontmostApplication,
+    front.processIdentifier != getppid()
+  else { return nil }
+  let app = AXUIElementCreateApplication(front.processIdentifier)
+  // A hung app must not hold the panel's opening.
+  AXUIElementSetMessagingTimeout(app, 0.5)
+  let manualKey = "AXManualAccessibility" as CFString
+  var focused: AnyObject?
+  let first = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
+  // No answer in time: the app is busy or hung, so leave it alone.
+  if first == .cannotComplete { return nil }
+  var manual: AnyObject?
+  AXUIElementCopyAttributeValue(app, manualKey, &manual)
+  // Only apps that accept the flag (Chromium, Electron) are waited for; others answer at once.
+  let turnedOn =
+    focused == nil && (manual as? Bool) != true
+    && AXUIElementSetAttributeValue(app, manualKey, kCFBooleanTrue) == .success
+  if turnedOn {
+    // The tree takes a moment to build; wait up to about a second for the focused field.
+    for _ in 0..<10 where focused == nil {
+      usleep(100_000)
+      let read = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
+      if read == .cannotComplete { break }
+    }
+  }
+  defer {
+    if turnedOn { AXUIElementSetAttributeValue(app, manualKey, kCFBooleanFalse) }
+  }
+  guard let field = focused, CFGetTypeID(field) == AXUIElementGetTypeID() else { return nil }
+  let element = field as! AXUIElement
+  var owner: pid_t = 0
+  AXUIElementGetPid(element, &owner)
+  var role: AnyObject?
+  AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+  var subrole: AnyObject?
+  AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole)
+  let secure =
+    (role as? String) == "AXSecureTextField" || (subrole as? String) == "AXSecureTextField"
+  guard owner != getppid(), !secure else { return nil }
+  var selected: AnyObject?
+  AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selected)
+  guard let text = selected as? String,
+    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  else { return nil }
+  return String(text.prefix(20_000))
+}
+
 let args = CommandLine.arguments
 switch args.count > 1 ? args[1] : "" {
 case "permissions":
@@ -520,6 +575,9 @@ case "raise":
   AXUIElementPerformAction(window, kAXRaiseAction as CFString)
   usleep(300_000)
   emit(["ok": true])
+case "selection":
+  // Read when the quick panel opens, before it takes focus. Nothing when Accessibility is off.
+  emit(["text": selectedText().map { $0 as Any } ?? NSNull()])
 case "dictate":
   // AppKit adds Start Dictation to the Edit menu; pressing it starts Dictation in the focused
   // field. Only Poko's own process (the helper's parent) is accepted.

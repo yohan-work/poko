@@ -30,8 +30,10 @@ function fakePanel() {
       owns: (event: unknown) => event === panelEvent,
       show: async () => void calls.push("show"),
       hide: () => void calls.push("hide"),
-      setScreen: (screen: unknown, hint: unknown) =>
-        void calls.push(`screen:${JSON.stringify(screen)}:${hint}`),
+      setScreen: (screen: unknown, hint: unknown, selection: unknown) =>
+        void calls.push(
+          `screen:${JSON.stringify(screen)}:${hint}${selection ? `:${JSON.stringify(selection)}` : ""}`,
+        ),
       begin: () => void calls.push("begin"),
       refuse: (_question: string, message: string) => void calls.push(`refuse:${message}`),
     },
@@ -54,6 +56,7 @@ describe("quick:ask", () => {
     ctx.database = { isScreenNoticeAccepted: () => true } as never;
     ctx.screenService = {
       supported: true,
+      selectedText: async () => null,
       frontWindow: async () => ({ id: 42, app: "Safari", title: "메일" }),
       status: async () => ({
         supported: true,
@@ -69,7 +72,48 @@ describe("quick:ask", () => {
     await ask({ question: "요약해 줘", withScreen: true, windowId: 7 });
     expect(startScreenLook).toHaveBeenCalledWith(42, "요약해 줘", null, expect.any(Function));
     await ask({ question: "그냥 질문", withScreen: false });
-    expect(startConversationTask).toHaveBeenCalledWith("그냥 질문", null, expect.any(Function));
+    expect(startConversationTask).toHaveBeenCalledWith("그냥 질문", null, expect.any(Function), []);
+  });
+
+  it("adds only the selection main read when the panel opened, and only when asked", async () => {
+    const { panel, calls } = fakePanel();
+    ctx.quickPanel = panel as never;
+    ctx.database = { isScreenNoticeAccepted: () => true } as never;
+    ctx.database = { isScreenNoticeAccepted: () => false } as never;
+    const selectedText = vi.fn(async () => "  고칠   문장이야. ");
+    ctx.screenService = {
+      supported: true,
+      selectedText,
+      frontWindow: async () => null,
+      status: async () => ({}),
+    } as never;
+    // Nothing is read before the screen notice was accepted.
+    await toggleQuickPanel();
+    expect(selectedText).not.toHaveBeenCalled();
+    expect(calls[0]).toBe("screen:null:null");
+    calls.length = 0;
+    ctx.database = { isScreenNoticeAccepted: () => true } as never;
+    ctx.screenService = {
+      supported: true,
+      selectedText: async () => "  고칠   문장이야. ",
+      frontWindow: async () => null,
+      status: async () => ({}),
+    } as never;
+    await toggleQuickPanel();
+    // The panel gets a one-line preview and the length, not the text.
+    expect(calls[0]).toBe(
+      `screen:null:null:{"preview":"고칠 문장이야.","chars":${"  고칠   문장이야. ".length}}`,
+    );
+    // The panel only says "include it"; the text is the one main kept.
+    await ask({ question: "다듬어 줘", withScreen: false, withSelection: true, text: "다른 글" });
+    expect(startConversationTask).toHaveBeenLastCalledWith(
+      "다듬어 줘",
+      null,
+      expect.any(Function),
+      [{ kind: "text", name: "선택한 글", text: "  고칠   문장이야. " }],
+    );
+    await ask({ question: "그냥", withScreen: false, withSelection: false });
+    expect(startConversationTask).toHaveBeenLastCalledWith("그냥", null, expect.any(Function), []);
   });
 
   it("refuses the screen when it isn't ready, and asks without it otherwise", async () => {
@@ -78,6 +122,7 @@ describe("quick:ask", () => {
     ctx.database = { isScreenNoticeAccepted: () => false } as never;
     ctx.screenService = {
       supported: true,
+      selectedText: async () => null,
       frontWindow: async () => ({ id: 42, app: "Safari", title: "" }),
       status: async () => ({
         supported: true,
@@ -108,6 +153,7 @@ describe("quick:ask", () => {
     let release = () => {};
     ctx.screenService = {
       supported: true,
+      selectedText: async () => null,
       frontWindow: () =>
         new Promise((resolve) => {
           release = () => resolve(null);
