@@ -348,10 +348,10 @@ export function ChatPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
 
-  // An answer being read aloud stops when another conversation is shown.
+  // An answer being read aloud stops when another conversation or page is shown.
   const conversationId = useAppStore((state) => state.activeConversationId);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: stop on each switch
-  useEffect(() => stopSpeaking(), [conversationId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stop on each switch and on unmount
+  useEffect(() => () => stopSpeaking(), [conversationId]);
 
   // New messages, approvals, and the start or end of a task always bring the log to the bottom.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the log grows

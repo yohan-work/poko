@@ -35,9 +35,14 @@ function synth(): SpeechSynthesis | null {
     : null;
 }
 
+// Chromium loads the voice list lazily; asking once at startup has it ready by the first press.
+synth()?.getVoices();
+
+const isKorean = (text: string) => /[가-힣]/.test(text);
+
 /** A Korean voice for Korean text, when the Mac has one; otherwise the default voice. */
 function voiceFor(text: string, speech: SpeechSynthesis): SpeechSynthesisVoice | null {
-  if (!/[가-힣]/.test(text)) return null;
+  if (!isKorean(text)) return null;
   return speech.getVoices().find((voice) => voice.lang.toLowerCase().startsWith("ko")) ?? null;
 }
 
@@ -56,6 +61,9 @@ export function toggleSpeaking(id: string, markdown: string): void {
   if (voice) {
     utterance.voice = voice;
     utterance.lang = voice.lang;
+  } else if (isKorean(text)) {
+    // No voice list yet: the language still lets the Mac pick a Korean voice.
+    utterance.lang = "ko-KR";
   }
   const done = () => {
     if (speakingId === id) setSpeaking(null);

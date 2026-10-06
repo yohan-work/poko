@@ -4,6 +4,7 @@ import { Character } from "../character/Character";
 import { DictationButton } from "../chat/DictationButton";
 import { Markdown } from "../chat/Markdown";
 import { SpeakButton } from "../chat/SpeakButton";
+import { stopSpeaking } from "../../lib/speech";
 
 const IDLE: QuickState = {
   phase: "idle",
@@ -69,11 +70,24 @@ export function QuickPanel() {
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape" && !event.isComposing) void window.poko.quick.hide();
+      if (event.key === "Escape" && !event.isComposing) {
+        stopSpeaking();
+        void window.poko.quick.hide();
+      }
     };
+    // The panel is hidden, not closed, so reading stops when it loses focus or goes away.
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("blur", stopSpeaking);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", stopSpeaking);
+    };
   }, []);
+
+  // A new question replaces the answer being read.
+  useEffect(() => {
+    if (state.phase !== "done") stopSpeaking();
+  }, [state.phase]);
 
   const busy = state.phase === "running" || state.phase === "approval";
 
