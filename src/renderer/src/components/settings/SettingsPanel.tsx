@@ -153,6 +153,30 @@ function QuickSection() {
   );
 }
 
+function NotificationSection() {
+  const settings = useAppStore((state) => state.settings);
+  const updateSettings = useAppStore((state) => state.updateSettings);
+  return (
+    <Section id="settings-notifications" title="알림">
+      <Row
+        label="작업 알림"
+        detail="포코 창을 보고 있지 않을 때, 작업이 끝나거나 확인이 필요하면 알려줘. 누르면 그 대화가 열려."
+      >
+        <input
+          className="switch"
+          type="checkbox"
+          role="switch"
+          aria-label="작업 알림"
+          aria-checked={settings?.taskNotifications ?? true}
+          checked={settings?.taskNotifications ?? true}
+          disabled={!settings}
+          onChange={(event) => void updateSettings({ taskNotifications: event.target.checked })}
+        />
+      </Row>
+    </Section>
+  );
+}
+
 function MemorySection() {
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
@@ -418,6 +442,7 @@ export function SettingsPanel() {
       )}
       <EngineSection />
       <QuickSection />
+      <NotificationSection />
       <MemorySection />
       <ScreenSection />
       <EditsSection />

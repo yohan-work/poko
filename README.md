@@ -44,6 +44,7 @@ Screenshots use sample data.
 - [x] Approved project commands (tests, builds) on Claude Code, in a sandbox (Phase 12)
 - [x] Ask Poko from anywhere with ⌥Space or the menu bar icon (Phase 13), optionally about the window in front
 - [x] Drop or paste files and images into the message box (Phase 14)
+- [x] Notifications when a task ends or needs approval while Poko isn't in front
 
 ## What Poko is aiming for
 

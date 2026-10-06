@@ -305,6 +305,8 @@ export interface AppSettings {
   claudeEffort: ReasoningEffort | null;
   /** Saved memories go with each request. */
   memoriesInContext: boolean;
+  /** A macOS notification when a task ends or waits for approval while Poko isn't in front. */
+  taskNotifications: boolean;
   checkpointDays: CheckpointDays;
 }
 

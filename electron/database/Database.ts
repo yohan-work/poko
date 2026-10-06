@@ -493,7 +493,7 @@ export class PokoDatabase {
       .select()
       .from(settings)
       .where(
-        sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine', 'codexModel', 'claudeModel', 'codexEffort', 'claudeEffort', 'quickShortcut')`,
+        sql`${settings.key} IN ('memoriesInContext', 'taskNotifications', 'checkpointDays', 'engine', 'codexModel', 'claudeModel', 'codexEffort', 'claudeEffort', 'quickShortcut')`,
       )
       .all();
     const value = (key: string) => rows.find((row) => row.key === key)?.value;
@@ -512,6 +512,7 @@ export class PokoDatabase {
         ? (value("claudeEffort") as ReasoningEffort)
         : null,
       memoriesInContext: value("memoriesInContext") !== "false",
+      taskNotifications: value("taskNotifications") !== "false",
       checkpointDays: (CHECKPOINT_DAY_CHOICES as readonly number[]).includes(days)
         ? (days as CheckpointDays)
         : 30,
@@ -527,6 +528,8 @@ export class PokoDatabase {
       updates.push(["quickShortcut", input.quickShortcut as string]);
     if (typeof input.memoriesInContext === "boolean")
       updates.push(["memoriesInContext", String(input.memoriesInContext)]);
+    if (typeof input.taskNotifications === "boolean")
+      updates.push(["taskNotifications", String(input.taskNotifications)]);
     if ((CHECKPOINT_DAY_CHOICES as readonly unknown[]).includes(input.checkpointDays))
       updates.push(["checkpointDays", String(input.checkpointDays)]);
     const timestamp = now();

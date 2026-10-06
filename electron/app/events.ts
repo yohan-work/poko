@@ -2,6 +2,7 @@ import { IPC_CHANNELS, type ApprovalRequest, type TaskEventPayload } from "../sh
 import { replaceCitations } from "../screen/overlayScene";
 import { removeAttachments } from "../attachments/attachments";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
+import { notifyTaskEvent } from "./notify";
 import { pointAt, screenTasks } from "./screen";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
@@ -93,6 +94,7 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
     cards.set(shown.requestId, { taskId: payload.taskId, ...shown });
     pendingApprovalEvents.set(payload.taskId, cards);
   }
+  notifyTaskEvent(rendererPayload);
   if (!ctx.mainWindow || ctx.mainWindow.isDestroyed() || ctx.mainWindow.webContents.isDestroyed())
     return;
   ctx.mainWindow.webContents.send(IPC_CHANNELS.taskEvent, rendererPayload);

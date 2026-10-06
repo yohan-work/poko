@@ -74,6 +74,7 @@ export function registerSettingsHandlers(): void {
       codexEffort: input.codexEffort,
       claudeEffort: input.claudeEffort,
       memoriesInContext: input.memoriesInContext,
+      taskNotifications: input.taskNotifications,
       checkpointDays: input.checkpointDays,
     });
     // Picking the same shortcut again retries it, for example after another app freed it.

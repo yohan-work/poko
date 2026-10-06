@@ -202,8 +202,11 @@ describe("PokoDatabase", () => {
       codexEffort: null,
       claudeEffort: null,
       memoriesInContext: true,
+      taskNotifications: true,
       checkpointDays: 30,
     });
+    expect(database.setSettings({ taskNotifications: false }).taskNotifications).toBe(false);
+    database.setSettings({ taskNotifications: true });
     expect(database.setSettings({ quickShortcut: "off" }).quickShortcut).toBe("off");
     expect(database.setSettings({ codexEffort: "high", claudeEffort: "max" })).toMatchObject({
       codexEffort: "high",
