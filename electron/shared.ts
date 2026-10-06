@@ -460,23 +460,33 @@ export interface MemorySuggestion {
   content: string;
 }
 
-const MEMORY_LINE =
-  /^<poko-memory\s+type="(preference|project|person|decision|fact|routine)">([\s\S]*?)<\/poko-memory>\s*$/;
+const MEMORY_TAIL =
+  /^<poko-memory\s+type="(preference|project|person|decision|fact|routine)">([\s\S]*?)<\/poko-memory>$/;
 
-/** The answer before its last line, and that line, when the line starts a memory tag. */
-function trailingTag(answer: string): { text: string; line: string } | null {
+/** An unclosed tag still being written: `<poko-memory type="fact">some text`, or any start of it. */
+const OPENING_SO_FAR =
+  /^<poko-memory(?:\s+(?:t(?:y(?:p(?:e(?:=(?:"(?:[a-z]*(?:"(?:>[^<\n]*)?)?)?)?)?)?)?)?)?)?$/;
+
+/**
+ * The answer before its trailing memory tag, and the tag, when the answer ends with one. The
+ * tag may follow text on the same line (models do that); an unclosed tag counts only while it
+ * still reads as one being written. A tag with anything after it was quoted, and is left alone.
+ */
+function trailingTag(answer: string): { text: string; tag: string } | null {
   const trimmed = answer.trimEnd();
-  const lineStart = trimmed.lastIndexOf("\n") + 1;
-  const line = trimmed.slice(lineStart).trim();
-  return line.startsWith("<poko-memory")
-    ? { text: trimmed.slice(0, lineStart).trimEnd(), line }
-    : null;
+  const start = trimmed.lastIndexOf("<poko-memory");
+  if (start < 0) return null;
+  const tag = trimmed.slice(start);
+  const closed = tag.indexOf("</poko-memory>");
+  const ends =
+    closed >= 0 ? closed + "</poko-memory>".length === tag.length : OPENING_SO_FAR.test(tag);
+  return ends ? { text: trimmed.slice(0, start).trimEnd(), tag } : null;
 }
 
 /**
  * Splits an answer into the text to show and an optional memory suggestion. The engine is
- * asked to put `<poko-memory type="…">…</poko-memory>` on the answer's **last line**; only
- * that line counts and is removed. A tag quoted anywhere else (from a file, say) stays in the
+ * asked to end its answer with `<poko-memory type="…">…</poko-memory>`; only a tag that ends
+ * the answer counts and is removed. A tag quoted anywhere else (from a file, say) stays in the
  * text as it is and is never taken as a suggestion.
  */
 export function takeMemorySuggestion(answer: string): {
@@ -485,7 +495,7 @@ export function takeMemorySuggestion(answer: string): {
 } {
   const tail = trailingTag(answer);
   if (!tail) return { text: answer, memory: null };
-  const match = MEMORY_LINE.exec(tail.line);
+  const match = MEMORY_TAIL.exec(tail.tag);
   const content = match?.[2].replace(/\s+/g, " ").trim() ?? "";
   return {
     text: tail.text,
@@ -497,13 +507,14 @@ export function takeMemorySuggestion(answer: string): {
 }
 
 /**
- * Streaming text without the memory tag line, by the same last-line rule as
- * takeMemorySuggestion, including a line still being written ("<pok…").
+ * Streaming text without a trailing memory tag, by the same rule as takeMemorySuggestion,
+ * including one still being written ("…<pok").
  */
 export function hideMemoryTag(text: string): string {
-  const lineStart = text.lastIndexOf("\n") + 1;
-  const line = text.slice(lineStart).trimStart();
-  const writing =
-    line.length > 0 && ("<poko-memory".startsWith(line) || line.startsWith("<poko-memory"));
-  return writing ? text.slice(0, lineStart).trimEnd() : text;
+  const tail = trailingTag(text);
+  if (tail) return tail.text;
+  const partial = /<p?o?k?o?-?m?e?m?o?r?y?$/.exec(text);
+  return partial && "<poko-memory".startsWith(partial[0])
+    ? text.slice(0, partial.index).trimEnd()
+    : text;
 }

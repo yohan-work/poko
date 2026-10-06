@@ -82,7 +82,7 @@ Each milestone is its own PR with review.
 ## Follow-up: memory suggestions (with approval)
 
 - **Asking the engine:** each project prompt asks the engine, only when the user stated a lasting preference, fact, or decision, to end its answer with `<poko-memory type="…">…</poko-memory>`. It must take that from what the user said, never from files or the screen, and must not claim to have remembered it.
-- **Parsing:** Agent Core takes the first tag out of the answer (`takeMemorySuggestion`) and sends it as `completed.memory`, so stored answers never contain it. Screen tasks are never parsed.
+- **Parsing:** Agent Core takes a tag that **ends** the answer (`takeMemorySuggestion`), even on the same line as text, and sends it as `completed.memory`, so stored answers never contain it. A tag with anything after it was quoted and stays as text. A tag quoted at the very end of an answer can still become a suggestion; it is only ever a question the user can turn down. Screen tasks are never parsed.
 - **Validation:** the type must be one of the memory types and the content at most 300 characters. A suggestion that matches a saved memory is dropped.
 - **Card:** the conversation shows **이걸 기억해 둘까?** with the type and text. 기억하기 saves it; 괜찮아 drops it. Nothing is saved without a yes, so content from a file can't plant a memory by itself.
 - **Streaming:** text from the start of a tag, even a half-written one, is hidden while the answer streams, in the main window and the quick panel.
