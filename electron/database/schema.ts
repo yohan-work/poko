@@ -136,3 +136,25 @@ export const edits = sqliteTable(
   },
   (table) => [index("edits_conversation_created_idx").on(table.conversationId, table.createdAt)],
 );
+
+export const routines = sqliteTable("routines", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  prompt: text("prompt").notNull(),
+  /** RoutineSchedule as JSON, checked by readRoutineSchedule when read. */
+  schedule: text("schedule").notNull(),
+  workspacePath: text("workspace_path").notNull(),
+  // Deleting the routine's conversation keeps the routine; its next run starts a new one.
+  conversationId: text("conversation_id").references(() => conversations.id, {
+    onDelete: "set null",
+  }),
+  enabled: integer("enabled", { mode: "boolean" }).notNull(),
+  /** When the routine was created, edited, or turned back on; earlier slots never run. */
+  scheduleChangedAt: text("schedule_changed_at").notNull(),
+  /** The last scheduled time handled, run or skipped. */
+  lastSlotAt: text("last_slot_at"),
+  lastRunAt: text("last_run_at"),
+  /** RoutineResult as JSON. */
+  lastResult: text("last_result"),
+  createdAt: text("created_at").notNull(),
+});

@@ -177,6 +177,7 @@ describe("PokoDatabase", () => {
       approvals: 1,
       memories: 1,
       edits: 1,
+      routines: 0,
     });
 
     database.deleteAllHistory();
@@ -213,6 +214,54 @@ describe("PokoDatabase", () => {
     }
     expect(database.searchConversations("프로젝트", 100)).toHaveLength(31);
     expect(database.searchConversations("  ")).toEqual([]);
+    database.close();
+  });
+
+  it("keeps routines with their own conversation, surviving its deletion", async () => {
+    const database = await openDatabase();
+    const routine = database.saveRoutine({
+      title: "아침 정리",
+      prompt: "어제 변경 사항을 정리해 줘.",
+      schedule: { kind: "daily", time: "09:00" },
+      enabled: true,
+      workspacePath: "/w/project",
+    });
+    expect(database.listRoutines()).toHaveLength(1);
+    const conversationId = database.ensureRoutineConversation(routine.id);
+    expect(database.getConversation(conversationId)?.title).toBe("🔁 아침 정리");
+    expect(database.ensureRoutineConversation(routine.id)).toBe(conversationId);
+    expect(database.routineForConversation(conversationId)?.id).toBe(routine.id);
+    // Deleting the conversation keeps the routine; the next run gets a new conversation.
+    database.deleteConversation(conversationId);
+    expect(database.getRoutine(routine.id)?.conversationId).toBeNull();
+    expect(database.ensureRoutineConversation(routine.id)).not.toBe(conversationId);
+    database.close();
+  });
+
+  it("resets the schedule anchor only when when-it-runs changes or it is turned back on", async () => {
+    const database = await openDatabase();
+    const routine = database.saveRoutine({
+      title: "a",
+      prompt: "p",
+      schedule: { kind: "daily", time: "09:00" },
+      enabled: true,
+      workspacePath: "/w",
+    });
+    const anchor = routine.scheduleChangedAt;
+    await new Promise((done) => setTimeout(done, 5));
+    const renamed = database.saveRoutine({ ...routine, title: "b" });
+    expect(renamed.scheduleChangedAt).toBe(anchor);
+    const moved = database.saveRoutine({ ...routine, schedule: { kind: "daily", time: "10:00" } });
+    expect(moved.scheduleChangedAt > anchor).toBe(true);
+    database.recordRoutineRun(
+      routine.id,
+      { status: "skipped", message: "x", at: "2026-10-06T00:00:00.000Z" },
+      { slot: "2026-10-06T00:00:00.000Z" },
+    );
+    expect(database.getRoutine(routine.id)?.lastSlotAt).toBe("2026-10-06T00:00:00.000Z");
+    expect(database.getRoutine(routine.id)?.lastResult?.status).toBe("skipped");
+    database.deleteAllHistory();
+    expect(database.listRoutines()).toEqual([]);
     database.close();
   });
 

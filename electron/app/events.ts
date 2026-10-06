@@ -3,6 +3,7 @@ import { replaceCitations } from "../screen/overlayScene";
 import { removeAttachments } from "../attachments/attachments";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { notifyTaskEvent } from "./notify";
+import { recordRoutineEnd } from "./routines";
 import { pointAt, screenTasks } from "./screen";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
@@ -46,6 +47,7 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
     event.type === "completed" || event.type === "error" || event.type === "cancelled";
   // When a task finishes, its last approved change is on disk (or never happened).
   if (finished) {
+    recordRoutineEnd(payload.taskId, event.type, event.type === "error" ? event.error : undefined);
     void settleEdits(payload.taskId);
     // Attached images are needed only while the task runs.
     const attached = attachmentDirs.get(payload.taskId);

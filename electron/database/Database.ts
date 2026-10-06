@@ -13,6 +13,7 @@ import {
   edits,
   memories,
   messages,
+  routines,
   settings,
   tasks,
 } from "./schema";
@@ -29,8 +30,37 @@ import {
   QUICK_SHORTCUTS,
   type ReasoningEffort,
   type QuickShortcut,
+  readRoutineSchedule,
+  type RoutineResult,
+  type RoutineSchedule,
 } from "../shared";
 import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
+
+/** A routine as main keeps it; times are ISO strings. */
+export interface RoutineRecord {
+  id: string;
+  title: string;
+  prompt: string;
+  schedule: RoutineSchedule;
+  workspacePath: string;
+  conversationId: string | null;
+  enabled: boolean;
+  scheduleChangedAt: string;
+  lastSlotAt: string | null;
+  lastRunAt: string | null;
+  lastResult: RoutineResult | null;
+  createdAt: string;
+}
+
+function readResult(raw: string | null): RoutineResult | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as RoutineResult;
+    return typeof value?.status === "string" && typeof value.at === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 export type MemoryType = "preference" | "project" | "person" | "decision" | "fact" | "routine";
 export interface MemoryRecord {
@@ -412,7 +442,14 @@ export class PokoDatabase {
 
   /** Everything Poko has kept, for 모두 내보내기. Checkpoint file contents are not included. */
   exportAll(): Record<
-    "conversations" | "messages" | "tasks" | "activities" | "approvals" | "memories" | "edits",
+    | "conversations"
+    | "messages"
+    | "tasks"
+    | "activities"
+    | "approvals"
+    | "memories"
+    | "edits"
+    | "routines",
     unknown[]
   > {
     return {
@@ -423,16 +460,26 @@ export class PokoDatabase {
       approvals: this.db.select().from(approvals).orderBy(approvals.createdAt).all(),
       memories: this.db.select().from(memories).orderBy(memories.createdAt).all(),
       edits: this.db.select().from(edits).orderBy(edits.createdAt).all(),
+      routines: this.db.select().from(routines).orderBy(routines.createdAt).all(),
     };
   }
 
   /**
-   * Deletes all history: conversations, messages, tasks, Activity, approvals, memories, and edit
-   * records. Settings (workspace, edit switches, the screen notice, preferences) are kept.
+   * Deletes all history: conversations, messages, tasks, Activity, approvals, memories, edit
+   * records, and routines. Settings (workspace, edit switches, the screen notice, preferences) are kept.
    */
   deleteAllHistory(): void {
     this.db.transaction((tx) => {
-      for (const table of [approvals, activities, edits, messages, tasks, conversations, memories])
+      for (const table of [
+        approvals,
+        activities,
+        edits,
+        messages,
+        tasks,
+        routines,
+        conversations,
+        memories,
+      ])
         tx.delete(table).run();
       tx.delete(settings).where(eq(settings.key, "activeConversationId")).run();
     });
@@ -935,6 +982,133 @@ export class PokoDatabase {
         .run();
       return true;
     });
+  }
+
+  listRoutines(): RoutineRecord[] {
+    return this.db
+      .select()
+      .from(routines)
+      .orderBy(asc(routines.createdAt))
+      .all()
+      .flatMap((row) => {
+        // A schedule that no longer reads (an older format) leaves the routine out.
+        const schedule = readRoutineSchedule(JSON.parse(row.schedule));
+        if (!schedule) return [];
+        return [{ ...row, schedule, lastResult: readResult(row.lastResult) }];
+      });
+  }
+
+  getRoutine(id: string): RoutineRecord | null {
+    return this.listRoutines().find((routine) => routine.id === id) ?? null;
+  }
+
+  /**
+   * Creates a routine (no id) or changes one. Creating, changing what or when it runs, or
+   * turning it back on resets `scheduleChangedAt`, so a time already past never runs.
+   */
+  saveRoutine(input: {
+    id?: string;
+    title: string;
+    prompt: string;
+    schedule: RoutineSchedule;
+    enabled: boolean;
+    workspacePath?: string;
+  }): RoutineRecord {
+    const timestamp = now();
+    const existing = input.id ? this.getRoutine(input.id) : null;
+    if (input.id && !existing) throw new Error("The routine no longer exists.");
+    const schedule = JSON.stringify(input.schedule);
+    if (existing) {
+      const reset =
+        JSON.stringify(existing.schedule) !== schedule || (input.enabled && !existing.enabled);
+      this.db
+        .update(routines)
+        .set({
+          title: input.title,
+          prompt: input.prompt,
+          schedule,
+          enabled: input.enabled,
+          ...(reset ? { scheduleChangedAt: timestamp } : {}),
+        })
+        .where(eq(routines.id, existing.id))
+        .run();
+      return this.getRoutine(existing.id) as RoutineRecord;
+    }
+    if (!input.workspacePath) throw new Error("A routine needs a folder.");
+    const id = randomUUID();
+    this.db
+      .insert(routines)
+      .values({
+        id,
+        title: input.title,
+        prompt: input.prompt,
+        schedule,
+        workspacePath: input.workspacePath,
+        conversationId: null,
+        enabled: input.enabled,
+        scheduleChangedAt: timestamp,
+        lastSlotAt: null,
+        lastRunAt: null,
+        lastResult: null,
+        createdAt: timestamp,
+      })
+      .run();
+    return this.getRoutine(id) as RoutineRecord;
+  }
+
+  /** Deletes a routine; its conversation stays. */
+  deleteRoutine(id: string): boolean {
+    return Number(this.db.delete(routines).where(eq(routines.id, id)).run().changes) > 0;
+  }
+
+  /**
+   * Records how a run went. `slot` marks a scheduled time handled (run or skipped) so it is
+   * never tried again; a run the user started has none.
+   */
+  recordRoutineRun(
+    id: string,
+    result: RoutineResult,
+    options: { slot?: string; ran?: boolean } = {},
+  ): void {
+    this.db
+      .update(routines)
+      .set({
+        lastResult: JSON.stringify(result),
+        ...(options.slot ? { lastSlotAt: options.slot } : {}),
+        ...(options.ran ? { lastRunAt: result.at } : {}),
+      })
+      .where(eq(routines.id, id))
+      .run();
+  }
+
+  /**
+   * The routine's own conversation, "🔁 title", created when it has none (first run, or the
+   * user deleted it). Never made the active conversation.
+   */
+  ensureRoutineConversation(id: string): string {
+    const routine = this.getRoutine(id);
+    if (!routine) throw new Error("The routine no longer exists.");
+    if (routine.conversationId && this.getConversation(routine.conversationId))
+      return routine.conversationId;
+    const conversationId = randomUUID();
+    const timestamp = now();
+    this.db.transaction((tx) => {
+      tx.insert(conversations)
+        .values({
+          id: conversationId,
+          title: conversationTitle(`🔁 ${routine.title}`),
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+        .run();
+      tx.update(routines).set({ conversationId }).where(eq(routines.id, id)).run();
+    });
+    return conversationId;
+  }
+
+  /** The routine whose conversation this is, if any. */
+  routineForConversation(conversationId: string): RoutineRecord | null {
+    return this.listRoutines().find((routine) => routine.conversationId === conversationId) ?? null;
   }
 
   close(): void {
