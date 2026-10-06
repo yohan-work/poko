@@ -160,6 +160,11 @@ export class ScreenService {
     parseActResult(await runHelper(this.helperPath, ["raise", String(windowId)]));
   }
 
+  /** Presses Start Dictation in Poko's own Edit menu; the helper accepts only its parent. */
+  async dictate(): Promise<void> {
+    parseActResult(await runHelper(this.helperPath, ["dictate", String(process.pid)]));
+  }
+
   /** Runs the helper's `act` for one request; throws HelperError when a check refuses. */
   async act(windowId: number, request: ActRequest): Promise<{ valueMatches?: boolean }> {
     return parseActResult(

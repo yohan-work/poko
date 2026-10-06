@@ -176,3 +176,12 @@ Verified in the built app:
 - **Content:** the body is one short plain line (Markdown stripped, at most 120 characters): the answer, the error, or the approval summary.
 - **Clicking** opens the main window on that conversation (`app:focus-conversation`). A waiting approval is adopted there with its card.
 - **Setting:** 설정 → 알림 → 작업 알림, on by default.
+
+## Follow-up: asking by voice
+
+- **Where:** a mic button sits next to 화면 보기 in the composer and beside the quick panel's input. It focuses the field and starts macOS Dictation there; Poko records nothing itself.
+- **How it starts:** Electron's `Menu.sendActionToFirstResponder("startDictation:")` did nothing in practice. Instead, `poko-ax dictate <pid>` presses the Start Dictation item AppKit adds to Poko's Edit menu, found by its `startDictation:` identifier so the language doesn't matter.
+- **Limits:**
+  - the helper accepts only its parent's pid, so it never presses another app's menu;
+  - it needs Accessibility permission, which screen tasks already use.
+- **When it fails:** the button says to press fn twice instead.

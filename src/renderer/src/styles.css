@@ -2859,3 +2859,13 @@ html.is-quick body {
 .quick__memory {
   margin: 0;
 }
+
+.dictation-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.dictation-hint {
+  color: var(--color-text-soft);
+  font-size: 0.84rem;
+}

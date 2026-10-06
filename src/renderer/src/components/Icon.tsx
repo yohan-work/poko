@@ -37,6 +37,12 @@ const paths = {
   chevron: <path d="M6 8l4 4 4-4" />,
   send: <path d="M10 15.5V4.5M5.5 9 10 4.5 14.5 9" />,
   stop: <rect x="6" y="6" width="8" height="8" rx="1.5" />,
+  mic: (
+    <>
+      <rect x="7.5" y="3" width="5" height="9" rx="2.5" />
+      <path d="M5 9.5a5 5 0 0 0 10 0M10 14.5V17" />
+    </>
+  ),
   search: (
     <>
       <circle cx="9" cy="9" r="5.25" />

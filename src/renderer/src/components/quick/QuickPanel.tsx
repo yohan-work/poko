@@ -1,6 +1,7 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { QuickState } from "../../../../../electron/shared";
 import { Character } from "../character/Character";
+import { DictationButton } from "../chat/DictationButton";
 import { Markdown } from "../chat/Markdown";
 
 const IDLE: QuickState = {
@@ -108,6 +109,12 @@ export function QuickPanel() {
           disabled={busy}
           // biome-ignore lint/a11y/noAutofocus: the panel exists to type one question
           autoFocus
+        />
+        <DictationButton
+          target={inputRef}
+          disabled={busy}
+          className="icon-button"
+          inlineHint={false}
         />
       </form>
       {state.screen && !busy && (

@@ -19,6 +19,7 @@ import { removeAttachments } from "./attachments/attachments";
 import { showTray } from "./quick/tray";
 import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
+import { registerDictationHandlers } from "./app/dictation";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
 import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
@@ -58,6 +59,7 @@ function registerIpcHandlers(): void {
   registerSettingsHandlers();
   registerDataHandlers();
   registerQuickHandlers();
+  registerDictationHandlers();
 }
 
 async function createWindow(): Promise<void> {

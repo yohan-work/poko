@@ -93,6 +93,10 @@ const pokoApi = {
       };
     },
   },
+  /** macOS Dictation in the focused text field; resolves false where it isn't available. */
+  dictation: {
+    start: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.dictationStart),
+  },
   quick: {
     /** `withScreen` includes the window that was in front when the panel opened. */
     ask: (question: string, withScreen: boolean): Promise<{ ok: true } | { error: string }> =>
