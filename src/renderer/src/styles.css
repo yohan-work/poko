@@ -1215,6 +1215,8 @@ button:disabled {
 }
 
 .composer__mode {
+  flex-shrink: 0;
+  white-space: nowrap;
   margin-left: auto;
   padding: 4px 9px;
   border: 1px solid transparent;

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
+import { useAppStore, type ActivityEntry } from "../../state/appStore";
 import { clockTime, dayKey, dayLabel } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
-import { type ActivityEntry, useAppStore } from "../../state/appStore";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 
 export function ActivityPanel() {

@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import type { AppView, ConversationMatch } from "../../../electron/shared";
-import { ActivityPanel } from "./components/activity/ActivityPanel";
-import { MemoryPanel } from "./components/activity/MemoryPanel";
-import { TasksPanel } from "./components/activity/TasksPanel";
-import { Character, stateLabels } from "./components/character/Character";
-import { ChatPanel } from "./components/chat/ChatPanel";
-import { EditsConfirm } from "./components/edits/EditsConfirm";
-import { Icon, type IconName } from "./components/Icon";
-import { SettingsPanel } from "./components/settings/SettingsPanel";
-import { SetupScreen } from "./components/setup/SetupScreen";
-import { ConversationItem } from "./components/sidebar/ConversationItem";
-import { useNow } from "./lib/useNow";
 import { useAppStore } from "./state/appStore";
+import { ChatPanel } from "./components/chat/ChatPanel";
+import { ActivityPanel } from "./components/activity/ActivityPanel";
+import { TasksPanel } from "./components/activity/TasksPanel";
+import { MemoryPanel } from "./components/activity/MemoryPanel";
+import { Character, stateLabels } from "./components/character/Character";
+import { Icon, type IconName } from "./components/Icon";
+import { ConversationItem } from "./components/sidebar/ConversationItem";
+import { EditsConfirm } from "./components/edits/EditsConfirm";
+import { SetupScreen } from "./components/setup/SetupScreen";
+import { SettingsPanel } from "./components/settings/SettingsPanel";
+import { useNow } from "./lib/useNow";
 
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
   { id: "conversation", label: "대화", icon: "chat" },
