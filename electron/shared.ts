@@ -105,7 +105,7 @@ export type CharacterState =
   | "error"
   | "approval";
 
-export type AppView = "conversation" | "memory" | "tasks" | "activity" | "settings";
+export type AppView = "conversation" | "memory" | "tasks" | "routines" | "activity" | "settings";
 
 export interface WorkspaceInfo {
   path: string;

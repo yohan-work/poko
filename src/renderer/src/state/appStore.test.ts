@@ -444,6 +444,18 @@ describe("a task started elsewhere (the quick panel)", () => {
     expect(store.getState().messages.at(-1)?.content).toBe("끝");
   });
 
+  it("takes over at once a run that starts in the conversation on screen (a routine)", async () => {
+    world.setActive({ taskId: "rt", conversationId: "a", approvals: [] });
+    world.startElsewhere({ taskId: "rt", title: "루틴", conversation: conversation("a") });
+    world.replyToOpen({
+      messages: [{ id: "u", role: "user", content: "루틴", createdAt: "x" }],
+    });
+    await vi.waitFor(() => expect(store.getState().isSending).toBe(true));
+    expect(store.getState()).toMatchObject({ activeConversationId: "a", activeTaskId: "rt" });
+    world.emit("rt", { type: "completed", result: "정리했어." });
+    expect(store.getState().messages.at(-1)?.content).toBe("정리했어.");
+  });
+
   it("stays idle when the task ended while its conversation loaded", async () => {
     world.startElsewhere({ taskId: "qt", title: "빠른 질문", conversation: conversation("q") });
     world.setActive(null);

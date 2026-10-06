@@ -4,6 +4,7 @@ import { useAppStore } from "./state/appStore";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { ActivityPanel } from "./components/activity/ActivityPanel";
 import { TasksPanel } from "./components/activity/TasksPanel";
+import { RoutinesPanel } from "./components/activity/RoutinesPanel";
 import { MemoryPanel } from "./components/activity/MemoryPanel";
 import { Character, stateLabels } from "./components/character/Character";
 import { Icon, type IconName } from "./components/Icon";
@@ -16,6 +17,7 @@ import { useNow } from "./lib/useNow";
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
   { id: "conversation", label: "대화", icon: "chat" },
   { id: "tasks", label: "작업", icon: "tasks" },
+  { id: "routines", label: "루틴", icon: "repeat" },
   { id: "memory", label: "기억", icon: "memory" },
   { id: "activity", label: "활동", icon: "activity" },
   { id: "settings", label: "설정", icon: "settings" },
@@ -263,6 +265,8 @@ export function App() {
           <MemoryPanel />
         ) : activeView === "tasks" ? (
           <TasksPanel />
+        ) : activeView === "routines" ? (
+          <RoutinesPanel />
         ) : activeView === "settings" ? (
           <SettingsPanel />
         ) : (

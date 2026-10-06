@@ -100,3 +100,10 @@ A routine starts without the user's approval each time, so it is held to a narro
 - **Milestone 1 (storage and scheduler) is done.**
   - It includes the `routines:list/save/delete/run` IPC that the page will use. The checks run in main.
   - Run results go to `lastResult` when the task ends (`recordRoutineEnd` in `deliverTaskEvent`).
+- **Milestone 2 (the page and the window) is done.**
+  - **The page:** 루틴 in the sidebar lists the routines with schedule, folder, next run, and last result. From there the user can add, edit, switch on or off, 지금 실행, open the conversation, and delete (in two steps). The list refreshes every 15 seconds while the page is open.
+  - **The window:**
+    - a run that starts in the conversation on screen is taken over at once, so it streams;
+    - a notification click on the conversation already shown reloads it;
+    - a follow-up in a routine's conversation is refused unless the routine's folder is selected.
+

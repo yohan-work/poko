@@ -95,6 +95,15 @@ export async function startConversationTask(
   const cwd = await resolveWorkspaceDirectory(ctx.database.getWorkspace());
   // Another task may have started while the folder was being checked.
   if (busy()) return { error: BUSY_MESSAGE };
+  // A routine's conversation continues only in the routine's own folder.
+  const routine = conversationId ? ctx.database.routineForConversation(conversationId) : null;
+  if (routine) {
+    const routineFolder = await resolveWorkspaceDirectory(routine.workspacePath).catch(() => null);
+    if (routineFolder !== cwd)
+      return {
+        error: `이 대화는 ${basename(routine.workspacePath)} 폴더의 루틴이야. 그 폴더를 고른 뒤 이어서 물어봐 줘.`,
+      };
+  }
   // The conversation shows which files were attached; their content goes only to the engine.
   const line = attachmentLine(attachments);
   const shown = line ? (message ? `${message}\n\n${line}` : line) : message;
