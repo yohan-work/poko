@@ -698,7 +698,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   acceptScreenNotice: async () => {
     try {
-      await window.poko.screen.acceptNotice();
+      // The notice on screen named the engine in these settings.
+      await window.poko.screen.acceptNotice(get().settings?.engine ?? "codex");
     } catch {
       set({ screen: { ...get().screen, error: "안내 확인을 저장하지 못했어. 다시 시도해 줘." } });
       return;

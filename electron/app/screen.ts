@@ -1,7 +1,7 @@
 import { globalShortcut, ipcMain } from "electron";
+import type { AgentProvider } from "../agent/AgentProvider";
 import { randomUUID } from "node:crypto";
 import { IPC_CHANNELS, type PersistedConversation } from "../shared";
-import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
 import type { ScreenService } from "../screen/ScreenService";
 import { type AxElement, HelperError, type WindowSnapshot } from "../screen/axHelper";
 import type { Capture } from "../screen/ScreenAgent";
@@ -33,8 +33,8 @@ const screenErrors: Record<string, string> = {
 };
 
 /** One Codex turn for a screen step: nothing streams to the chat, only the final answer. */
-async function askCodex(
-  provider: CodexAppServerProvider,
+async function askEngine(
+  provider: AgentProvider,
   taskId: string,
   prompt: string,
   capture: Capture,
@@ -55,7 +55,7 @@ async function askCodex(
     if (event.type === "error") throw new Error(event.error);
     if (event.type === "cancelled") throw new Error("cancelled");
   }
-  throw new Error("Codex ended without an answer.");
+  throw new Error("The engine ended without an answer.");
 }
 
 export async function pointAtElement(
@@ -101,7 +101,11 @@ export async function startScreenLook(
   // This start is counted in startingTasks, so another start makes it more than one.
   const busy = () =>
     Boolean(ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1);
-  if (!ctx.database.isScreenNoticeAccepted()) return { error: "먼저 화면 보기 안내를 확인해 줘." };
+  // The engine is read once: its notice is checked, and the task is pinned to it, so a switch
+  // during the capture can't send the screenshot somewhere the user hasn't agreed to.
+  const engine = ctx.database.getSettings().engine;
+  if (!ctx.database.isScreenNoticeAccepted(engine))
+    return { error: "먼저 화면 보기 안내를 확인해 줘." };
   if (busy()) return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
 
   let look: Awaited<ReturnType<ScreenService["prepareLook"]>>;
@@ -139,7 +143,7 @@ export async function startScreenLook(
       prompt: look.prompt,
       cwd: look.workDir,
       taskId,
-      screen: { images: [look.imagePath] },
+      screen: { images: [look.imagePath], engine },
     });
   } catch {
     screenTasks.delete(taskId);
@@ -167,10 +171,13 @@ export function registerScreenHandlers(): void {
     if (kind !== "screen" && kind !== "accessibility") throw new TypeError("Invalid settings.");
     return ctx.screenService.openSettings(kind);
   });
-  ipcMain.handle(IPC_CHANNELS.screenAcceptNotice, (event) => {
+  // The renderer names the engine whose notice the user read, so a switch in between can't
+  // record the acceptance for a different engine.
+  ipcMain.handle(IPC_CHANNELS.screenAcceptNotice, (event, engine: unknown) => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer accepted the screen notice.");
-    ctx.database.acceptScreenNotice();
+    if (engine !== "codex" && engine !== "claude") throw new TypeError("Unknown engine.");
+    ctx.database.acceptScreenNotice(engine);
     return true;
   });
   ipcMain.handle(IPC_CHANNELS.screenResetNotice, (event) => {
@@ -226,8 +233,13 @@ export function registerScreenHandlers(): void {
       request.goal.length > 10_000
     )
       throw new TypeError("Invalid screen request.");
-    if (!ctx.database.isScreenNoticeAccepted())
+    // Read once, for both the notice and the provider of every step (see startScreenLook).
+    const engine = ctx.database.getSettings().engine;
+    if (!ctx.database.isScreenNoticeAccepted(engine))
       return { error: "먼저 화면 보기 안내를 확인해 줘." };
+    // That engine takes each step, like a 화면 보기 task; chosen before anything is recorded.
+    const provider = engine === "claude" ? ctx.claudeProvider : ctx.screenProvider;
+    if (!provider) return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
     if (ctx.agentCore.hasActiveTasks || ctx.screenRun)
       return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
     const windowId = request.windowId as number;
@@ -247,14 +259,13 @@ export function registerScreenHandlers(): void {
     if ("error" in started) return started;
     const { taskId } = started;
     const service = ctx.screenService;
-    const provider = ctx.screenProvider;
     const agent = new ScreenAgent({
       // Each look brings the browser forward: another app's window must not cover the page.
       capture: async (id) => {
         await service.raise(id);
         return service.capture(id);
       },
-      ask: (prompt, capture, signal) => askCodex(provider, taskId, prompt, capture, signal),
+      ask: (prompt, capture, signal) => askEngine(provider, taskId, prompt, capture, signal),
       act: (id, actRequest) => service.act(id, actRequest),
       emit: (agentEvent) => {
         deliverTaskEvent({ taskId, event: agentEvent });

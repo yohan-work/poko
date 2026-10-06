@@ -246,9 +246,14 @@ describe("PokoDatabase", () => {
       "openai/gpt-oss-120b",
     );
 
-    database.acceptScreenNotice();
+    // The notice says where screenshots go, so each engine is accepted on its own.
+    database.acceptScreenNotice("codex");
+    expect(database.isScreenNoticeAccepted("codex")).toBe(true);
+    expect(database.isScreenNoticeAccepted("claude")).toBe(false);
+    database.acceptScreenNotice("claude");
     database.resetScreenNotice();
-    expect(database.isScreenNoticeAccepted()).toBe(false);
+    expect(database.isScreenNoticeAccepted("codex")).toBe(false);
+    expect(database.isScreenNoticeAccepted("claude")).toBe(false);
     database.close();
   });
 

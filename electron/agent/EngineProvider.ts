@@ -17,9 +17,10 @@ export class EngineProvider implements AgentProvider {
   ) {}
 
   async *runTask(input: AgentTask, options?: { signal?: AbortSignal }): AsyncIterable<AgentEvent> {
-    // Screen tasks are tuned for Codex's default model and always run there with it.
+    // Screen tasks run on the chosen engine with its default model and effort.
     const screen = input.profile === "screen";
-    const engine = screen ? "codex" : this.engine();
+    // A task can carry the engine it was checked for; it never moves to another one.
+    const engine = input.engine ?? this.engine();
     const provider = this.providers[engine];
     const model = screen ? null : this.model(engine);
     const effort = screen ? null : this.effort(engine);

@@ -153,6 +153,7 @@ app
     // No task runs yet, so temp folders from a crash or a forced quit can go.
     claudeProvider.cleanupLeftovers();
     ctx.screenProvider = new CodexAppServerProvider({ runtime });
+    ctx.claudeProvider = claudeProvider;
     ctx.agentCore = new AgentCore(
       new EngineProvider(
         {

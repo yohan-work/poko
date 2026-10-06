@@ -735,4 +735,50 @@ describe("ClaudeCodeProvider", () => {
     ]);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it("runs a screen task with no tools at all, even with edits on", async () => {
+    let args: string[] = [];
+    const dir = mkdtempSync(join(tmpdir(), "poko-screen-"));
+    writeFileSync(join(dir, "shot.png"), Buffer.from([1, 2, 3]));
+    let fake: FakeClaude | undefined;
+    const provider = new ClaudeCodeProvider({
+      runtime: () => ({ executable: "/bin/claude", environment: {}, version: "2.1.287" }),
+      spawnProcess: (_command, spawnArgs) => {
+        args = spawnArgs;
+        fake = new FakeClaude((message, claude) => {
+          if (message.type === "user") claude.send(init({ tools: [] }), result("본 화면이야."));
+        });
+        return fake as unknown as ChildProcessWithoutNullStreams;
+      },
+      findTaskProcesses: async () => [],
+      platform: "darwin",
+    });
+    const events: AgentEvent[] = [];
+    for await (const event of provider.runTask({
+      ...task,
+      cwd: dir,
+      profile: "screen",
+      editsEnabled: true,
+      images: [join(dir, "shot.png")],
+    }))
+      events.push(event);
+    expect(args.at(-1)).toBe("");
+    expect(args).not.toContain("--settings");
+    expect(fake?.received[1]).toMatchObject({
+      message: { content: [{ type: "text" }, { type: "image", source: { data: "AQID" } }] },
+    });
+    expect(events.at(-1)).toEqual({ type: "completed", result: "본 화면이야." });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("stops a screen task if the CLI reports any tool", async () => {
+    const { collect } = run(
+      (message, claude) => {
+        if (message.type === "user") claude.send(init({ tools: ["Read"] }), result("x"));
+      },
+      undefined,
+      { ...task, profile: "screen" },
+    );
+    expect((await collect()).at(-1)).toMatchObject({ type: "error" });
+  });
 });

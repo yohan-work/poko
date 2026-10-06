@@ -119,7 +119,6 @@ The probe ran in a temp folder.
 
 ## Explicitly deferred
 
-- Screen tasks on Claude Code (it can take images, but the screen loop is tuned for Codex).
 - Shell commands with approval on either engine.
 
 ## Follow-up: choosing a model
@@ -143,3 +142,12 @@ The probe ran in a temp folder.
 - **Codex** gets `config.model_reasoning_effort` at `thread/start`. Verified: the thread reports the chosen effort. Codex's `ultra` isn't offered, because it hands work to sub-agents, which Poko keeps off.
 - **Claude Code** gets `--effort <level>`.
 - **Screen tasks** keep each CLI's defaults.
+
+## Follow-up: screen tasks on Claude Code
+
+- **Which engine:** 화면 보기 (picker and quick panel) and 대신 해 줘 now run on the engine chosen in 설정, with that engine's default model and effort.
+- **On Claude Code,** a screen task gets **no tools at all** (`--tools ""`), and no edits or commands even when edits are on. It reads only the screenshot, sent as an image block, and the element list in the prompt. If init reports any tool, the task stops. Verified with Claude Code 2.1.287: init reports `tools: []`, and the image is read.
+- **The data notice** names where screenshots go: Codex (OpenAI), or Claude Code (Anthropic), whose session isn't kept on disk.
+  - It is accepted **per engine**. Codex keeps the original setting key, and Claude uses `screenNoticeAccepted:claude`.
+  - 안내 다시 보기 resets both.
+- **Not ready:** the picker says the chosen engine must be installed and signed in when it isn't ready.

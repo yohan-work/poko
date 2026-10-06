@@ -39,7 +39,7 @@ Screenshots use sample data.
 - [x] Approved edits with undo: edits are off by default per folder; each change is shown as a diff, approved once, and can be undone (Phase 08)
 - [x] Installable macOS app with a Codex setup check on first run (Phase 09)
 - [x] Settings page: memory switch, undo retention, export, delete all (Phase 10)
-- [x] Claude Code as an alternative engine, with the same approvals and undo (Phase 11)
+- [x] Claude Code as an alternative engine, with the same approvals and undo, and for screen tasks (Phase 11)
 - [x] Model and reasoning-effort pickers under the message box, per engine
 - [x] Approved project commands (tests, builds) on Claude Code, in a sandbox (Phase 12)
 - [x] Ask Poko from anywhere with ⌥Space or the menu bar icon (Phase 13), optionally about the window in front
@@ -81,7 +81,7 @@ Poko runs on your Mac with the **Codex CLI** and your **ChatGPT** sign-in, or wi
 2. Build the app with `pnpm install && pnpm dist`, then open `release/Poko-<version>-arm64.dmg` and drag Poko to Applications.
 3. Open Poko. If Codex is missing, signed out, or too old, the setup screen names the problem and the fix: copy the install command, use **로그인하기** to sign in, or update. Codex 0.159.0 or newer is required.
 
-**Using Claude Code instead.** Install Claude Code (`npm install -g @anthropic-ai/claude-code`) and sign in once in a terminal (`claude`, then `/login`). Then choose **Claude Code** under 설정 → 엔진. Poko starts your own `claude` with your hooks, plugins, MCP servers, and settings files turned off, offers it only reading tools (plus Edit and Write when you allow edits), and shows every edit as the same approval card with undo. 화면 보기 and 대신 해 줘 always use Codex.
+**Using Claude Code instead.** Install Claude Code (`npm install -g @anthropic-ai/claude-code`) and sign in once in a terminal (`claude`, then `/login`). Then choose **Claude Code** under 설정 → 엔진. Poko starts your own `claude` with your hooks, plugins, MCP servers, and settings files turned off, offers it only reading tools (plus Edit and Write when you allow edits), and shows every edit as the same approval card with undo. 화면 보기 and 대신 해 줘 use the chosen engine too; on Claude Code a screen task gets no tools at all.
 
 With edits allowed on Claude Code (macOS), Poko can also propose project commands such as `npm test`. Each command needs approval and runs in Claude Code's sandbox:
 - it can write only in the workspace, never `.git`;

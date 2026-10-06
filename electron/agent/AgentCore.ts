@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AgentEvent, AgentTask, ApprovalChoice, TaskEventPayload } from "../shared";
+import type { AgentEvent, AgentTask, ApprovalChoice, EngineId, TaskEventPayload } from "../shared";
 import type { AgentProvider } from "./AgentProvider";
 import { formatContext, type TaskContext } from "./context";
 
@@ -9,7 +9,7 @@ interface AgentTaskInput {
   taskId?: string;
   context?: TaskContext;
   /** A screen task: the prompt is already complete and a screenshot is attached. */
-  screen?: { images: string[] };
+  screen?: { images: string[]; engine: EngineId };
   /** The user allowed edits in this workspace. */
   editsEnabled?: boolean;
   /** Images the user attached, as files in the task's own folder. */
@@ -43,6 +43,7 @@ export class AgentCore {
           mode: "read",
           profile: "screen",
           images: input.screen.images,
+          engine: input.screen.engine,
         }
       : {
           id: taskId,

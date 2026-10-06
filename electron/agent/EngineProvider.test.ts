@@ -42,7 +42,7 @@ describe("EngineProvider", () => {
     expect(events.at(-1)).toEqual({ type: "completed", result: "claude" });
   });
 
-  it("always runs screen tasks on Codex", async () => {
+  it("runs screen tasks on the chosen engine", async () => {
     const provider = new EngineProvider(
       { codex: fake("codex"), claude: fake("claude") },
       () => "claude",
@@ -50,7 +50,7 @@ describe("EngineProvider", () => {
     const events: AgentEvent[] = [];
     for await (const event of provider.runTask({ ...task("s"), profile: "screen" }))
       events.push(event);
-    expect(events.at(-1)).toEqual({ type: "completed", result: "codex" });
+    expect(events.at(-1)).toEqual({ type: "completed", result: "claude" });
   });
 
   it("passes the engine's picked model, but never to screen tasks", async () => {
@@ -70,5 +70,18 @@ describe("EngineProvider", () => {
     for await (const _ of provider.runTask(task("a"))) void _;
     for await (const _ of provider.runTask({ ...task("s"), profile: "screen" })) void _;
     expect(seen).toEqual(["opus/high", "undefined/undefined"]);
+  });
+
+  it("keeps a task on the engine it was pinned to", async () => {
+    let engine: EngineId = "claude";
+    const provider = new EngineProvider(
+      { codex: fake("codex"), claude: fake("claude") },
+      () => engine,
+    );
+    const run = provider.runTask({ ...task("p"), profile: "screen", engine: "codex" });
+    engine = "claude";
+    const events: AgentEvent[] = [];
+    for await (const event of run) events.push(event);
+    expect(events.at(-1)).toEqual({ type: "completed", result: "codex" });
   });
 });
