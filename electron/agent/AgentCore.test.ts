@@ -89,4 +89,25 @@ describe("AgentCore", () => {
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
+
+  it("takes a memory suggestion out of a project answer, but not a screen answer", async () => {
+    const publish = vi.fn();
+    const answer = '좋아요.\n<poko-memory type="preference">답은 짧게</poko-memory>';
+    const provider: AgentProvider = {
+      async *runTask() {
+        yield { type: "completed", result: answer };
+      },
+    };
+    const core = new AgentCore(provider, publish);
+    core.startTask({ prompt: "앞으로 답은 짧게 해 줘", cwd: "/w" });
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    expect(publish.mock.calls[0][0].event).toEqual({
+      type: "completed",
+      result: "좋아요.",
+      memory: { type: "preference", content: "답은 짧게" },
+    });
+    core.startTask({ prompt: "p", cwd: "/w", screen: { images: [], engine: "codex" } });
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(2));
+    expect(publish.mock.calls[1][0].event).toEqual({ type: "completed", result: answer });
+  });
 });

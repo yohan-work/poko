@@ -13,6 +13,7 @@ const IDLE: QuickState = {
   screen: null,
   screenHint: null,
   opened: 0,
+  memory: null,
 };
 
 const characterFor = {
@@ -152,6 +153,28 @@ export function QuickPanel() {
             >
               {state.message}
             </p>
+          )}
+          {state.memory && (
+            <div className="memory-suggestion quick__memory">
+              <p className="memory-suggestion__title">이걸 기억해 둘까?</p>
+              <p className="memory-suggestion__content">{state.memory.content}</p>
+              <div className="memory-suggestion__actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void window.poko.quick.remember(false).catch(() => false)}
+                >
+                  괜찮아
+                </button>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void window.poko.quick.remember(true).catch(() => false)}
+                >
+                  기억하기
+                </button>
+              </div>
+            </div>
           )}
           <div className="quick__actions">
             <span className="quick__hint">Esc로 닫기 · 닫아도 계속 진행돼</span>

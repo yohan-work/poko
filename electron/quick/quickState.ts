@@ -1,4 +1,4 @@
-import type { AgentEvent, QuickState } from "../shared";
+import { type AgentEvent, hideMemoryTag, type QuickState } from "../shared";
 
 export const IDLE_STATE: QuickState = {
   phase: "idle",
@@ -10,6 +10,7 @@ export const IDLE_STATE: QuickState = {
   screen: null,
   screenHint: null,
   opened: 0,
+  memory: null,
 };
 
 /**
@@ -20,17 +21,19 @@ export const IDLE_STATE: QuickState = {
 export function reduceQuickState(
   state: QuickState,
   event: AgentEvent,
-  itemId: { current: string | null },
+  itemId: { current: string | null; raw: string },
 ): QuickState {
   switch (event.type) {
     case "output": {
       // A new agent message replaces the previous one, as in the main window.
       const fresh = event.itemId !== undefined && event.itemId !== itemId.current;
       if (event.itemId !== undefined) itemId.current = event.itemId;
+      // The raw text is kept apart, so a tag split across deltas is still recognized.
+      itemId.raw = (fresh ? "" : itemId.raw) + event.content;
       return {
         ...state,
         phase: state.phase === "approval" ? "approval" : "running",
-        answer: (fresh ? "" : state.answer) + event.content,
+        answer: hideMemoryTag(itemId.raw),
         message: null,
       };
     }
@@ -43,7 +46,13 @@ export function reduceQuickState(
         ? { ...state, phase: "approval", message: "확인이 필요해. 앱에서 확인해 줘." }
         : state;
     case "completed":
-      return { ...state, phase: "done", answer: event.result, message: null };
+      return {
+        ...state,
+        phase: "done",
+        answer: event.result,
+        message: null,
+        memory: event.memory ?? null,
+      };
     case "error":
       return { ...state, phase: "error", message: event.error };
     case "cancelled":

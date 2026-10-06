@@ -15,7 +15,7 @@ export class QuickPanel {
   private state: QuickState = IDLE_STATE;
   /** The last height that fits the panel's content (see resize). */
   private height = HEIGHT;
-  private readonly itemId = { current: null as string | null };
+  private readonly itemId = { current: null as string | null, raw: "" };
 
   constructor(
     private readonly preloadPath: string,
@@ -82,8 +82,10 @@ export class QuickPanel {
   /** A new question started a task. */
   begin(question: string, taskId: string, conversationId: string): void {
     this.itemId.current = null;
+    this.itemId.raw = "";
     this.state = {
       ...this.state,
+      memory: null,
       phase: "running",
       question,
       answer: "",
@@ -98,6 +100,20 @@ export class QuickPanel {
   refuse(question: string, message: string): void {
     const { screen, screenHint, opened } = this.state;
     this.state = { ...IDLE_STATE, phase: "error", question, message, screen, screenHint, opened };
+    this.send();
+  }
+
+  /** The memory the panel's answer suggested, if it still waits for an answer. */
+  get pendingMemory(): QuickState["memory"] {
+    return this.state.memory;
+  }
+
+  /** After the yes or no: a kept memory is reported only once it is really saved. */
+  settleMemory(outcome: "saved" | "dropped" | "failed"): void {
+    this.state =
+      outcome === "failed"
+        ? { ...this.state, message: "기억을 저장하지 못했어. 다시 눌러 줘." }
+        : { ...this.state, memory: null, message: outcome === "saved" ? "기억해 뒀어." : null };
     this.send();
   }
 

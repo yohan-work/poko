@@ -9,6 +9,7 @@ import type {
   ClaudeSetup,
   DataExportResult,
   EngineId,
+  MemorySuggestion,
   ModelOption,
   PendingApprovalEvent,
   DeleteAllResponse,
@@ -124,6 +125,12 @@ interface AppState {
   streaming: StreamingAnswer | null;
   /** Oldest first; Codex may ask again before the user answers. */
   pendingApprovals: PendingApproval[];
+  /** A memory the last answer suggested, waiting for the user's yes or no. */
+  memorySuggestion: MemorySuggestion | null;
+  /** Saves the suggested memory (yes) or drops it (no). */
+  answerMemorySuggestion: (keep: boolean) => Promise<void>;
+  memorySuggestionError: string | null;
+  savingMemorySuggestion: boolean;
   /** A task started elsewhere (the quick panel) is running, so this window can't start one. */
   busyElsewhere: boolean;
   /** A task started elsewhere waits for approval in this conversation (null: unknown yet). */
@@ -280,6 +287,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeTaskId: null,
   streaming: null,
   pendingApprovals: [],
+  memorySuggestion: null,
+  answerMemorySuggestion: async (keep) => {
+    const suggestion = get().memorySuggestion;
+    if (get().savingMemorySuggestion) return;
+    if (!keep || !suggestion) {
+      set({ memorySuggestion: null, memorySuggestionError: null });
+      return;
+    }
+    // The card stays (its buttons off) until the memory is really saved, and says so when
+    // it isn't. A newer suggestion that arrived meanwhile is left alone.
+    set({ savingMemorySuggestion: true, memorySuggestionError: null });
+    const saved = await get().saveMemory({
+      type: suggestion.type,
+      content: suggestion.content,
+      importance: 3,
+    });
+    set((state) =>
+      state.memorySuggestion !== suggestion
+        ? { savingMemorySuggestion: false }
+        : saved
+          ? { savingMemorySuggestion: false, memorySuggestion: null }
+          : {
+              savingMemorySuggestion: false,
+              memorySuggestionError: "기억을 저장하지 못했어. 다시 눌러 줘.",
+            },
+    );
+  },
+  memorySuggestionError: null,
+  savingMemorySuggestion: false,
   busyElsewhere: false,
   foreignApproval: null,
   showForeignTask: async () => {
@@ -1037,6 +1073,8 @@ async function switchConversation(id: string | null): Promise<void> {
       activeView: "conversation",
       activeConversationId: id,
       editNotes: [],
+      memorySuggestion: null,
+      memorySuggestionError: null,
       messages: response.messages,
       streaming: null,
       errorMessage: null,
@@ -1202,6 +1240,15 @@ function applyTaskEvent(payload: TaskEventPayload): void {
         : state.pendingApprovals.filter((item) => item.taskId !== taskId);
 
     return {
+      // A new answer replaces an unanswered suggestion; a suggestion comes with its answer.
+      memorySuggestion:
+        event.type === "completed"
+          ? (event.memory ?? null)
+          : status
+            ? null
+            : state.memorySuggestion,
+      // An error belongs to the card it was shown on.
+      memorySuggestionError: status ? null : state.memorySuggestionError,
       characterState:
         status === null && pendingApprovals.length > 0 ? "approval" : eventCharacterState(event),
       errorMessage: event.type === "error" ? event.error : null,

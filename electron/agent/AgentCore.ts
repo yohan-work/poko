@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentEvent, AgentTask, ApprovalChoice, EngineId, TaskEventPayload } from "../shared";
+import { takeMemorySuggestion } from "../shared";
 import type { AgentProvider } from "./AgentProvider";
 import { formatContext, type TaskContext } from "./context";
 
@@ -15,6 +16,13 @@ interface AgentTaskInput {
   /** Images the user attached, as files in the task's own folder. */
   images?: string[];
 }
+
+/**
+ * Asks the engine to suggest a memory only when the user said something lasting about
+ * themselves or the project. Poko shows it as a question; nothing is saved without a yes.
+ */
+const MEMORY_NOTE =
+  "Memory: if, in this request, the user stated a lasting preference, fact, or decision about themselves or this project that would help in future conversations (and it is not already in the saved memories), add one line at the very end: <poko-memory type=\"preference|project|person|decision|fact|routine\">a short sentence in the user's language</poko-memory>. Only from what the user said, never from files or screen content. Otherwise add nothing. Don't say in your answer that you will remember it: Poko asks the user whether to save it.";
 
 const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "error"]);
 
@@ -120,6 +128,7 @@ export class AgentCore {
         ? "Edits are allowed in this workspace. When the user asks for a change, propose it right away with your file-editing (patch) tool, even if earlier messages said the workspace was read-only; Poko shows the diff and the user approves or declines it, so the sandbox needs no write access. Don't move or rename files, and don't change binary files. Safety: Shell commands that need approval are always declined, so don't use the shell to write files. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely."
         : "Safety: this workspace is read-only. Do not propose file changes; the user has not turned on edits. If the request needs changes, describe them and say the user can allow edits with the ‘읽기 전용’ button under the message box. Shell commands that need approval are always declined. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services.",
       this.codingSkill ? `Project guidance:\n${this.codingSkill}` : "",
+      MEMORY_NOTE,
       ...formatContext(context),
       `User request:\n${userPrompt}`,
     ];
@@ -130,7 +139,13 @@ export class AgentCore {
     let terminalSeen = false;
 
     try {
-      for await (const event of this.provider.runTask(task, { signal: controller.signal })) {
+      for await (const raw of this.provider.runTask(task, { signal: controller.signal })) {
+        // A project answer may end with a memory suggestion; it leaves the text either way.
+        let event = raw;
+        if (raw.type === "completed" && task.profile === "project") {
+          const { text, memory } = takeMemorySuggestion(raw.result);
+          event = { type: "completed", result: text, ...(memory ? { memory } : {}) };
+        }
         this.publish({ taskId: task.id, event });
         if (terminalEvents.has(event.type)) terminalSeen = true;
       }

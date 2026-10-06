@@ -7,7 +7,12 @@ import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
 import { EffortSelect, ModelSelect } from "./ModelSelect";
 import { EditNoteItem } from "./EditNoteItem";
-import type { ChatAttachment, EditNote, PersistedMessage } from "../../../../../electron/shared";
+import {
+  type ChatAttachment,
+  type EditNote,
+  hideMemoryTag,
+  type PersistedMessage,
+} from "../../../../../electron/shared";
 import { MAX_FILES, readAttachment } from "../../lib/attachments";
 import { useNow } from "../../lib/useNow";
 
@@ -258,6 +263,56 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   );
 }
 
+const memoryTypeNames = {
+  preference: "취향",
+  project: "프로젝트",
+  person: "사람",
+  decision: "결정",
+  fact: "정보",
+  routine: "루틴",
+} as const;
+
+/** "이걸 기억해 둘까?": a memory the answer suggested, saved only on 기억하기. */
+function MemorySuggestionCard() {
+  const suggestion = useAppStore((state) => state.memorySuggestion);
+  const answer = useAppStore((state) => state.answerMemorySuggestion);
+  const error = useAppStore((state) => state.memorySuggestionError);
+  const saving = useAppStore((state) => state.savingMemorySuggestion);
+  if (!suggestion) return null;
+  return (
+    <li className="memory-suggestion" aria-label="기억 제안">
+      <p className="memory-suggestion__title">이걸 기억해 둘까?</p>
+      <p className="memory-suggestion__content">
+        <span className="memory-suggestion__type">{memoryTypeNames[suggestion.type]}</span>
+        {suggestion.content}
+      </p>
+      {error && (
+        <p className="composer__error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="memory-suggestion__actions">
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={saving}
+          onClick={() => void answer(false)}
+        >
+          괜찮아
+        </button>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={saving}
+          onClick={() => void answer(true)}
+        >
+          {saving ? "저장하는 중" : "기억하기"}
+        </button>
+      </div>
+    </li>
+  );
+}
+
 /** A task started from the quick panel waits for approval in another conversation. */
 function ForeignBanner() {
   const foreignApproval = useAppStore((state) => state.foreignApproval);
@@ -280,7 +335,8 @@ export function ChatPanel() {
   const isSending = useAppStore((state) => state.isSending);
   const progressMessage = useAppStore((state) => state.progressMessage);
   const hasPendingApproval = useAppStore((state) => state.pendingApprovals.length > 0);
-  const streamingText = useAppStore((state) => state.streaming?.text ?? "");
+  // A memory suggestion written at the end of an answer isn't shown while it streams.
+  const streamingText = useAppStore((state) => hideMemoryTag(state.streaming?.text ?? ""));
   const endRef = useRef<HTMLDivElement>(null);
   const now = useNow();
   const isEmpty = messages.length === 0;
@@ -355,6 +411,7 @@ export function ChatPanel() {
             </li>
           )}
           <ApprovalCard />
+          <MemorySuggestionCard />
           {/* Keep showing progress (tools, steps after an approval) below a streamed message;
               hide it only while the answer itself is being written. */}
           {isSending &&
