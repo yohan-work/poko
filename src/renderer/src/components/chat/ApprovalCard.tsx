@@ -1,6 +1,6 @@
+import { parseChange, relativePath } from "../../lib/diff";
 import { useAppStore } from "../../state/appStore";
 import { Character } from "../character/Character";
-import { parseChange, relativePath } from "../../lib/diff";
 
 /** How the provider marks Claude's own description of a command. */
 const CLAIM = "Claude 설명: ";

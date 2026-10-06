@@ -3,6 +3,7 @@ import type { QuickState } from "../../../../../electron/shared";
 import { Character } from "../character/Character";
 import { DictationButton } from "../chat/DictationButton";
 import { Markdown } from "../chat/Markdown";
+import { SpeakButton } from "../chat/SpeakButton";
 
 const IDLE: QuickState = {
   phase: "idle",
@@ -184,6 +185,11 @@ export function QuickPanel() {
           {state.answer && (
             <div className="quick__answer">
               <Markdown>{state.answer}</Markdown>
+              {state.phase === "done" && state.taskId && (
+                <div className="message__actions">
+                  <SpeakButton id={state.taskId} text={state.answer} />
+                </div>
+              )}
             </div>
           )}
           {state.message && (

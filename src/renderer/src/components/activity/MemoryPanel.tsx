@@ -1,9 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import type { PersistedMemory } from "../../../../../electron/shared";
-import type { MemoryInput } from "../../../../../electron/shared";
-import { useAppStore } from "../../state/appStore";
+import { type FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { MemoryInput, PersistedMemory } from "../../../../../electron/shared";
 import { relativeTime } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
+import { useAppStore } from "../../state/appStore";
 import { Icon } from "../Icon";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 

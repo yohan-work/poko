@@ -2869,3 +2869,47 @@ html.is-quick body {
   color: var(--color-text-soft);
   font-size: 0.84rem;
 }
+
+.message__body {
+  min-width: 0;
+}
+
+.message__actions {
+  display: flex;
+  margin-top: 6px;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.message--assistant:hover .message__actions,
+.quick__answer .message__actions,
+.message__actions:focus-within,
+.message__actions:has([aria-pressed="true"]) {
+  opacity: 1;
+}
+
+.speak-button {
+  display: inline-flex;
+  height: 26px;
+  padding: 0 8px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-faint);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.speak-button:hover,
+.speak-button[aria-pressed="true"] {
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.speak-button .icon {
+  width: 14px;
+  height: 14px;
+}

@@ -194,3 +194,9 @@ Verified in the built app:
   - it never reads Poko itself or a secure (password) field;
   - it caps the text at 20,000 characters.
 - **Main keeps the text.** The panel gets a one-line preview and the length, and `quick:ask` only says `withSelection`. The text goes to the engine as a text attachment named 선택한 글, so it is fenced as untrusted content, and the conversation shows `📎 선택한 글`.
+
+## Follow-up: reading answers aloud
+
+- **Where:** a 읽어 주기 button under each answer (shown on hover, or while reading) and under a finished answer in the quick panel. Pressing it again, or reading another answer, stops the first. Switching conversations stops it too.
+- **How:** Web Speech synthesis in the renderer, using the Mac's own voices; a Korean voice is picked for Korean text. Nothing leaves the Mac, and no main-process API was needed.
+- **What is read:** `speakableText` drops Markdown marks and link targets, reads tables as cells, and says "(코드는 생략할게.)" in place of code blocks.
