@@ -22,6 +22,7 @@ import {
   type ApprovalRequest,
   CHECKPOINT_DAY_CHOICES,
   type CheckpointDays,
+  type EngineId,
   isModelName,
   isReasoningEffort,
   QUICK_SHORTCUTS,
@@ -550,25 +551,37 @@ export class PokoDatabase {
     return this.getSettings();
   }
 
-  isScreenNoticeAccepted(): boolean {
+  /**
+   * The screen notice says where a screenshot goes, which depends on the engine, so it is
+   * accepted per engine. Codex keeps the original key.
+   */
+  private noticeKey(engine: EngineId): string {
+    return engine === "codex" ? "screenNoticeAccepted" : `screenNoticeAccepted:${engine}`;
+  }
+
+  isScreenNoticeAccepted(engine: EngineId = this.getSettings().engine): boolean {
     return (
-      this.db.select().from(settings).where(eq(settings.key, "screenNoticeAccepted")).get()
-        ?.value === "true"
+      this.db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, this.noticeKey(engine)))
+        .get()?.value === "true"
     );
   }
 
-  acceptScreenNotice(): void {
+  acceptScreenNotice(engine: EngineId = this.getSettings().engine): void {
     const timestamp = now();
+    const key = this.noticeKey(engine);
     this.db
       .insert(settings)
-      .values({ key: "screenNoticeAccepted", value: "true", updatedAt: timestamp })
+      .values({ key, value: "true", updatedAt: timestamp })
       .onConflictDoUpdate({ target: settings.key, set: { value: "true", updatedAt: timestamp } })
       .run();
   }
 
-  /** Shows the screen notice again before the next screen task. */
+  /** Shows the screen notice again (for every engine) before the next screen task. */
   resetScreenNotice(): void {
-    this.db.delete(settings).where(eq(settings.key, "screenNoticeAccepted")).run();
+    this.db.delete(settings).where(sql`${settings.key} LIKE 'screenNoticeAccepted%'`).run();
   }
 
   setWorkspace(path: string | null): void {

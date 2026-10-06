@@ -42,7 +42,7 @@ describe("EngineProvider", () => {
     expect(events.at(-1)).toEqual({ type: "completed", result: "claude" });
   });
 
-  it("always runs screen tasks on Codex", async () => {
+  it("runs screen tasks on the chosen engine", async () => {
     const provider = new EngineProvider(
       { codex: fake("codex"), claude: fake("claude") },
       () => "claude",
@@ -50,7 +50,7 @@ describe("EngineProvider", () => {
     const events: AgentEvent[] = [];
     for await (const event of provider.runTask({ ...task("s"), profile: "screen" }))
       events.push(event);
-    expect(events.at(-1)).toEqual({ type: "completed", result: "codex" });
+    expect(events.at(-1)).toEqual({ type: "completed", result: "claude" });
   });
 
   it("passes the engine's picked model, but never to screen tasks", async () => {

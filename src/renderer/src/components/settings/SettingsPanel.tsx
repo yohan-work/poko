@@ -80,7 +80,7 @@ function EngineSection() {
     <Section id="settings-engine" title="엔진">
       <Row
         label="대화와 수정에 쓸 엔진"
-        detail="바꾸면 다음 메시지부터 적용돼. 화면 보기와 대신 해 줘는 Codex로 동작해."
+        detail="바꾸면 다음 메시지부터 적용돼. 화면 보기와 대신 해 줘도 이 엔진으로 동작해."
       >
         <fieldset className="segmented">
           <legend className="sr-only">엔진</legend>

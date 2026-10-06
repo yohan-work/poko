@@ -356,10 +356,13 @@ export class ClaudeCodeProvider implements AgentProvider {
     input: AgentTask,
     options: { signal?: AbortSignal } = {},
   ): AsyncIterable<AgentEvent> {
-    if (input.mode !== "read" || input.profile === "screen") {
+    if (input.mode !== "read") {
       yield { type: "error", error: "Claude Code로는 이 작업을 할 수 없어." };
       return;
     }
+    // A screen task only looks: no tools at all, no edits, no commands (see screenTask below).
+    const screen = input.profile === "screen";
+    if (screen) input = { ...input, editsEnabled: false };
     if (options.signal?.aborted) {
       yield { type: "cancelled" };
       return;
@@ -398,9 +401,12 @@ export class ClaudeCodeProvider implements AgentProvider {
           mkdtempSync(join(this.platform === "darwin" ? "/private/tmp" : tmpdir(), "poko-task-")),
         )
       : null;
-    const tools: readonly string[] = input.editsEnabled
-      ? [...READ_TOOLS, ...EDIT_TOOLS, ...(commands ? ["Bash"] : [])]
-      : READ_TOOLS;
+    // Screen tasks get no tools: Claude only reads the screenshot and element list it is sent.
+    const tools: readonly string[] = screen
+      ? []
+      : input.editsEnabled
+        ? [...READ_TOOLS, ...EDIT_TOOLS, ...(commands ? ["Bash"] : [])]
+        : READ_TOOLS;
     const settings = taskTemp
       ? commandSettings({
           workspace,

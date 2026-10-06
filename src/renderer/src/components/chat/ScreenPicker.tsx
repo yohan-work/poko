@@ -35,6 +35,8 @@ function Permission({
 export function ScreenPicker({ question, onPicked }: { question: string; onPicked: () => void }) {
   const screen = useAppStore((state) => state.screen);
   const codexSetup = useAppStore((state) => state.setup);
+  const claudeSetup = useAppStore((state) => state.claudeSetup);
+  const engine = useAppStore((state) => state.settings?.engine ?? "codex");
   const closeScreen = useAppStore((state) => state.closeScreen);
   const refreshScreen = useAppStore((state) => state.refreshScreen);
   const acceptScreenNotice = useAppStore((state) => state.acceptScreenNotice);
@@ -59,8 +61,11 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
   if (!screen.open) return null;
   const status = screen.status;
   const permissionsReady = status?.permissions.accessibility && status.permissions.screen;
-  // Screen tasks always run on Codex, whatever engine conversations use.
-  const codexMissing = codexSetup !== null && !codexSetup.ready;
+  // Screen tasks run on the engine chosen in 설정.
+  const claude = engine === "claude";
+  const engineSetup = claude ? claudeSetup : codexSetup;
+  const engineMissing = engineSetup !== null && !engineSetup.ready;
+  const engineName = claude ? "Claude Code" : "Codex";
 
   return (
     <div className="screen-picker" role="dialog" aria-modal="true" aria-labelledby="screen-title">
@@ -79,9 +84,10 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
           <p className="screen-picker__error" role="alert">
             {screen.error}
           </p>
-        ) : codexMissing ? (
+        ) : engineMissing ? (
           <p className="screen-picker__note">
-            화면 보기와 대신 해 줘는 Codex로 동작해. Codex를 설치하고 로그인하면 쓸 수 있어.
+            화면 보기와 대신 해 줘는 설정에서 고른 엔진({engineName})으로 동작해. {engineName}를
+            설치하고 로그인하면 쓸 수 있어.
           </p>
         ) : !status?.supported ? (
           <p className="screen-picker__note">화면 보기는 지금 macOS에서만 쓸 수 있어.</p>
@@ -89,12 +95,18 @@ export function ScreenPicker({ question, onPicked }: { question: string; onPicke
           <div className="screen-notice">
             <p>화면 보기를 쓰면 이렇게 동작해:</p>
             <ul>
-              <li>고른 창 하나의 스크린샷과 화면 요소 이름이 Codex(OpenAI)로 전송돼.</li>
               <li>
-                포코는 스크린샷을 저장하지 않고 작업이 끝나면 바로 지워. Codex는 자체 기록을
-                ~/.codex 에 남길 수 있어.
+                고른 창 하나의 스크린샷과 화면 요소 이름이{" "}
+                {claude ? "Claude Code(Anthropic)" : "Codex(OpenAI)"}로 전송돼.
               </li>
-              <li>지금은 화면을 보고 설명만 해. 클릭이나 입력은 하지 않아.</li>
+              <li>
+                포코는 스크린샷을 저장하지 않고 작업이 끝나면 바로 지워.
+                {claude
+                  ? " Claude Code는 이 작업의 세션 기록을 남기지 않아."
+                  : " Codex는 자체 기록을 ~/.codex 에 남길 수 있어."}
+              </li>
+              <li>설명은 바로 해 주고, 클릭이나 입력(대신 해 줘)은 단계마다 확인을 받아.</li>
+              <li>엔진을 바꾸면 이 안내를 그 엔진 기준으로 다시 보여줄게.</li>
             </ul>
             <button
               className="primary-button"

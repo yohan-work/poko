@@ -8,6 +8,7 @@ import {
   type WorkspaceInfo,
 } from "../shared";
 import type { AgentCore } from "../agent/AgentCore";
+import type { AgentProvider } from "../agent/AgentProvider";
 import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
 import { ConversationGoneError, type PokoDatabase } from "../database/Database";
 import type { ScreenService } from "../screen/ScreenService";
@@ -37,6 +38,8 @@ export const ctx = {
   screenService: null as ScreenService | null,
   screenOverlay: null as ScreenOverlay | null,
   screenProvider: null as CodexAppServerProvider | null,
+  /** The Claude Code provider, for 대신 해 줘 steps when Claude Code is the engine. */
+  claudeProvider: null as AgentProvider | null,
   /** The running "act" task, if any. Only one task of any kind runs at a time. */
   screenRun: null as { taskId: string; agent: ScreenAgent; done: Promise<void> } | null,
   editManager: null as EditManager | null,
