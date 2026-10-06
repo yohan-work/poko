@@ -70,9 +70,12 @@ async function openPanel(
   // a window other than the one recorded here.
   const hint = front ? await screenHint().catch(() => "화면 정보를 확인하지 못했어.") : null;
   // Read while the other app still has focus; the panel taking focus would clear it.
-  const selected = ctx.screenService?.supported
-    ? await ctx.screenService.selectedText().catch(() => null)
-    : null;
+  // Only once the user accepted the screen notice: like the screen, the selection is another
+  // app's content that may go to the engine.
+  const selected =
+    ctx.screenService?.supported && ctx.database?.isScreenNoticeAccepted()
+      ? await ctx.screenService.selectedText().catch(() => null)
+      : null;
   frontWindowId = front && !hint ? front.id : null;
   selectedText = selected;
   if (attempt.cancelled) return;

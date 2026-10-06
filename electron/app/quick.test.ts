@@ -79,6 +79,20 @@ describe("quick:ask", () => {
     const { panel, calls } = fakePanel();
     ctx.quickPanel = panel as never;
     ctx.database = { isScreenNoticeAccepted: () => true } as never;
+    ctx.database = { isScreenNoticeAccepted: () => false } as never;
+    const selectedText = vi.fn(async () => "  고칠   문장이야. ");
+    ctx.screenService = {
+      supported: true,
+      selectedText,
+      frontWindow: async () => null,
+      status: async () => ({}),
+    } as never;
+    // Nothing is read before the screen notice was accepted.
+    await toggleQuickPanel();
+    expect(selectedText).not.toHaveBeenCalled();
+    expect(calls[0]).toBe("screen:null:null");
+    calls.length = 0;
+    ctx.database = { isScreenNoticeAccepted: () => true } as never;
     ctx.screenService = {
       supported: true,
       selectedText: async () => "  고칠   문장이야. ",
