@@ -822,6 +822,11 @@ export class PokoDatabase {
     importance: number;
     source?: string;
   }): MemoryRecord {
+    // The same memory twice (two cards for one suggestion, a double click) is kept once.
+    const same = this.listMemories().find(
+      (memory) => memory.content.trim().toLowerCase() === input.content.trim().toLowerCase(),
+    );
+    if (same) return same;
     const timestamp = now();
     const record = {
       id: randomUUID(),

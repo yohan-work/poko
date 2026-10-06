@@ -103,12 +103,18 @@ export class QuickPanel {
     this.send();
   }
 
-  /** The panel's yes or no to its answer's suggestion: returns the memory to save, if any. */
-  takeMemory(keep: boolean): QuickState["memory"] {
-    const memory = this.state.memory;
-    this.state = { ...this.state, memory: null, message: keep && memory ? "기억해 뒀어." : null };
+  /** The memory the panel's answer suggested, if it still waits for an answer. */
+  get pendingMemory(): QuickState["memory"] {
+    return this.state.memory;
+  }
+
+  /** After the yes or no: a kept memory is reported only once it is really saved. */
+  settleMemory(outcome: "saved" | "dropped" | "failed"): void {
+    this.state =
+      outcome === "failed"
+        ? { ...this.state, message: "기억을 저장하지 못했어. 다시 눌러 줘." }
+        : { ...this.state, memory: null, message: outcome === "saved" ? "기억해 뒀어." : null };
     this.send();
-    return keep ? memory : null;
   }
 
   /** The main window answered the panel task's approval; it goes on working. */

@@ -216,6 +216,19 @@ describe("PokoDatabase", () => {
     database.close();
   });
 
+  it("keeps the same memory once", async () => {
+    const database = await openDatabase();
+    const first = database.saveMemory({ type: "fact", content: "답은 짧게", importance: 3 });
+    const again = database.saveMemory({
+      type: "preference",
+      content: " 답은 짧게 ",
+      importance: 3,
+    });
+    expect(again.id).toBe(first.id);
+    expect(database.listMemories()).toHaveLength(1);
+    database.close();
+  });
+
   it("keeps valid settings and ignores invalid ones", async () => {
     const database = await openDatabase();
     expect(database.getSettings()).toEqual({

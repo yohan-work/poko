@@ -162,14 +162,14 @@ export function QuickPanel() {
                 <button
                   className="secondary-button"
                   type="button"
-                  onClick={() => void window.poko.quick.remember(false)}
+                  onClick={() => void window.poko.quick.remember(false).catch(() => false)}
                 >
                   괜찮아
                 </button>
                 <button
                   className="primary-button"
                   type="button"
-                  onClick={() => void window.poko.quick.remember(true)}
+                  onClick={() => void window.poko.quick.remember(true).catch(() => false)}
                 >
                   기억하기
                 </button>

@@ -277,6 +277,7 @@ function MemorySuggestionCard() {
   const suggestion = useAppStore((state) => state.memorySuggestion);
   const answer = useAppStore((state) => state.answerMemorySuggestion);
   const error = useAppStore((state) => state.memorySuggestionError);
+  const saving = useAppStore((state) => state.savingMemorySuggestion);
   if (!suggestion) return null;
   return (
     <li className="memory-suggestion" aria-label="기억 제안">
@@ -291,11 +292,21 @@ function MemorySuggestionCard() {
         </p>
       )}
       <div className="memory-suggestion__actions">
-        <button className="secondary-button" type="button" onClick={() => void answer(false)}>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={saving}
+          onClick={() => void answer(false)}
+        >
           괜찮아
         </button>
-        <button className="primary-button" type="button" onClick={() => void answer(true)}>
-          기억하기
+        <button
+          className="primary-button"
+          type="button"
+          disabled={saving}
+          onClick={() => void answer(true)}
+        >
+          {saving ? "저장하는 중" : "기억하기"}
         </button>
       </div>
     </li>

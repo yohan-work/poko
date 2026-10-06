@@ -130,6 +130,7 @@ interface AppState {
   /** Saves the suggested memory (yes) or drops it (no). */
   answerMemorySuggestion: (keep: boolean) => Promise<void>;
   memorySuggestionError: string | null;
+  savingMemorySuggestion: boolean;
   /** A task started elsewhere (the quick panel) is running, so this window can't start one. */
   busyElsewhere: boolean;
   /** A task started elsewhere waits for approval in this conversation (null: unknown yet). */
@@ -289,23 +290,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   memorySuggestion: null,
   answerMemorySuggestion: async (keep) => {
     const suggestion = get().memorySuggestion;
+    if (get().savingMemorySuggestion) return;
     if (!keep || !suggestion) {
       set({ memorySuggestion: null, memorySuggestionError: null });
       return;
     }
-    // The card stays until the memory is really saved, and says so when it isn't.
+    // The card stays (its buttons off) until the memory is really saved, and says so when
+    // it isn't. A newer suggestion that arrived meanwhile is left alone.
+    set({ savingMemorySuggestion: true, memorySuggestionError: null });
     const saved = await get().saveMemory({
       type: suggestion.type,
       content: suggestion.content,
       importance: 3,
     });
-    set(
-      saved
-        ? { memorySuggestion: null, memorySuggestionError: null }
-        : { memorySuggestionError: "기억을 저장하지 못했어. 다시 눌러 줘." },
+    set((state) =>
+      state.memorySuggestion !== suggestion
+        ? { savingMemorySuggestion: false }
+        : saved
+          ? { savingMemorySuggestion: false, memorySuggestion: null }
+          : {
+              savingMemorySuggestion: false,
+              memorySuggestionError: "기억을 저장하지 못했어. 다시 눌러 줘.",
+            },
     );
   },
   memorySuggestionError: null,
+  savingMemorySuggestion: false,
   busyElsewhere: false,
   foreignApproval: null,
   showForeignTask: async () => {
@@ -1064,6 +1074,7 @@ async function switchConversation(id: string | null): Promise<void> {
       activeConversationId: id,
       editNotes: [],
       memorySuggestion: null,
+      memorySuggestionError: null,
       messages: response.messages,
       streaming: null,
       errorMessage: null,
@@ -1236,6 +1247,8 @@ function applyTaskEvent(payload: TaskEventPayload): void {
           : status
             ? null
             : state.memorySuggestion,
+      // An error belongs to the card it was shown on.
+      memorySuggestionError: status ? null : state.memorySuggestionError,
       characterState:
         status === null && pendingApprovals.length > 0 ? "approval" : eventCharacterState(event),
       errorMessage: event.type === "error" ? event.error : null,

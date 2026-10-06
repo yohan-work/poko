@@ -142,10 +142,21 @@ export function registerQuickHandlers(): void {
   // The panel can only say yes or no; the memory itself is the one main kept from the answer.
   ipcMain.handle(IPC_CHANNELS.quickRemember, (event, keep: unknown) => {
     if (!isQuickPanel(event) || !ctx.quickPanel) throw new Error("Unknown sender answered.");
-    const memory = ctx.quickPanel.takeMemory(keep === true);
-    if (memory && ctx.database)
+    const memory = ctx.quickPanel.pendingMemory;
+    if (!memory || keep !== true) {
+      ctx.quickPanel.settleMemory("dropped");
+      return false;
+    }
+    try {
+      if (!ctx.database) throw new Error("Local storage is unavailable.");
       ctx.database.saveMemory({ type: memory.type, content: memory.content, importance: 3 });
-    return Boolean(memory);
+    } catch (error) {
+      console.error("Could not save a suggested memory.", error);
+      ctx.quickPanel.settleMemory("failed");
+      return false;
+    }
+    ctx.quickPanel.settleMemory("saved");
+    return true;
   });
 
   ipcMain.handle(IPC_CHANNELS.quickHide, (event) => {
