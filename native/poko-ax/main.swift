@@ -517,16 +517,21 @@ func selectedText() -> String? {
   AXUIElementSetMessagingTimeout(app, 0.5)
   let manualKey = "AXManualAccessibility" as CFString
   var focused: AnyObject?
-  AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
+  let first = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
+  // No answer in time: the app is busy or hung, so leave it alone.
+  if first == .cannotComplete { return nil }
   var manual: AnyObject?
   AXUIElementCopyAttributeValue(app, manualKey, &manual)
-  let turnedOn = focused == nil && (manual as? Bool) != true
+  // Only apps that accept the flag (Chromium, Electron) are waited for; others answer at once.
+  let turnedOn =
+    focused == nil && (manual as? Bool) != true
+    && AXUIElementSetAttributeValue(app, manualKey, kCFBooleanTrue) == .success
   if turnedOn {
-    AXUIElementSetAttributeValue(app, manualKey, kCFBooleanTrue)
     // The tree takes a moment to build; wait up to about a second for the focused field.
     for _ in 0..<10 where focused == nil {
       usleep(100_000)
-      AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
+      let read = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
+      if read == .cannotComplete { break }
     }
   }
   defer {
