@@ -57,7 +57,7 @@ describe("EngineProvider", () => {
     const seen: Array<string | undefined> = [];
     const recorder: AgentProvider = {
       async *runTask(input) {
-        seen.push(input.model);
+        seen.push(`${input.model}/${input.effort}`);
         yield { type: "completed", result: "" };
       },
     };
@@ -65,9 +65,10 @@ describe("EngineProvider", () => {
       { codex: recorder, claude: recorder },
       () => "claude",
       (engine) => (engine === "claude" ? "opus" : "gpt-6-astra"),
+      () => "high",
     );
     for await (const _ of provider.runTask(task("a"))) void _;
     for await (const _ of provider.runTask({ ...task("s"), profile: "screen" })) void _;
-    expect(seen).toEqual(["opus", undefined]);
+    expect(seen).toEqual(["opus/high", "undefined/undefined"]);
   });
 });

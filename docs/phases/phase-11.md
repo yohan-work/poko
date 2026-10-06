@@ -136,3 +136,10 @@ The probe ran in a temp folder.
 - **Validation:** model names are checked (`isModelName`) before they are saved or passed to a CLI.
 - **Errors:** a model the account can't use ends with "이 모델은 지금 계정에서 쓸 수 없어. 입력창 아래에서 모델을 기본값으로 바꿔 줘."
 - **Screen tasks** always use Codex's default model.
+
+## Follow-up: reasoning effort
+
+- **The control:** a second select next to the model, "추론: 기본값 / 가볍게 / 보통 / 깊게 / 더 깊게 / 최대", stored per engine (`codexEffort`, `claudeEffort`). 기본값 leaves the choice to the CLI or the model.
+- **Codex** gets `config.model_reasoning_effort` at `thread/start`. Verified: the thread reports the chosen effort. Codex's `ultra` isn't offered, because it hands work to sub-agents, which Poko keeps off.
+- **Claude Code** gets `--effort <level>`.
+- **Screen tasks** keep each CLI's defaults.

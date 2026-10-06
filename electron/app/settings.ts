@@ -1,6 +1,12 @@
 import { app, ipcMain } from "electron";
 import { CLAUDE_MODELS } from "../providers/claude/ClaudeCodeProvider";
-import { type AppSettings, IPC_CHANNELS, type ModelOption, type SettingsView } from "../shared";
+import {
+  type AppSettings,
+  IPC_CHANNELS,
+  type ModelOption,
+  type ReasoningEffort,
+  type SettingsView,
+} from "../shared";
 import { ctx, isTrustedRenderer } from "./context";
 import { applyQuickShortcut } from "./quick";
 
@@ -9,6 +15,18 @@ const MODEL_CACHE_MS = 10 * 60 * 1000;
 const MODEL_RETRY_MS = 30 * 1000;
 let codexModels: { at: number; models: ModelOption[] } | null = null;
 let codexListing: Promise<ModelOption[]> | null = null;
+
+/**
+ * The efforts the Codex model a task will use accepts, from the cached list, or null when
+ * unknown. `model` null means Codex's default model.
+ */
+export function codexEffortsFor(model: string | null): ReasoningEffort[] | null {
+  const models = codexModels?.models ?? [];
+  const entry = model
+    ? models.find((item) => item.id === model)
+    : models.find((item) => item.isDefault);
+  return entry?.efforts ?? null;
+}
 
 /** The 설정 page and the model picker: preferences, the app version, and models per engine. */
 export function registerSettingsHandlers(): void {
@@ -53,6 +71,8 @@ export function registerSettingsHandlers(): void {
       quickShortcut: input.quickShortcut,
       codexModel: input.codexModel,
       claudeModel: input.claudeModel,
+      codexEffort: input.codexEffort,
+      claudeEffort: input.claudeEffort,
       memoriesInContext: input.memoriesInContext,
       checkpointDays: input.checkpointDays,
     });

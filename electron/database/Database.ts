@@ -23,7 +23,9 @@ import {
   CHECKPOINT_DAY_CHOICES,
   type CheckpointDays,
   isModelName,
+  isReasoningEffort,
   QUICK_SHORTCUTS,
+  type ReasoningEffort,
   type QuickShortcut,
 } from "../shared";
 import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
@@ -490,7 +492,7 @@ export class PokoDatabase {
       .select()
       .from(settings)
       .where(
-        sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine', 'codexModel', 'claudeModel', 'quickShortcut')`,
+        sql`${settings.key} IN ('memoriesInContext', 'checkpointDays', 'engine', 'codexModel', 'claudeModel', 'codexEffort', 'claudeEffort', 'quickShortcut')`,
       )
       .all();
     const value = (key: string) => rows.find((row) => row.key === key)?.value;
@@ -502,6 +504,12 @@ export class PokoDatabase {
         : "Alt+Space",
       codexModel: isModelName(value("codexModel")) ? (value("codexModel") as string) : null,
       claudeModel: isModelName(value("claudeModel")) ? (value("claudeModel") as string) : null,
+      codexEffort: isReasoningEffort(value("codexEffort"))
+        ? (value("codexEffort") as ReasoningEffort)
+        : null,
+      claudeEffort: isReasoningEffort(value("claudeEffort"))
+        ? (value("claudeEffort") as ReasoningEffort)
+        : null,
       memoriesInContext: value("memoriesInContext") !== "false",
       checkpointDays: (CHECKPOINT_DAY_CHOICES as readonly number[]).includes(days)
         ? (days as CheckpointDays)
@@ -526,6 +534,12 @@ export class PokoDatabase {
       const model = input[key];
       if (model === null) this.db.delete(settings).where(eq(settings.key, key)).run();
       else if (isModelName(model)) updates.push([key, model]);
+    }
+    // The same for efforts: a known level, or null for the default.
+    for (const key of ["codexEffort", "claudeEffort"] as const) {
+      const effort = input[key];
+      if (effort === null) this.db.delete(settings).where(eq(settings.key, key)).run();
+      else if (isReasoningEffort(effort)) updates.push([key, effort]);
     }
     for (const [key, value] of updates)
       this.db

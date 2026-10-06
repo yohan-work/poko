@@ -119,6 +119,8 @@ export interface AgentTask {
   editsEnabled?: boolean;
   /** The model the user picked for this engine; absent means the CLI's default. */
   model?: string;
+  /** The reasoning effort the user picked for this engine; absent means the CLI's default. */
+  effort?: ReasoningEffort;
 }
 
 export type AgentEvent =
@@ -293,6 +295,9 @@ export interface AppSettings {
   /** The model per engine; null uses the CLI's default. */
   codexModel: string | null;
   claudeModel: string | null;
+  /** The reasoning effort per engine; null uses the CLI's (or model's) default. */
+  codexEffort: ReasoningEffort | null;
+  claudeEffort: ReasoningEffort | null;
   /** Saved memories go with each request. */
   memoriesInContext: boolean;
   checkpointDays: CheckpointDays;
@@ -319,6 +324,8 @@ export interface ModelOption {
   label: string;
   /** The CLI's default model. */
   isDefault?: boolean;
+  /** Reasoning efforts this model accepts, when the CLI says; absent means all. */
+  efforts?: ReasoningEffort[];
 }
 
 /**
@@ -413,4 +420,15 @@ export function cleanAttachmentName(value: unknown): string {
     .trim()
     .slice(0, 120);
   return clean || "첨부 파일";
+}
+
+/**
+ * Reasoning efforts both engines take. Codex's "ultra" isn't offered: it hands work to
+ * sub-agents, which Poko keeps off.
+ */
+export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+export function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return (REASONING_EFFORTS as readonly unknown[]).includes(value);
 }

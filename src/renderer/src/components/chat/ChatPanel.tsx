@@ -5,7 +5,7 @@ import { Icon } from "../Icon";
 import { ApprovalCard } from "./ApprovalCard";
 import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
-import { ModelSelect } from "./ModelSelect";
+import { EffortSelect, ModelSelect } from "./ModelSelect";
 import { EditNoteItem } from "./EditNoteItem";
 import type { ChatAttachment, EditNote, PersistedMessage } from "../../../../../electron/shared";
 import { MAX_FILES, readAttachment } from "../../lib/attachments";
@@ -219,6 +219,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             {edits.enabled ? "수정 허용" : "읽기 전용"}
           </button>
           <ModelSelect />
+          <EffortSelect />
           <button
             className="send-button"
             type={isSending ? "button" : "submit"}
