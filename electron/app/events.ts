@@ -94,8 +94,12 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
     cards.set(shown.requestId, { taskId: payload.taskId, ...shown });
     pendingApprovalEvents.set(payload.taskId, cards);
   }
-  notifyTaskEvent(rendererPayload);
-  if (!ctx.mainWindow || ctx.mainWindow.isDestroyed() || ctx.mainWindow.webContents.isDestroyed())
-    return;
-  ctx.mainWindow.webContents.send(IPC_CHANNELS.taskEvent, rendererPayload);
+  if (ctx.mainWindow && !ctx.mainWindow.isDestroyed() && !ctx.mainWindow.webContents.isDestroyed())
+    ctx.mainWindow.webContents.send(IPC_CHANNELS.taskEvent, rendererPayload);
+  // A notification is extra: it comes after the window has the event and never stops it.
+  try {
+    notifyTaskEvent(rendererPayload);
+  } catch (error) {
+    console.error("Could not show a task notification.", error);
+  }
 }
