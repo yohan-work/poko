@@ -7,6 +7,7 @@ import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
 import { EffortSelect, ModelSelect } from "./ModelSelect";
 import { DictationButton } from "./DictationButton";
+import { SpeakButton } from "./SpeakButton";
 import { EditNoteItem } from "./EditNoteItem";
 import {
   type ChatAttachment,
@@ -15,6 +16,7 @@ import {
   type PersistedMessage,
 } from "../../../../../electron/shared";
 import { MAX_FILES, readAttachment } from "../../lib/attachments";
+import { stopSpeaking } from "../../lib/speech";
 import { useNow } from "../../lib/useNow";
 
 function greeting(date = new Date()): string {
@@ -346,6 +348,11 @@ export function ChatPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
 
+  // An answer being read aloud stops when another conversation or page is shown.
+  const conversationId = useAppStore((state) => state.activeConversationId);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stop on each switch and on unmount
+  useEffect(() => () => stopSpeaking(), [conversationId]);
+
   // New messages, approvals, and the start or end of a task always bring the log to the bottom.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the log grows
   useEffect(() => {
@@ -402,7 +409,12 @@ export function ChatPanel() {
             ) : (
               <li className="message message--assistant" key={entry.id}>
                 <Character state="idle" size={26} />
-                <Markdown>{entry.content}</Markdown>
+                <div className="message__body">
+                  <Markdown>{entry.content}</Markdown>
+                  <div className="message__actions">
+                    <SpeakButton id={entry.id} text={entry.content} />
+                  </div>
+                </div>
               </li>
             );
           })}
