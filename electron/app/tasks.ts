@@ -77,6 +77,13 @@ export function registerTaskHandlers(): void {
     };
   });
 
+  ipcMain.handle(IPC_CHANNELS.conversationSearch, (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !ctx.database)
+      throw new Error("Unknown renderer searched conversations.");
+    if (typeof raw !== "string" || raw.length > 200) throw new TypeError("Invalid search.");
+    return ctx.database.searchConversations(raw);
+  });
+
   ipcMain.handle(IPC_CHANNELS.conversationRename, (event, raw: unknown) => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer renamed a conversation.");

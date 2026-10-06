@@ -192,6 +192,24 @@ describe("PokoDatabase", () => {
     database.close();
   });
 
+  it("searches conversation titles and messages, newest first, with a snippet", async () => {
+    const database = await openDatabase();
+    const first = database.createTask("README 요약해 줘", "/tmp/project");
+    database.recordTaskEvent(first, "completed", "끝", "이 프로젝트는 50% 할인 계산기예요.");
+    const second = database.createTask("배포 방법 알려줘", "/tmp/project");
+    database.recordTaskEvent(second, "completed", "끝", "pnpm dist로 만들어요.");
+    expect(database.searchConversations("README").map((match) => match.title)).toEqual([
+      "README 요약해 줘",
+    ]);
+    const percent = database.searchConversations("50%");
+    expect(percent).toHaveLength(1);
+    expect(percent[0].snippet).toContain("50% 할인");
+    expect(database.searchConversations("dist")[0]).toMatchObject({ title: "배포 방법 알려줘" });
+    expect(database.searchConversations("_")).toEqual([]);
+    expect(database.searchConversations("  ")).toEqual([]);
+    database.close();
+  });
+
   it("keeps valid settings and ignores invalid ones", async () => {
     const database = await openDatabase();
     expect(database.getSettings()).toEqual({

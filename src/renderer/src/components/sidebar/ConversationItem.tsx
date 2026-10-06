@@ -10,8 +10,11 @@ const BUSY_HINT = "포코가 작업 중이라 끝난 뒤에 옮길 수 있어.";
 export function ConversationItem({
   conversation,
   now,
+  snippet,
 }: {
   conversation: PersistedConversation;
+  /** Where a search matched in the messages, shown under the title. */
+  snippet?: string | null;
   now: Date;
 }) {
   const activeConversationId = useAppStore((state) => state.activeConversationId);
@@ -123,6 +126,7 @@ export function ConversationItem({
           )}
           <span className="recent-list__title">{conversation.title}</span>
           <span className="recent-list__time">{relativeTime(conversation.updatedAt, now)}</span>
+          {snippet && <span className="recent-list__snippet">{snippet}</span>}
         </button>
         <div className="conversation-item__menu" ref={menuRef}>
           <button

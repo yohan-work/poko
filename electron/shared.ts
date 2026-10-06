@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   editsChanged: "edits:changed",
   conversationRename: "conversation:rename",
   conversationDelete: "conversation:delete",
+  conversationSearch: "conversation:search",
   taskCancel: "task:cancel",
   taskEvent: "task:event",
   appBootstrap: "app:bootstrap",
@@ -438,4 +439,10 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return (REASONING_EFFORTS as readonly unknown[]).includes(value);
+}
+
+/** A conversation that matches a search, with where its messages matched. */
+export interface ConversationMatch extends PersistedConversation {
+  /** A short piece of the newest message that matched, or null when only the title did. */
+  snippet: string | null;
 }

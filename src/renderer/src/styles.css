@@ -2761,3 +2761,61 @@ html.is-quick body {
 .attachment-chip button:hover {
   color: var(--color-text);
 }
+
+/* Conversation search */
+
+.sidebar__search {
+  display: flex;
+  height: 32px;
+  margin: 0 4px 6px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+}
+
+.sidebar__search:focus-within {
+  border-color: var(--color-focus-border);
+}
+
+.sidebar__search .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.sidebar__search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 0.86rem;
+  outline: none;
+}
+
+.recent-list__item:has(.recent-list__snippet) {
+  height: auto;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.recent-list__snippet {
+  width: 100%;
+  overflow: hidden;
+  color: var(--color-text-faint);
+  font-size: 0.78rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-list__item:has(.recent-list__snippet) .recent-list__title {
+  min-width: 0;
+  flex: 1 1 0;
+}
