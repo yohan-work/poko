@@ -463,10 +463,14 @@ export interface MemorySuggestion {
 const MEMORY_TAIL =
   /^<poko-memory\s+type="(preference|project|person|decision|fact|routine)">([\s\S]*?)<\/poko-memory>$/;
 
+/** An unclosed tag still being written: `<poko-memory type="fact">some text`, or any start of it. */
+const OPENING_SO_FAR =
+  /^<poko-memory(?:\s+(?:t(?:y(?:p(?:e(?:=(?:"(?:[a-z]*(?:"(?:>[^<\n]*)?)?)?)?)?)?)?)?)?)?$/;
+
 /**
  * The answer before its trailing memory tag, and the tag, when the answer ends with one. The
- * tag may follow text on the same line (models do that); an unclosed tag counts only when no
- * line follows it. A tag with anything after it was quoted, and is left alone.
+ * tag may follow text on the same line (models do that); an unclosed tag counts only while it
+ * still reads as one being written. A tag with anything after it was quoted, and is left alone.
  */
 function trailingTag(answer: string): { text: string; tag: string } | null {
   const trimmed = answer.trimEnd();
@@ -474,7 +478,8 @@ function trailingTag(answer: string): { text: string; tag: string } | null {
   if (start < 0) return null;
   const tag = trimmed.slice(start);
   const closed = tag.indexOf("</poko-memory>");
-  const ends = closed >= 0 ? closed + "</poko-memory>".length === tag.length : !tag.includes("\n");
+  const ends =
+    closed >= 0 ? closed + "</poko-memory>".length === tag.length : OPENING_SO_FAR.test(tag);
   return ends ? { text: trimmed.slice(0, start).trimEnd(), tag } : null;
 }
 
