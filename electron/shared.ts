@@ -119,6 +119,11 @@ export interface AgentTask {
   editsEnabled?: boolean;
   /** The model the user picked for this engine; absent means the CLI's default. */
   model?: string;
+  /**
+   * The engine this task must run on, fixed when it was checked (a screen task's data notice
+   * is accepted per engine); absent means the engine chosen when it starts.
+   */
+  engine?: EngineId;
   /** The reasoning effort the user picked for this engine; absent means the CLI's default. */
   effort?: ReasoningEffort;
 }

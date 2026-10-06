@@ -71,4 +71,17 @@ describe("EngineProvider", () => {
     for await (const _ of provider.runTask({ ...task("s"), profile: "screen" })) void _;
     expect(seen).toEqual(["opus/high", "undefined/undefined"]);
   });
+
+  it("keeps a task on the engine it was pinned to", async () => {
+    let engine: EngineId = "claude";
+    const provider = new EngineProvider(
+      { codex: fake("codex"), claude: fake("claude") },
+      () => engine,
+    );
+    const run = provider.runTask({ ...task("p"), profile: "screen", engine: "codex" });
+    engine = "claude";
+    const events: AgentEvent[] = [];
+    for await (const event of run) events.push(event);
+    expect(events.at(-1)).toEqual({ type: "completed", result: "codex" });
+  });
 });

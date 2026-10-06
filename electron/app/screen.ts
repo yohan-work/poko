@@ -101,7 +101,11 @@ export async function startScreenLook(
   // This start is counted in startingTasks, so another start makes it more than one.
   const busy = () =>
     Boolean(ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1);
-  if (!ctx.database.isScreenNoticeAccepted()) return { error: "먼저 화면 보기 안내를 확인해 줘." };
+  // The engine is read once: its notice is checked, and the task is pinned to it, so a switch
+  // during the capture can't send the screenshot somewhere the user hasn't agreed to.
+  const engine = ctx.database.getSettings().engine;
+  if (!ctx.database.isScreenNoticeAccepted(engine))
+    return { error: "먼저 화면 보기 안내를 확인해 줘." };
   if (busy()) return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
 
   let look: Awaited<ReturnType<ScreenService["prepareLook"]>>;
@@ -139,7 +143,7 @@ export async function startScreenLook(
       prompt: look.prompt,
       cwd: look.workDir,
       taskId,
-      screen: { images: [look.imagePath] },
+      screen: { images: [look.imagePath], engine },
     });
   } catch {
     screenTasks.delete(taskId);
@@ -226,8 +230,13 @@ export function registerScreenHandlers(): void {
       request.goal.length > 10_000
     )
       throw new TypeError("Invalid screen request.");
-    if (!ctx.database.isScreenNoticeAccepted())
+    // Read once, for both the notice and the provider of every step (see startScreenLook).
+    const engine = ctx.database.getSettings().engine;
+    if (!ctx.database.isScreenNoticeAccepted(engine))
       return { error: "먼저 화면 보기 안내를 확인해 줘." };
+    // That engine takes each step, like a 화면 보기 task; chosen before anything is recorded.
+    const provider = engine === "claude" ? ctx.claudeProvider : ctx.screenProvider;
+    if (!provider) return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
     if (ctx.agentCore.hasActiveTasks || ctx.screenRun)
       return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
     const windowId = request.windowId as number;
@@ -247,11 +256,6 @@ export function registerScreenHandlers(): void {
     if ("error" in started) return started;
     const { taskId } = started;
     const service = ctx.screenService;
-    // The engine chosen in 설정 takes each step, like a 화면 보기 task.
-    const provider =
-      ctx.database.getSettings().engine === "claude" && ctx.claudeProvider
-        ? ctx.claudeProvider
-        : ctx.screenProvider;
     const agent = new ScreenAgent({
       // Each look brings the browser forward: another app's window must not cover the page.
       capture: async (id) => {
