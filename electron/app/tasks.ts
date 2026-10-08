@@ -17,6 +17,7 @@ import {
   startConversationTask,
   startingConversations,
 } from "./context";
+import { markRoutineStopped, routineTitleFor } from "./routines";
 
 /** Approval answers in progress, so a double click can't checkpoint or answer twice. */
 const answering = new Set<string>();
@@ -74,6 +75,7 @@ export function registerTaskHandlers(): void {
       conversationId: ctx.database.getTaskConversation(taskId)?.id ?? null,
       approvals: [...(pendingApprovalEvents.get(taskId)?.values() ?? [])],
       answer: ctx.quickPanel?.answerFor(taskId),
+      routineTitle: routineTitleFor(taskId),
     };
   });
 
@@ -124,6 +126,8 @@ export function registerTaskHandlers(): void {
       ctx.screenRun.agent.stop();
       return true;
     }
+    // A routine run stopped from a window that took it over is skipped, not failed.
+    markRoutineStopped(rawTaskId, "멈췄어.");
     return ctx.agentCore.cancelTask(rawTaskId);
   });
 

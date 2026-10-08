@@ -52,6 +52,8 @@ export const IPC_CHANNELS = {
   routinesSave: "routines:save",
   routinesDelete: "routines:delete",
   routinesRun: "routines:run",
+  /** 멈추고 지금 묻기: stops a running routine so the user's question can start. */
+  routinesYield: "routines:yield",
   /** Starts macOS Dictation in the focused text field of the asking window. */
   dictationStart: "dictation:start",
   /** main → quick panel: what the panel shows. */
@@ -432,6 +434,8 @@ export interface ActiveTaskInfo {
   approvals: PendingApprovalEvent[];
   /** The answer written so far, so a window taking the task over doesn't start mid-sentence. */
   answer?: { text: string; itemId: string | null };
+  /** Set when the task is a routine run (see TaskStartedNotice). */
+  routineTitle?: string;
 }
 
 /** An approval card as the renderer shows it. */
@@ -444,6 +448,8 @@ export interface TaskStartedNotice {
   taskId: string;
   title: string;
   conversation: PersistedConversation;
+  /** Set when the task is a routine run, which the user may stop to ask something now. */
+  routineTitle?: string;
 }
 
 /** A file the user dropped into the message box: its content, never a path. */

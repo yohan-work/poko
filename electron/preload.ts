@@ -110,6 +110,9 @@ const pokoApi = {
     /** 지금 실행: starts the routine now, outside its schedule. */
     run: (id: string): Promise<{ ok: true } | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.routinesRun, id),
+    /** Stops a running routine run so a question can start; true once Poko is free. */
+    yieldRun: (taskId: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.routinesYield, taskId),
   },
   /** macOS Dictation in the focused text field; resolves false where it isn't available. */
   dictation: {

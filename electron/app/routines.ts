@@ -14,6 +14,24 @@ import { ctx, isTrustedRenderer } from "./context";
 
 /** Running routine tasks, so their end is written to the routine's last result. */
 export const routineTasks = new Map<string, string>();
+/**
+ * Routine runs the user stopped, recorded as skipped rather than failed, with why: to ask
+ * something (the banner), or stopped in a window that took the run over.
+ */
+const yieldedTasks = new Map<string, string>();
+
+/** Marks a routine run the user is stopping, so its end is recorded as skipped. */
+export function markRoutineStopped(taskId: string, why: string): boolean {
+  if (!routineTasks.has(taskId)) return false;
+  yieldedTasks.set(taskId, why);
+  return true;
+}
+
+/** The title of the routine a running task belongs to, if it is one. */
+export function routineTitleFor(taskId: string): string | undefined {
+  const routineId = routineTasks.get(taskId);
+  return routineId ? (ctx.database?.getRoutine(routineId)?.title ?? undefined) : undefined;
+}
 
 /**
  * Starts one routine run in the routine's own folder and conversation, always read-only. It
@@ -44,7 +62,12 @@ export async function startRoutineTask(
     if (!conversation) throw new Error("The routine's conversation was not recorded.");
     routineTasks.set(taskId, routine.id);
     // The main window learns about the run before it starts, as with the quick panel.
-    const notice: TaskStartedNotice = { taskId, title: routine.prompt, conversation };
+    const notice: TaskStartedNotice = {
+      taskId,
+      title: routine.prompt,
+      conversation,
+      routineTitle: routine.title,
+    };
     if (ctx.mainWindow && !ctx.mainWindow.isDestroyed())
       ctx.mainWindow.webContents.send(IPC_CHANNELS.taskStarted, notice);
     try {
@@ -83,7 +106,18 @@ export function recordRoutineEnd(taskId: string, type: string, error?: string): 
   const routineId = routineTasks.get(taskId);
   if (!routineId || !["completed", "error", "cancelled"].includes(type)) return;
   routineTasks.delete(taskId);
+  const stoppedWhy = yieldedTasks.get(taskId);
+  yieldedTasks.delete(taskId);
   try {
+    // Stopped by the user: skipped, whether the engine ended it as cancelled or with an error.
+    if (stoppedWhy && type !== "completed") {
+      ctx.database?.recordRoutineRun(routineId, {
+        status: "skipped",
+        message: stoppedWhy,
+        at: new Date().toISOString(),
+      });
+      return;
+    }
     ctx.database?.recordRoutineRun(routineId, {
       status: type === "completed" ? "completed" : "failed",
       ...(type === "completed"
@@ -204,6 +238,34 @@ async function labelRoutineConversations(): Promise<void> {
     const folder = await resolveWorkspaceDirectory(routine.workspacePath).catch(() => null);
     if (folder) database.ensureRoutineConversation(routine.id, folder);
   }
+}
+
+/**
+ * 멈추고 지금 묻기: cancels a running routine run (only a routine's, never the user's own task)
+ * and resolves once Poko is free, so the question can start right after.
+ */
+export function registerRoutineYield(): void {
+  ipcMain.handle(IPC_CHANNELS.routinesYield, async (event, taskId: unknown) => {
+    if (!isTrustedRenderer(event) || !ctx.agentCore) throw new Error("Unknown sender.");
+    if (typeof taskId !== "string") return false;
+    const core = ctx.agentCore;
+    const running = () => core.activeTaskIds.includes(taskId);
+    // Already over (it just finished on its own): nothing left to stop.
+    if (!running()) return true;
+    if (!markRoutineStopped(taskId, "질문을 먼저 하려고 멈췄어.")) return false;
+    core.cancelTask(taskId);
+    // The run stops within moments; never wait forever for an engine that hangs.
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      core.whenIdle(),
+      new Promise((done) => {
+        timer = setTimeout(done, 10_000);
+      }),
+    ]);
+    clearTimeout(timer);
+    // Success is this run being over, whatever else may have started meanwhile.
+    return !running();
+  });
 }
 
 /** Checks routines every minute, right away, and when the Mac wakes or unlocks. */

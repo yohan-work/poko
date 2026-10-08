@@ -108,3 +108,13 @@ A routine starts without the user's approval each time, so it is held to a narro
     - a follow-up in a routine's conversation is refused unless the routine's folder is selected.
 - **Milestone 3 (finish) is done:** README, the architecture note, and the resume list (including what still needs a check on the user's Mac).
 
+## Follow-up: a routine running when the user wants to ask
+
+- **The banner:** while a routine run keeps Poko busy, the main window says "🔁 {title} 루틴이 실행 중이야. 끝나면 물을 수 있어." with **멈추고 지금 묻기**.
+- **Stopping:**
+  - `routines:yield` cancels only a routine's run (never the user's own task) and resolves once Poko is free, waiting at most 10 seconds;
+  - the run is recorded as skipped, "질문을 먼저 하려고 멈췄어.", not as failed;
+  - its time stays handled, so it doesn't run again that day.
+- **How the window knows:** the `taskStarted` notice carries `routineTitle`.
+- **Deferred:** running a question and a routine at once, or queueing the question until the routine ends. Both would change the one-task-at-a-time rule that approvals and edits rely on.
+

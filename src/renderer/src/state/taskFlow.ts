@@ -73,7 +73,10 @@ function applyForeignEvent(payload: TaskEventPayload): void {
   const status = sessionTaskStatus(event);
   const waitingForUser = event.type === "approvalRequired" && event.canApprove;
   if (status === null) trackForeign(taskId, null, waitingForUser ? [{ ...event, taskId }] : []);
-  else foreignTasks.delete(taskId);
+  else {
+    foreignTasks.delete(taskId);
+    if (store.getState().busyRoutine?.taskId === taskId) store.setState({ busyRoutine: null });
+  }
   const message = activityText(event);
   const timestamp = new Date().toISOString();
   store.setState((state) => ({
@@ -128,6 +131,8 @@ export async function adoptTask(taskId: string, conversationId: string): Promise
     for (const approval of live?.approvals ?? [])
       foreign.approvals.set(approval.requestId, approval);
     foreignTasks.delete(taskId);
+    // Taken over, it shows here with its own stop button.
+    if (store.getState().busyRoutine?.taskId === taskId) store.setState({ busyRoutine: null });
     const approvals = running ? [...foreign.approvals.values()] : [];
     set({
       activeView: "conversation",
@@ -493,6 +498,8 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
   poko?.tasks?.onEvent?.(routeTaskEvent);
   poko?.tasks?.onStarted?.((notice) => {
     trackForeign(notice.taskId, notice.conversation.id);
+    if (notice.routineTitle)
+      store.setState({ busyRoutine: { taskId: notice.taskId, title: notice.routineTitle } });
     const createdAt = new Date().toISOString();
     store.setState((state) => ({
       conversations: [
