@@ -191,8 +191,26 @@ export function registerRoutineHandlers(): void {
   });
 }
 
+/**
+ * Gives routine conversations from before Phase 16 (no task in a folder yet) their routine's
+ * folder, resolved, so a follow-up there is held to that folder from the start.
+ */
+async function labelRoutineConversations(): Promise<void> {
+  const database = ctx.database;
+  if (!database) return;
+  for (const routine of database.listRoutines()) {
+    if (!routine.conversationId || database.getConversation(routine.conversationId)?.workspacePath)
+      continue;
+    const folder = await resolveWorkspaceDirectory(routine.workspacePath).catch(() => null);
+    if (folder) database.ensureRoutineConversation(routine.id, folder);
+  }
+}
+
 /** Checks routines every minute, right away, and when the Mac wakes or unlocks. */
 export function startRoutineScheduler(): () => void {
+  void labelRoutineConversations().catch((error) =>
+    console.error("Could not label routine conversations.", error),
+  );
   const runner = new RoutineRunner({
     list: () => ctx.database?.listRoutines() ?? [],
     start: startRoutineTask,

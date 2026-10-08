@@ -293,6 +293,12 @@ describe("PokoDatabase", () => {
     const id = database.ensureRoutineConversation(routine.id, "/real/project");
     // No task yet, and it already belongs to the folder.
     expect(database.getConversation(id)?.workspacePath).toBe("/real/project");
+    expect(database.ensureRoutineConversation(routine.id, "/real/project")).toBe(id);
+    // A conversation in another folder is left as it is; the routine starts a new one.
+    const moved = database.ensureRoutineConversation(routine.id, "/real/elsewhere");
+    expect(moved).not.toBe(id);
+    expect(database.getConversation(id)?.workspacePath).toBe("/real/project");
+    expect(database.getConversation(moved)?.workspacePath).toBe("/real/elsewhere");
     database.close();
   });
 

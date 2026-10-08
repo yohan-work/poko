@@ -4,6 +4,9 @@ import { adoptTask, foreignTasks, runTask, switchConversation, trackForeign } fr
 import { addActivity, fromBootstrap } from "../taskHelpers";
 import type { ConversationSlice, Slice } from "../types";
 
+/** Counts busy notes under the folder button, so only the latest one clears itself. */
+let busyNotes = 0;
+
 export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
   activeView: "conversation",
   characterState: "idle",
@@ -133,9 +136,11 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
       if (workspace && "error" in workspace) {
         // Busy is passing: the note clears itself instead of staying as an error.
         set({ characterState: "idle", workspaceError: workspace.error });
-        const shown = workspace.error;
+        const note = ++busyNotes;
         window.setTimeout(() => {
-          if (get().workspaceError === shown) set({ workspaceError: null });
+          // Only the latest note clears itself; a newer one gets its own 4 seconds.
+          if (note === busyNotes && get().workspaceError === workspace.error)
+            set({ workspaceError: null });
         }, 4000);
       } else if (workspace) {
         set({ workspace, characterState: "success" });
@@ -182,15 +187,14 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
       content,
       async () => {
         asked = true;
-        const response = await window.poko.tasks.start(
-          message,
-          get().activeConversationId,
-          attachments,
-        );
+        const sentFrom = get().activeConversationId;
+        const response = await window.poko.tasks.start(message, sentFrom, attachments);
         if ("error" in response) {
           refused = true;
-          // The folder is gone: the line offers a new conversation instead of a switch.
-          if (response.gone) set({ folderGone: get().activeConversationId });
+          // The folder is gone: the line offers a new conversation instead of a switch. Only
+          // if the conversation it was sent from is still the one shown.
+          if (response.gone && get().activeConversationId === sentFrom)
+            set({ folderGone: sentFrom });
         }
         return response;
       },
