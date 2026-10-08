@@ -13,12 +13,12 @@ import {
   startConversationTask,
   startingConversations,
 } from "./context";
+import { cancelQueued } from "./queue";
 
 /** Whether `taskId` is still the conversation's latest task (null: a refused question). */
 function isLatestTurn(conversationId: string, taskId: string | null): boolean {
   return taskId === null || ctx.database?.latestTaskId(conversationId) === taskId;
 }
-import { cancelQueued } from "./queue";
 import { startScreenLook } from "./screen";
 import { memoryFolder } from "./workspace";
 
@@ -178,6 +178,7 @@ export function registerQuickHandlers(): void {
         windowId === null
           ? await startConversationTask(question, continued, onRecorded, selection, {
               allowQueue: true,
+              fromQuick: true,
             })
           : await startScreenLook(windowId, question, continued, onRecorded);
     } catch (error) {

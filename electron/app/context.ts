@@ -99,7 +99,7 @@ export async function startConversationTask(
   /** Runs after the task is recorded and before it starts, so its first event finds it known. */
   onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
   attachments: CheckedAttachment[] = [],
-  options: { allowQueue?: boolean } = {},
+  options: { allowQueue?: boolean; fromQuick?: boolean } = {},
 ): Promise<
   | { taskId: string; conversation: PersistedConversation }
   | QueuedStart
@@ -143,6 +143,7 @@ export async function startConversationTask(
         folder: cwd,
         attachments,
         ticket,
+        fromQuick: options.fromQuick,
       });
     return await startNow(message, shown, cwd, conversationId, attachments, onRecorded);
   } finally {

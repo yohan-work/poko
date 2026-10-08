@@ -15,6 +15,7 @@ import {
   type EditNote,
   hideMemoryTag,
   type PersistedMessage,
+  type QueuedQuestion,
 } from "../../../../../electron/shared";
 import { MAX_FILES, readAttachment } from "../../lib/attachments";
 import { folderName } from "../../lib/folder";
@@ -345,7 +346,8 @@ function WaitingRows() {
   const waiting = useAppStore((state) => state.waitingQuestions);
   const conversations = useAppStore((state) => state.conversations);
   const cancel = useAppStore((state) => state.cancelWaitingQuestion);
-  const where = (conversationId: string | null): string => {
+  const where = ({ conversationId, fromQuick }: QueuedQuestion): string => {
+    if (conversationId === null && fromQuick) return "대기 중 · 빠른 질문";
     if (conversationId === activeConversationId) return "대기 중";
     if (conversationId === null) return "대기 중 · 새 대화로";
     const title = conversations.find((item) => item.id === conversationId)?.title;
@@ -356,7 +358,7 @@ function WaitingRows() {
     <>
       {waiting.map((item) => (
         <li className="message message--user message--waiting" key={item.taskId}>
-          <span className="waiting-chip">{where(item.conversationId)}</span>
+          <span className="waiting-chip">{where(item)}</span>
           <p className="waiting-text">{item.text}</p>
           <button
             className="secondary-button waiting-cancel"

@@ -71,6 +71,11 @@ function registerIpcHandlers(): void {
 }
 
 async function createWindow(): Promise<void> {
+  // Closing the window (Windows, Linux) froze the queue; a new window lets it go on.
+  if (!quitting) {
+    ctx.queueFrozen = false;
+    kickQueue();
+  }
   ctx.mainWindow = new BrowserWindow({
     width: 1024,
     height: 760,

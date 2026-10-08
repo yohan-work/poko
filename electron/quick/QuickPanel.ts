@@ -127,11 +127,11 @@ export class QuickPanel {
     this.begin(this.state.question, taskId, conversationId);
   }
 
-  /** The panel's waiting question was cancelled (here or in the app). */
-  cancelled(taskId: string): void {
+  /** The panel's waiting question was cancelled (here or in the app), or couldn't start. */
+  cancelled(taskId: string, message = "보내기 전에 취소했어."): void {
     if (this.state.taskId !== taskId || this.state.phase !== "waiting") return;
     // Like a refused question: a follow-up keeps its conversation for the next try.
-    this.refuse(this.state.question, "보내기 전에 취소했어.", this.state.conversationId);
+    this.refuse(this.state.question, message, this.state.conversationId);
   }
 
   /** Whether the panel shows a question still waiting, and which. */

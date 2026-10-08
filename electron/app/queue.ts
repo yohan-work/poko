@@ -62,7 +62,12 @@ export function queueConversations(): Set<string> {
 }
 
 export function waitingQuestions(): QueuedQuestion[] {
-  return waiting.map(({ taskId, conversationId, text }) => ({ taskId, conversationId, text }));
+  return waiting.map(({ taskId, conversationId, text, fromQuick }) => ({
+    taskId,
+    conversationId,
+    text,
+    ...(fromQuick ? { fromQuick } : {}),
+  }));
 }
 
 /**
@@ -89,6 +94,7 @@ export async function enqueueQuestion(input: {
   attachments: CheckedAttachment[];
   /** From reserveSlot: questions join in the order they were sent, whatever their awaits took. */
   ticket?: number;
+  fromQuick?: boolean;
 }): Promise<QueuedStart | { error: string }> {
   if (!ctx.database) throw new Error("Local storage is unavailable.");
   let taskId: string;
@@ -123,6 +129,7 @@ export async function enqueueQuestion(input: {
     taskId,
     conversationId: input.conversationId,
     text: input.shown,
+    ...(input.fromQuick ? { fromQuick: true } : {}),
   };
   if (input.ticket === undefined) nextTicket += 1;
   const ticket = input.ticket ?? nextTicket;
@@ -225,6 +232,7 @@ async function startWaiting(next: Waiting): Promise<boolean> {
   const conversation = conversationId ? ctx.database.getConversation(conversationId) : null;
   if (!conversation) {
     dropAttachments(next.taskId);
+    ctx.quickPanel?.cancelled(next.taskId, "작업을 시작하지 못했어. 다시 물어봐 줘.");
     return false;
   }
   const notice: TaskStartedNotice = {

@@ -85,6 +85,7 @@ describe("quick:ask", () => {
       [],
       {
         allowQueue: true,
+        fromQuick: true,
       },
     );
   });
@@ -125,11 +126,12 @@ describe("quick:ask", () => {
       null,
       expect.any(Function),
       [{ kind: "text", name: "선택한 글", text: "  고칠   문장이야. " }],
-      { allowQueue: true },
+      { allowQueue: true, fromQuick: true },
     );
     await ask({ question: "그냥", withScreen: false, withSelection: false });
     expect(startConversationTask).toHaveBeenLastCalledWith("그냥", null, expect.any(Function), [], {
       allowQueue: true,
+      fromQuick: true,
     });
   });
 
@@ -166,7 +168,7 @@ describe("quick:ask", () => {
       "c1",
       expect.any(Function),
       [],
-      { allowQueue: true },
+      { allowQueue: true, fromQuick: true },
     );
     await ask({ question: "새 질문", withScreen: false, followUp: false });
     expect(startConversationTask).toHaveBeenLastCalledWith(
@@ -174,7 +176,7 @@ describe("quick:ask", () => {
       null,
       expect.any(Function),
       [],
-      { allowQueue: true },
+      { allowQueue: true, fromQuick: true },
     );
     // A refused follow-up keeps its conversation for the next try…
     startConversationTask.mockResolvedValueOnce({ error: "다른 폴더야." });
@@ -194,7 +196,7 @@ describe("quick:ask", () => {
       null,
       expect.any(Function),
       [],
-      { allowQueue: true },
+      { allowQueue: true, fromQuick: true },
     );
     ctx.database = { latestTaskId: () => "t-panel" } as never;
     await ask({ question: "이어서", withScreen: false, followUp: true });
@@ -203,7 +205,7 @@ describe("quick:ask", () => {
       "c1",
       expect.any(Function),
       [],
-      { allowQueue: true },
+      { allowQueue: true, fromQuick: true },
     );
     ctx.database = null;
   });
@@ -215,7 +217,7 @@ describe("quick:ask", () => {
       queued: { taskId: "w", conversationId: null, text: "나중에" },
     });
     expect(await ask({ question: "나중에" })).toEqual({ ok: true });
-    expect(startConversationTask.mock.calls[0][4]).toEqual({ allowQueue: true });
+    expect(startConversationTask.mock.calls[0][4]).toEqual({ allowQueue: true, fromQuick: true });
     expect(calls).toContain("wait:나중에:w:null");
     // Nothing waits in the panel: 취소 has nothing to cancel.
     expect(await handlers.get(IPC_CHANNELS.quickCancel)?.(panelEvent, undefined)).toBe(false);

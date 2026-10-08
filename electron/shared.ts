@@ -221,6 +221,8 @@ export interface QueuedQuestion {
   conversationId: string | null;
   /** The question as the conversation will show it. */
   text: string;
+  /** Asked in the quick panel, which follows it; the main window doesn't take it over. */
+  fromQuick?: boolean;
 }
 
 /** A started task, a refusal, or a question that waits for its turn. */
