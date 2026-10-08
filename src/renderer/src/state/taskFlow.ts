@@ -151,6 +151,7 @@ export async function adoptTask(taskId: string, conversationId: string): Promise
         : null,
       busyElsewhere: foreignTasks.size > 0,
       foreignApproval: null,
+      retryable: null,
     });
     // Taken out before replaying, so a failure while replaying can't give them back twice.
     const held = mine.held.splice(0);
@@ -164,7 +165,7 @@ export async function adoptTask(taskId: string, conversationId: string): Promise
     } else {
       // It ended while loading: the saved conversation now holds its final answer.
       const again = await window.poko.conversations.open(conversationId).catch(() => null);
-      if (again && !("error" in again)) set({ messages: again.messages });
+      if (again && !("error" in again)) set({ messages: again.messages, retryable: null });
       for (const payload of held) {
         if (sessionTaskStatus(payload.event) !== null) applyForeignEvent(payload);
       }
@@ -206,7 +207,7 @@ async function focusConversation(conversationId: string): Promise<void> {
       !now.isSending &&
       now.activeConversationId === conversationId
     )
-      store.setState({ messages: response.messages, conversationError: null });
+      store.setState({ messages: response.messages, conversationError: null, retryable: null });
   } else await switchConversation(conversationId);
   store.setState({ activeView: "conversation" });
 }
@@ -310,6 +311,8 @@ export async function runTask(
   };
 
   const fail = (error: string) => {
+    // A start that failed can be tried again, as with an answer that failed.
+    const question = questionText(content);
     set((state) => ({
       characterState: "error",
       errorMessage: error,
@@ -317,6 +320,7 @@ export async function runTask(
       activeTaskId: null,
       progressMessage: null,
       messages: [...state.messages, createMessage("assistant", error)],
+      retryable: question ? { conversationId: state.activeConversationId, question } : null,
     }));
   };
 

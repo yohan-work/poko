@@ -11,23 +11,27 @@ export function CopyButton({ text }: { text: string }) {
     return () => window.clearTimeout(timer);
   }, [state]);
 
+  const label = state === "copied" ? "복사했어" : state === "failed" ? "복사하지 못했어" : "복사";
   return (
-    <button
-      className="speak-button"
-      type="button"
-      aria-label="답변 복사"
-      title="답변 복사"
-      onClick={() =>
-        void navigator.clipboard.writeText(text).then(
-          () => setState("copied"),
-          () => setState("failed"),
-        )
-      }
-    >
-      <Icon name={state === "copied" ? "check" : "copy"} />
-      <span role="status">
-        {state === "copied" ? "복사했어" : state === "failed" ? "복사하지 못했어" : "복사"}
+    <>
+      <button
+        className="speak-button"
+        type="button"
+        title="답변 복사"
+        onClick={() =>
+          void navigator.clipboard.writeText(text).then(
+            () => setState("copied"),
+            () => setState("failed"),
+          )
+        }
+      >
+        <Icon name={state === "copied" ? "check" : "copy"} />
+        <span>{label}</span>
+      </button>
+      {/* Announced on its own: a status inside a labelled button isn't read reliably. */}
+      <span className="sr-only" role="status">
+        {state === "idle" ? "" : label}
       </span>
-    </button>
+    </>
   );
 }

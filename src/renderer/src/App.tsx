@@ -248,21 +248,25 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+      // Not behind a dialog (picking a window, setup, confirming edits).
+      if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
       const state = useAppStore.getState();
-      const key = event.key.toLowerCase();
-      if (key === "n" && !event.shiftKey) {
+      // By key position, so the shortcuts work with the Korean input source too.
+      const key = event.code;
+      if (key === "KeyN" && !event.shiftKey) {
         event.preventDefault();
-        void state.newConversation();
-      } else if (key === "k") {
+        // Like the 새 대화 button: nothing while Poko works, and once per press.
+        if (!state.isSending && !event.repeat) void state.newConversation();
+      } else if (key === "KeyK") {
         event.preventDefault();
         setSidebarOpen(true);
         state.setActiveView("conversation");
         // After the sidebar (and its search field) is on screen.
         window.setTimeout(() => document.getElementById("conversation-search")?.focus(), 0);
-      } else if (key === ".") {
+      } else if (key === "Period") {
         event.preventDefault();
         if (state.isSending) void state.cancelTask();
-      } else if (key === ",") {
+      } else if (key === "Comma") {
         event.preventDefault();
         state.setActiveView("settings");
       }

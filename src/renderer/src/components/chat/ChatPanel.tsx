@@ -92,13 +92,16 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
 
   // 고쳐서 묻기: the last question comes back into the box, ready to change.
   const prefill = useAppStore((state) => state.composerPrefill);
+  const takeComposerPrefill = useAppStore((state) => state.takeComposerPrefill);
   useEffect(() => {
     if (!prefill) return;
+    // Taken once: a message box shown later (another page, a new conversation) starts empty.
+    takeComposerPrefill();
     setDraft(prefill.text);
     const input = inputRef.current;
     input?.focus();
     input?.setSelectionRange(prefill.text.length, prefill.text.length);
-  }, [prefill]);
+  }, [prefill, takeComposerPrefill]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the draft changes
   useEffect(() => {
@@ -329,7 +332,6 @@ function MemorySuggestionCard() {
   );
 }
 
-/** A task started from the quick panel waits for approval in another conversation. */
 /** Under a failed or stopped answer: send the same question again, or change it first. */
 function RetryRow() {
   const retryable = useAppStore(
@@ -355,6 +357,7 @@ function RetryRow() {
   );
 }
 
+/** A task started from the quick panel waits for approval in another conversation. */
 function ForeignBanner() {
   const foreignApproval = useAppStore((state) => state.foreignApproval);
   const showForeignTask = useAppStore((state) => state.showForeignTask);

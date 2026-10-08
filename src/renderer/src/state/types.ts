@@ -185,8 +185,9 @@ export interface ConversationSlice {
   retryLast: () => Promise<void>;
   /** Puts the last question back into the message box to change it. */
   editLastQuestion: () => void;
-  /** Text for the message box to take (each new nonce once). */
+  /** Text for the message box to take once; the box clears it when it takes it. */
   composerPrefill: { text: string; nonce: number } | null;
+  takeComposerPrefill: () => void;
   /** A conversation whose folder was found missing, so its line offers a new conversation. */
   folderGone: string | null;
   /** Selects the folder the shown conversation works in (its 폴더로 바꾸기 button). */
