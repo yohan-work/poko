@@ -1,6 +1,7 @@
 import { dialog, ipcMain } from "electron";
 import { IPC_CHANNELS, type MemoryInput } from "../shared";
-import { bootstrapData, ctx, isTrustedRenderer, workspaceInfo } from "./context";
+import { resolveWorkspaceDirectory } from "../agent/workspace";
+import { anyTaskBusy, bootstrapData, ctx, isTrustedRenderer, workspaceInfo } from "./context";
 
 /** Workspace, app data, and memories. */
 export function registerWorkspaceHandlers(): void {
@@ -9,7 +10,7 @@ export function registerWorkspaceHandlers(): void {
       throw new Error("Unknown renderer requested the workspace.");
     }
 
-    return workspaceInfo(ctx.database?.getWorkspace() ?? null);
+    return await workspaceInfo(ctx.database?.getWorkspace() ?? null);
   });
 
   ipcMain.handle(IPC_CHANNELS.workspaceSelect, async (event) => {
@@ -17,6 +18,8 @@ export function registerWorkspaceHandlers(): void {
       throw new Error("Unknown renderer requested workspace selection.");
     }
 
+    // A task resolves the folder when it starts; changing it mid-task would mix two folders.
+    if (anyTaskBusy() || ctx.deletingData) return null;
     const parentWindow = ctx.mainWindow;
     const currentPath = ctx.database?.getWorkspace() ?? null;
     const selection = await dialog.showOpenDialog(parentWindow, {
@@ -28,14 +31,32 @@ export function registerWorkspaceHandlers(): void {
     if (selection.canceled || selection.filePaths.length === 0) return null;
 
     const [selectedPath] = selection.filePaths;
+    if (anyTaskBusy() || ctx.deletingData) return null;
     ctx.database?.setWorkspace(selectedPath);
-    return workspaceInfo(selectedPath);
+    return await workspaceInfo(selectedPath);
   });
 
-  ipcMain.handle(IPC_CHANNELS.appBootstrap, (event) => {
+  // 폴더로 바꾸기: the folder a conversation works in, which main stored; no path comes in.
+  ipcMain.handle(IPC_CHANNELS.workspaceUseConversationFolder, async (event, raw: unknown) => {
+    if (!isTrustedRenderer(event) || !ctx.database)
+      throw new Error("Unknown renderer asked to change the folder.");
+    if (anyTaskBusy() || ctx.deletingData)
+      return { error: "포코가 작업 중이라 지금은 폴더를 바꿀 수 없어. 끝난 뒤에 다시 눌러 줘." };
+    const folder =
+      typeof raw === "string" && raw.length <= 100
+        ? ctx.database.getConversation(raw)?.workspacePath
+        : null;
+    if (!folder) return { error: "이 대화의 폴더를 알 수 없어." };
+    if (!(await resolveWorkspaceDirectory(folder).catch(() => null)))
+      return { error: "이 대화의 폴더를 찾지 못했어. 새 대화에서 물어봐 줘." };
+    ctx.database.setWorkspace(folder);
+    return { workspace: await workspaceInfo(folder) };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.appBootstrap, async (event) => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer requested app data.");
-    return bootstrapData();
+    return await bootstrapData();
   });
   ipcMain.handle(IPC_CHANNELS.memoryList, (event) => {
     if (!isTrustedRenderer(event) || !ctx.database)

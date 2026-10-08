@@ -176,6 +176,8 @@ export interface ConversationSlice {
   workspaceError: string | null;
   initializeWorkspace: () => Promise<void>;
   selectWorkspace: () => Promise<void>;
+  /** Selects the folder the shown conversation works in (its 폴더로 바꾸기 button). */
+  switchToConversationFolder: () => Promise<void>;
   /**
    * "refused" means nothing was recorded (no folder, busy, a file main rejected), so the
    * message box may put the message back; "failed" may have been recorded and must not be.

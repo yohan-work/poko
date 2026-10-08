@@ -43,6 +43,8 @@ export const IPC_CHANNELS = {
   quickResize: "quick:resize",
   /** The panel's yes or no to its answer's memory suggestion. */
   quickRemember: "quick:remember",
+  /** Selects the folder a conversation works in (main knows the path; the renderer never sends one). */
+  workspaceUseConversationFolder: "workspace:use-conversation-folder",
   routinesList: "routines:list",
   routinesSave: "routines:save",
   routinesDelete: "routines:delete",
@@ -110,6 +112,8 @@ export type AppView = "conversation" | "memory" | "tasks" | "routines" | "activi
 export interface WorkspaceInfo {
   path: string;
   name: string;
+  /** The folder resolved in main, to compare with a conversation's folder; null if missing. */
+  realPath: string | null;
 }
 
 export interface AgentTask {
@@ -236,6 +240,8 @@ export interface PersistedConversation {
   id: string;
   title: string;
   updatedAt: string;
+  /** The resolved folder it works in, or null before its first task in a real folder. */
+  workspacePath: string | null;
 }
 
 export interface PersistedMessage {

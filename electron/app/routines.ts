@@ -37,7 +37,7 @@ export async function startRoutineTask(
       return { skipped: "루틴의 폴더를 찾지 못해서 건너뛰었어." };
     }
     if (busy()) return { busy: true };
-    const conversationId = ctx.database.ensureRoutineConversation(routine.id);
+    const conversationId = ctx.database.ensureRoutineConversation(routine.id, cwd);
     // Recorded in the routine's conversation, which doesn't become the window's active one.
     const taskId = ctx.database.createTask(routine.prompt, cwd, conversationId);
     const conversation = ctx.database.getTaskConversation(taskId);

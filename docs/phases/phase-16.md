@@ -78,3 +78,10 @@ Today a conversation has no folder: a follow-up runs in whatever folder is selec
 
 - Moving a conversation or memory to another folder.
 - Several folders open at once.
+
+## Status
+
+- **Milestone 1 (conversations) is done.** Checked in the real app by upgrading a test profile made with the previous build:
+  - the conversation got its folder from the backfill;
+  - with another folder selected, it showed the line, refused a follow-up with the same message, switched with one click, and then answered from the right project.
+

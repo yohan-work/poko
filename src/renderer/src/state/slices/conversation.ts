@@ -98,6 +98,21 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
     }
   },
 
+  switchToConversationFolder: async () => {
+    const id = get().activeConversationId;
+    if (!id) return;
+    const response = await window.poko.workspace
+      .switchToConversationFolder(id)
+      .catch(() => ({ error: "폴더를 바꾸지 못했어. 다시 시도해 줘." }));
+    if ("error" in response) {
+      set({ conversationError: response.error });
+      return;
+    }
+    set({ workspace: response.workspace, conversationError: null, workspaceError: null });
+    // Each folder keeps its own edit setting.
+    void get().loadEdits();
+  },
+
   selectWorkspace: async () => {
     if (get().isSelectingWorkspace) return;
     set({ characterState: "listening", isSelectingWorkspace: true, workspaceError: null });

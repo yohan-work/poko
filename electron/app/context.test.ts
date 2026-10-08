@@ -1,8 +1,12 @@
+import { realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: {}, ipcMain: { handle: vi.fn() } }));
 
-const { BUSY_MESSAGE, ctx, isQuickPanel, startConversationTask } = await import("./context");
+const { BUSY_MESSAGE, ctx, folderMismatch, isQuickPanel, startConversationTask } = await import(
+  "./context"
+);
 
 describe("startConversationTask", () => {
   function fakeDatabase() {
@@ -33,6 +37,24 @@ describe("startConversationTask", () => {
     ctx.startingTasks = 0;
     ctx.database = null;
     ctx.agentCore = null;
+  });
+});
+
+describe("folderMismatch", () => {
+  it("lets a conversation continue only in its own folder", async () => {
+    const here = await realpath(tmpdir());
+    const conversations: Record<string, { workspacePath: string | null }> = {
+      none: { workspacePath: null },
+      same: { workspacePath: here },
+      other: { workspacePath: "/" },
+      gone: { workspacePath: "/no/such/folder/poko-test" },
+    };
+    ctx.database = { getConversation: (id: string) => conversations[id] ?? null } as never;
+    expect(await folderMismatch("none", here)).toBeNull();
+    expect(await folderMismatch("same", here)).toBeNull();
+    expect(await folderMismatch("other", here)).toContain("폴더에서 나눈 대화야");
+    expect(await folderMismatch("gone", here)).toContain("폴더를 찾지 못했어");
+    ctx.database = null;
   });
 });
 

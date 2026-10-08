@@ -26,6 +26,7 @@ const conversation = (id: string, title = id): PersistedConversation => ({
   id,
   title,
   updatedAt: "2026-10-02T00:00:00.000Z",
+  workspacePath: null,
 });
 
 function fakePoko() {
@@ -84,7 +85,7 @@ function fakePoko() {
       deleteAll: record("data.deleteAll", async () => ({
         ok: true,
         bootstrap: {
-          workspace: { path: "/w/project", name: "project" },
+          workspace: { path: "/w/project", name: "project", realPath: "/w/project" },
           conversationId: null,
           conversations: [],
           messages: [],
@@ -127,7 +128,7 @@ beforeEach(async () => {
   });
   ({ useAppStore: store } = await import("./appStore"));
   store.setState({
-    workspace: { path: "/w/project", name: "project" },
+    workspace: { path: "/w/project", name: "project", realPath: "/w/project" },
     conversations: [conversation("a", "first")],
     activeConversationId: "a",
   });
