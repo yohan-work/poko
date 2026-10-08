@@ -105,6 +105,40 @@ export class QuickPanel {
     this.send();
   }
 
+  /** A question that waits for its turn (Poko was busy); `begin` follows when it starts. */
+  wait(question: string, taskId: string, conversationId: string | null): void {
+    this.askedIn = this.state.opened;
+    this.state = {
+      ...this.state,
+      memory: null,
+      phase: "waiting",
+      question,
+      answer: "",
+      message: "포코가 앞 작업을 마치면 바로 물어볼게.",
+      conversationId,
+      taskId,
+    };
+    this.send();
+  }
+
+  /** The panel's waiting question started; its answer streams here as usual. */
+  started(taskId: string, conversationId: string): void {
+    if (this.state.taskId !== taskId || this.state.phase !== "waiting") return;
+    this.begin(this.state.question, taskId, conversationId);
+  }
+
+  /** The panel's waiting question was cancelled (here or in the app). */
+  cancelled(taskId: string): void {
+    if (this.state.taskId !== taskId || this.state.phase !== "waiting") return;
+    // Like a refused question: a follow-up keeps its conversation for the next try.
+    this.refuse(this.state.question, "보내기 전에 취소했어.", this.state.conversationId);
+  }
+
+  /** Whether the panel shows a question still waiting, and which. */
+  get waitingTaskId(): string | null {
+    return this.state.phase === "waiting" ? this.state.taskId : null;
+  }
+
   /**
    * A question that couldn't start: busy, no folder, and so on. A follow-up that was refused
    * keeps its conversation, so the next try still continues it.
@@ -141,7 +175,12 @@ export class QuickPanel {
 
   /** 새로 묻기: the next question starts a new conversation. */
   startFresh(): void {
-    if (this.state.phase === "running" || this.state.phase === "approval" || this.savingMemory)
+    if (
+      this.state.phase === "running" ||
+      this.state.phase === "approval" ||
+      this.state.phase === "waiting" ||
+      this.savingMemory
+    )
       return;
     this.askedIn = null;
     const { screen, screenHint, selection, opened } = this.state;

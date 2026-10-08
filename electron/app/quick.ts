@@ -18,6 +18,7 @@ import {
 function isLatestTurn(conversationId: string, taskId: string | null): boolean {
   return taskId === null || ctx.database?.latestTaskId(conversationId) === taskId;
 }
+import { cancelQueued } from "./queue";
 import { startScreenLook } from "./screen";
 import { memoryFolder } from "./workspace";
 
@@ -172,9 +173,12 @@ export function registerQuickHandlers(): void {
         if (ctx.mainWindow && !ctx.mainWindow.isDestroyed())
           ctx.mainWindow.webContents.send(IPC_CHANNELS.taskStarted, notice);
       };
+      // A question waits its turn while Poko is busy; a screen look needs the screen as it is now.
       started =
         windowId === null
-          ? await startConversationTask(question, continued, onRecorded, selection)
+          ? await startConversationTask(question, continued, onRecorded, selection, {
+              allowQueue: true,
+            })
           : await startScreenLook(windowId, question, continued, onRecorded);
     } catch (error) {
       // For example no folder selected: the message is already plain Korean.
@@ -201,7 +205,15 @@ export function registerQuickHandlers(): void {
       );
       return { error: started.error };
     }
+    if ("queued" in started)
+      ctx.quickPanel.wait(question, started.queued.taskId, started.queued.conversationId);
     return { ok: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.quickCancel, (event) => {
+    if (!isQuickPanel(event)) throw new Error("Unknown sender cancelled a question.");
+    const taskId = ctx.quickPanel?.waitingTaskId;
+    return taskId ? cancelQueued(taskId) : false;
   });
 
   // The panel can only say yes or no; the memory itself is the one main kept from the answer.

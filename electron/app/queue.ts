@@ -148,6 +148,7 @@ export function cancelQueued(taskId: string): boolean {
   waiting.splice(index, 1);
   // Recorded directly, not as a task event: nothing ran, so nothing ends (no notification).
   ctx.database?.recordTaskEvent(taskId, "cancelled", "보내기 전에 취소했어.");
+  ctx.quickPanel?.cancelled(taskId);
   dropAttachments(taskId);
   sendQueue();
   return true;
@@ -233,6 +234,8 @@ async function startWaiting(next: Waiting): Promise<boolean> {
   };
   if (ctx.mainWindow && !ctx.mainWindow.isDestroyed() && !ctx.mainWindow.webContents.isDestroyed())
     ctx.mainWindow.webContents.send(IPC_CHANNELS.taskStarted, notice);
+  // A question asked in the quick panel streams there, as if it had started right away.
+  ctx.quickPanel?.started(next.taskId, conversation.id);
   if (!cwd) {
     fail(next.taskId, folderGoneMessage(next.folder));
     return false;

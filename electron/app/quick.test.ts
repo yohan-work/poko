@@ -35,6 +35,9 @@ function fakePanel() {
           `screen:${JSON.stringify(screen)}:${hint}${selection ? `:${JSON.stringify(selection)}` : ""}`,
         ),
       begin: () => void calls.push("begin"),
+      wait: (question: string, taskId: string, conversationId: string | null) =>
+        void calls.push(`wait:${question}:${taskId}:${conversationId}`),
+      waitingTaskId: null as string | null,
       refuse: (_question: string, message: string, conversationId?: string | null) =>
         void calls.push(`refuse:${message}${conversationId ? `@${conversationId}` : ""}`),
       followUpConversation: null as string | null,
@@ -75,7 +78,15 @@ describe("quick:ask", () => {
     await ask({ question: "요약해 줘", withScreen: true, windowId: 7 });
     expect(startScreenLook).toHaveBeenCalledWith(42, "요약해 줘", null, expect.any(Function));
     await ask({ question: "그냥 질문", withScreen: false });
-    expect(startConversationTask).toHaveBeenCalledWith("그냥 질문", null, expect.any(Function), []);
+    expect(startConversationTask).toHaveBeenCalledWith(
+      "그냥 질문",
+      null,
+      expect.any(Function),
+      [],
+      {
+        allowQueue: true,
+      },
+    );
   });
 
   it("adds only the selection main read when the panel opened, and only when asked", async () => {
@@ -114,9 +125,12 @@ describe("quick:ask", () => {
       null,
       expect.any(Function),
       [{ kind: "text", name: "선택한 글", text: "  고칠   문장이야. " }],
+      { allowQueue: true },
     );
     await ask({ question: "그냥", withScreen: false, withSelection: false });
-    expect(startConversationTask).toHaveBeenLastCalledWith("그냥", null, expect.any(Function), []);
+    expect(startConversationTask).toHaveBeenLastCalledWith("그냥", null, expect.any(Function), [], {
+      allowQueue: true,
+    });
   });
 
   it("refuses the screen when it isn't ready, and asks without it otherwise", async () => {
@@ -152,6 +166,7 @@ describe("quick:ask", () => {
       "c1",
       expect.any(Function),
       [],
+      { allowQueue: true },
     );
     await ask({ question: "새 질문", withScreen: false, followUp: false });
     expect(startConversationTask).toHaveBeenLastCalledWith(
@@ -159,6 +174,7 @@ describe("quick:ask", () => {
       null,
       expect.any(Function),
       [],
+      { allowQueue: true },
     );
     // A refused follow-up keeps its conversation for the next try…
     startConversationTask.mockResolvedValueOnce({ error: "다른 폴더야." });
@@ -178,6 +194,7 @@ describe("quick:ask", () => {
       null,
       expect.any(Function),
       [],
+      { allowQueue: true },
     );
     ctx.database = { latestTaskId: () => "t-panel" } as never;
     await ask({ question: "이어서", withScreen: false, followUp: true });
@@ -186,8 +203,25 @@ describe("quick:ask", () => {
       "c1",
       expect.any(Function),
       [],
+      { allowQueue: true },
     );
     ctx.database = null;
+  });
+
+  it("lets a question wait while Poko is busy, but never a question with the screen", async () => {
+    const { panel, calls } = fakePanel();
+    ctx.quickPanel = panel as never;
+    startConversationTask.mockResolvedValue({
+      queued: { taskId: "w", conversationId: null, text: "나중에" },
+    });
+    expect(await ask({ question: "나중에" })).toEqual({ ok: true });
+    expect(startConversationTask.mock.calls[0][4]).toEqual({ allowQueue: true });
+    expect(calls).toContain("wait:나중에:w:null");
+    // Nothing waits in the panel: 취소 has nothing to cancel.
+    expect(await handlers.get(IPC_CHANNELS.quickCancel)?.(panelEvent, undefined)).toBe(false);
+    expect(() =>
+      handlers.get(IPC_CHANNELS.quickCancel)?.({ sender: "other" }, undefined),
+    ).toThrow();
   });
 
   it("refuses senders other than the panel", async () => {

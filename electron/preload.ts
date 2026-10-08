@@ -146,6 +146,8 @@ const pokoApi = {
       ipcRenderer.invoke(IPC_CHANNELS.quickAsk, { question, withScreen, withSelection, followUp }),
     /** 새로 묻기: the next question starts a new conversation. */
     fresh: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickFresh),
+    /** Cancels the panel's waiting question; false when it already started. */
+    cancel: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickCancel),
     hide: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickHide),
     /** Yes or no to the answer's memory suggestion; main saves the one it kept. */
     remember: (keep: boolean): Promise<boolean> =>

@@ -111,3 +111,8 @@ Poko still runs **one task at a time**. A question sent while it is busy waits i
     - while questions wait, the window may still open their conversations and the one the last question went to;
     - the renderer sends one question at a time;
     - undo waits while questions wait.
+- **Milestone 2 (the quick panel) is done.**
+  - A question asked in the panel while Poko is busy waits in the same queue. A question with the screen is still refused.
+  - The panel shows 대기 중 with 취소. When the question's turn comes, its answer streams in the panel, and the main window hears `taskStarted` as usual.
+  - 취소 in either the panel or the main window cancels it. A cancelled follow-up keeps its conversation for the next try.
+  - Not checked in the real app: the panel opens only from the global shortcut or the menu bar, which the automated run couldn't press. The main-window queue it shares was checked in milestone 1.
