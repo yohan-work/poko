@@ -35,7 +35,10 @@ function fakePanel() {
           `screen:${JSON.stringify(screen)}:${hint}${selection ? `:${JSON.stringify(selection)}` : ""}`,
         ),
       begin: () => void calls.push("begin"),
-      refuse: (_question: string, message: string) => void calls.push(`refuse:${message}`),
+      refuse: (_question: string, message: string, conversationId?: string | null) =>
+        void calls.push(`refuse:${message}${conversationId ? `@${conversationId}` : ""}`),
+      followUpConversation: null as string | null,
+      taskId: null as string | null,
     },
   };
 }
@@ -135,6 +138,56 @@ describe("quick:ask", () => {
     await ask({ question: "요약해 줘", withScreen: true });
     expect(startScreenLook).not.toHaveBeenCalled();
     expect(calls.at(-1)).toBe("refuse:함께 볼 화면이 없어. 화면 없이 다시 물어봐 줘.");
+  });
+
+  it("continues only the conversation main knows the panel shows, and only when asked", async () => {
+    const { panel, calls } = fakePanel();
+    ctx.quickPanel = panel as never;
+    ctx.screenService = { supported: false } as never;
+    panel.followUpConversation = "c1";
+    // The panel can't name a conversation; only "continue" is read.
+    await ask({ question: "이어서", withScreen: false, followUp: true, conversationId: "other" });
+    expect(startConversationTask).toHaveBeenLastCalledWith(
+      "이어서",
+      "c1",
+      expect.any(Function),
+      [],
+    );
+    await ask({ question: "새 질문", withScreen: false, followUp: false });
+    expect(startConversationTask).toHaveBeenLastCalledWith(
+      "새 질문",
+      null,
+      expect.any(Function),
+      [],
+    );
+    // A refused follow-up keeps its conversation for the next try…
+    startConversationTask.mockResolvedValueOnce({ error: "다른 폴더야." });
+    await ask({ question: "또", withScreen: false, followUp: true });
+    expect(calls.at(-1)).toBe("refuse:다른 폴더야.@c1");
+    // …unless the conversation (or its folder) is gone.
+    startConversationTask.mockResolvedValueOnce({ error: "폴더를 찾지 못했어.", gone: true });
+    await ask({ question: "또", withScreen: false, followUp: true });
+    expect(calls.at(-1)).toBe("refuse:폴더를 찾지 못했어.");
+
+    // Not a conversation the main window has gone on with since the panel's answer.
+    panel.taskId = "t-panel";
+    ctx.database = { latestTaskId: () => "t-newer" } as never;
+    await ask({ question: "이어서", withScreen: false, followUp: true });
+    expect(startConversationTask).toHaveBeenLastCalledWith(
+      "이어서",
+      null,
+      expect.any(Function),
+      [],
+    );
+    ctx.database = { latestTaskId: () => "t-panel" } as never;
+    await ask({ question: "이어서", withScreen: false, followUp: true });
+    expect(startConversationTask).toHaveBeenLastCalledWith(
+      "이어서",
+      "c1",
+      expect.any(Function),
+      [],
+    );
+    ctx.database = null;
   });
 
   it("refuses senders other than the panel", async () => {

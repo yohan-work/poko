@@ -5,7 +5,19 @@ import {
   type QuickShortcut,
   type TaskStartedNotice,
 } from "../shared";
-import { ctx, handleTaskStart, isQuickPanel, startConversationTask } from "./context";
+import {
+  CONVERSATION_GONE,
+  ctx,
+  handleTaskStart,
+  isQuickPanel,
+  startConversationTask,
+  startingConversations,
+} from "./context";
+
+/** Whether `taskId` is still the conversation's latest task (null: a refused question). */
+function isLatestTurn(conversationId: string, taskId: string | null): boolean {
+  return taskId === null || ctx.database?.latestTaskId(conversationId) === taskId;
+}
 import { startScreenLook } from "./screen";
 import { memoryFolder } from "./workspace";
 
@@ -107,6 +119,7 @@ export function registerQuickHandlers(): void {
       question?: unknown;
       withScreen?: unknown;
       withSelection?: unknown;
+      followUp?: unknown;
     };
     if (
       typeof request.question !== "string" ||
@@ -115,11 +128,19 @@ export function registerQuickHandlers(): void {
     )
       throw new TypeError("A non-empty question is required.");
     const question = request.question.trim();
+    // Only the conversation main knows the panel is showing; the panel never names one. A
+    // question with the screen starts fresh: a screen look carries no conversation history.
+    const shown = request.followUp === true ? ctx.quickPanel.followUpConversation : null;
+    // Not one the main window has since gone on with: the panel would continue unseen turns.
+    const continued =
+      shown && request.withScreen !== true && isLatestTurn(shown, ctx.quickPanel.taskId)
+        ? shown
+        : null;
     // Only the window main recorded when the panel opened, and only if the user included it.
     const windowId = request.withScreen === true ? frontWindowId : null;
     if (request.withScreen === true && windowId === null) {
       const message = "함께 볼 화면이 없어. 화면 없이 다시 물어봐 줘.";
-      ctx.quickPanel.refuse(question, message);
+      ctx.quickPanel.refuse(question, message, continued);
       return { error: message };
     }
     // The selection main read when the panel opened, as a text attachment: shown in the
@@ -130,6 +151,10 @@ export function registerQuickHandlers(): void {
         : [];
     let started: Awaited<ReturnType<typeof startConversationTask>>;
     let recorded: string | null = null;
+    let recordedConversation: string | null = null;
+    // While it starts, the conversation it continues can't be deleted (as for the main window).
+    if (continued)
+      startingConversations.set(continued, (startingConversations.get(continued) ?? 0) + 1);
     try {
       // The panel and the main window learn about the task before it starts: a task can end
       // right away, and its last event must find both ready.
@@ -141,6 +166,7 @@ export function registerQuickHandlers(): void {
         conversation: PersistedConversation;
       }) => {
         recorded = taskId;
+        recordedConversation = conversation.id;
         ctx.quickPanel?.begin(question, taskId, conversation.id);
         const notice: TaskStartedNotice = { taskId, title: question, conversation };
         if (ctx.mainWindow && !ctx.mainWindow.isDestroyed())
@@ -148,8 +174,8 @@ export function registerQuickHandlers(): void {
       };
       started =
         windowId === null
-          ? await startConversationTask(question, null, onRecorded, selection)
-          : await startScreenLook(windowId, question, null, onRecorded);
+          ? await startConversationTask(question, continued, onRecorded, selection)
+          : await startScreenLook(windowId, question, continued, onRecorded);
     } catch (error) {
       // For example no folder selected: the message is already plain Korean.
       started = { error: error instanceof Error ? error.message : "작업을 시작하지 못했어." };
@@ -160,8 +186,19 @@ export function registerQuickHandlers(): void {
           event: { type: "error", error: "작업을 시작하지 못했어." },
         });
     }
+    if (continued) {
+      const left = (startingConversations.get(continued) ?? 1) - 1;
+      if (left > 0) startingConversations.set(continued, left);
+      else startingConversations.delete(continued);
+    }
     if ("error" in started) {
-      ctx.quickPanel.refuse(question, started.error);
+      // A conversation that is gone (or whose folder is) isn't kept: the next try starts fresh.
+      const gone = ("gone" in started && started.gone) || started.error === CONVERSATION_GONE;
+      ctx.quickPanel.refuse(
+        question,
+        started.error,
+        gone ? null : (recordedConversation ?? continued),
+      );
       return { error: started.error };
     }
     return { ok: true };
@@ -179,6 +216,7 @@ export function registerQuickHandlers(): void {
     }
     const panel = ctx.quickPanel;
     const taskId = panel.taskId;
+    panel.savingMemory = true;
     try {
       if (!ctx.database) throw new Error("Local storage is unavailable.");
       const scope = await memoryFolder(memory.type, taskId ?? undefined);
@@ -190,8 +228,16 @@ export function registerQuickHandlers(): void {
       console.error("Could not save a suggested memory.", error);
       ctx.quickPanel.settleMemory("failed");
       return false;
+    } finally {
+      panel.savingMemory = false;
     }
     ctx.quickPanel.settleMemory("saved");
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.quickFresh, (event) => {
+    if (!isQuickPanel(event)) throw new Error("Unknown sender asked for a new question.");
+    ctx.quickPanel?.startFresh();
     return true;
   });
 

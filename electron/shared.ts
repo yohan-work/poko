@@ -38,6 +38,8 @@ export const IPC_CHANNELS = {
   modelsList: "models:list",
   quickAsk: "quick:ask",
   quickHide: "quick:hide",
+  /** 새로 묻기: the panel's next question starts a new conversation. */
+  quickFresh: "quick:fresh",
   quickOpenInApp: "quick:open-in-app",
   /** The panel's content height, so the window never covers more than the panel. */
   quickResize: "quick:resize",
@@ -418,6 +420,8 @@ export interface QuickState {
   opened: number;
   /** A memory the panel's answer suggested; main keeps it and saves it only on yes. */
   memory: MemorySuggestion | null;
+  /** The next question continues `conversationId` (main decides; see QuickPanel). */
+  followUp: boolean;
 }
 
 /** The running task, for a main window that opens while it runs. */

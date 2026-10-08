@@ -53,6 +53,7 @@ Screenshots use sample data.
 - [x] Routines: requests Poko runs on a schedule, always read-only, each in its own conversation (Phase 15)
 - [x] Conversations and project memories belong to their folder, so projects never mix (Phase 16)
 - [x] Retry or change a failed question, copy an answer, and keyboard shortcuts (⌘N, ⌘K, ⌘., ⌘,)
+- [x] Follow up in the quick panel without opening the app
 
 ## What Poko is aiming for
 
