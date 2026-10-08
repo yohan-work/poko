@@ -226,6 +226,8 @@ app
     const hidden = openedAtLogin();
     await createWindow({ hidden });
     started = true;
+    // A Dock click while the hidden window was still loading.
+    if (hidden && showWhenReady) showMainWindow();
     applyQuickShortcut(ctx.database.getSettings().quickShortcut);
     refreshTray();
     // Routines run while Poko runs, window open or not (see docs/phases/phase-15.md).

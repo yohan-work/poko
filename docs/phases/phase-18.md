@@ -12,7 +12,7 @@ Routines (Phase 15) run only while Poko runs. After a restart, or a day the user
   - Its line: "Mac에 로그인하면 포코가 창 없이 메뉴 막대에서 시작해. 루틴도 앱을 열지 않아도 돌아."
   - The switch shows what macOS has, not a saved copy. If the user removes Poko in 시스템 설정 → 일반 → 로그인 항목, the switch shows off.
   - If macOS needs the user's approval, the switch stays on and the line says: "시스템 설정 → 일반 → 로그인 항목에서 포코를 허용해 줘."
-  - If macOS refuses to register it (which can happen to an ad-hoc signed or moved copy), the switch goes back to off: "macOS가 포코를 로그인 항목에 넣지 못했어. 포코를 응용 프로그램 폴더에서 연 뒤 다시 켜 줘."
+  - If macOS refuses to register it (which can happen to an ad-hoc signed or moved copy), the switch goes back to off: "macOS가 포코를 로그인 항목에 넣지 못했어. 시스템 설정 → 일반 → 로그인 항목을 확인한 뒤 다시 켜 줘."
   - The page reads it again whenever the window gets focus, so a change made in 시스템 설정 shows up.
   - **Disabled:**
     - in a development build: "설치한 앱에서만 쓸 수 있어." Otherwise a login item would point at the development Electron;
