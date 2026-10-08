@@ -175,6 +175,7 @@ export function MemoryPanel() {
 
 /** Changes what a memory says, in place; Escape or 취소 keeps it as it was. */
 function MemoryEditor({ memory, onDone }: { memory: PersistedMemory; onDone: () => void }) {
+  // Closing waits for a save in progress, so its result (or error) is never lost.
   const updateMemory = useAppStore((state) => state.updateMemory);
   const [content, setContent] = useState(memory.content);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +186,7 @@ function MemoryEditor({ memory, onDone }: { memory: PersistedMemory; onDone: () 
     event.preventDefault();
     if (!changed || saving) return;
     setSaving(true);
+    setError(null);
     const failed = await updateMemory(memory.id, content);
     setSaving(false);
     if (failed) setError(failed);
@@ -199,9 +201,12 @@ function MemoryEditor({ memory, onDone }: { memory: PersistedMemory; onDone: () 
       <textarea
         id={`memory-edit-${memory.id}`}
         value={content}
-        onChange={(event) => setContent(event.target.value)}
+        onChange={(event) => {
+          setContent(event.target.value);
+          setError(null);
+        }}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && !event.nativeEvent.isComposing) onDone();
+          if (event.key === "Escape" && !event.nativeEvent.isComposing && !saving) onDone();
         }}
         maxLength={4000}
         rows={3}
@@ -214,7 +219,7 @@ function MemoryEditor({ memory, onDone }: { memory: PersistedMemory; onDone: () 
         </p>
       )}
       <div className="memory-form__actions">
-        <button className="secondary-button" type="button" onClick={onDone}>
+        <button className="secondary-button" type="button" onClick={onDone} disabled={saving}>
           취소
         </button>
         <button className="primary-button" type="submit" disabled={!changed || saving}>
@@ -227,12 +232,15 @@ function MemoryEditor({ memory, onDone }: { memory: PersistedMemory; onDone: () 
 
 function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: () => void }) {
   const [editing, setEditing] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
   const [expanded, setExpanded] = useState(false);
   const now = useNow();
   const [overflows, setOverflows] = useState(false);
   const contentRef = useRef<HTMLParagraphElement>(null);
 
-  // Measure the clamped text so the toggle appears whenever lines are actually hidden.
+  // Measure the clamped text so the toggle appears whenever lines are actually hidden; the
+  // text is a new element after editing, so it is measured again then too.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure after edits
   useLayoutEffect(() => {
     const element = contentRef.current;
     if (!element || expanded) return;
@@ -241,7 +249,7 @@ function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: (
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [expanded]);
+  }, [expanded, editing, memory.content]);
 
   return (
     <li className="memory-card">
@@ -262,7 +270,14 @@ function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: (
         ) : null}
       </span>
       {editing ? (
-        <MemoryEditor memory={memory} onDone={() => setEditing(false)} />
+        <MemoryEditor
+          memory={memory}
+          onDone={() => {
+            setEditing(false);
+            // Back where the user started, not the top of the page.
+            window.setTimeout(() => editButton.current?.focus(), 0);
+          }}
+        />
       ) : (
         <div>
           <p ref={contentRef} className={`memory-card__content${expanded ? " is-expanded" : ""}`}>
@@ -283,6 +298,7 @@ function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: (
       <div className="memory-card__footer">
         <time dateTime={memory.updatedAt}>{relativeTime(memory.updatedAt, now)}</time>
         <button
+          ref={editButton}
           className="icon-button memory-card__edit"
           type="button"
           onClick={() => setEditing(true)}

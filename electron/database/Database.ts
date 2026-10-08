@@ -945,11 +945,15 @@ export class PokoDatabase {
    * gone or another memory where it applies already says the same.
    */
   updateMemory(id: string, content: string): MemoryRecord | "duplicate" | null {
-    const memory = this.listMemories().find((item) => item.id === id);
+    const all = this.listMemories();
+    const memory = all.find((item) => item.id === id);
     if (!memory) return null;
     const wanted = { type: memory.type, content, workspacePath: memory.workspacePath };
-    if (this.listMemories().some((item) => item.id !== id && isSameMemory(item, wanted)))
-      return "duplicate";
+    // Both ways: a shared memory may not repeat a folder memory either (both would reach it).
+    const repeats = (item: MemoryRecord) =>
+      isSameMemory(item, wanted) ||
+      (memory.workspacePath === null && isSameMemory({ ...item, workspacePath: null }, wanted));
+    if (all.some((item) => item.id !== id && repeats(item))) return "duplicate";
     const updatedAt = now();
     this.db
       .update(memories)

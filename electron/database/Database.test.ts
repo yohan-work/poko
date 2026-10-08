@@ -348,6 +348,9 @@ describe("PokoDatabase", () => {
     expect(updated).toMatchObject({ content: "pnpm을 써", type: "project", workspacePath: "/w/a" });
     expect(database.updateMemory(memory.id, "Biome를 써")).toBe("duplicate");
     expect(database.updateMemory("missing", "x")).toBeNull();
+    // A shared memory can't be changed to repeat a folder memory either.
+    const shared = database.saveMemory({ type: "project", content: "npm", importance: 3 });
+    expect(database.updateMemory(shared.id, "pnpm을 써")).toBe("duplicate");
     database.close();
   });
 
