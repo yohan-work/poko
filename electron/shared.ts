@@ -42,6 +42,8 @@ export const IPC_CHANNELS = {
   /** 새로 묻기: the panel's next question starts a new conversation. */
   quickFresh: "quick:fresh",
   quickOpenInApp: "quick:open-in-app",
+  /** 취소 on the panel's waiting question (main knows which one). */
+  quickCancel: "quick:cancel",
   /** The panel's content height, so the window never covers more than the panel. */
   quickResize: "quick:resize",
   /** The panel's yes or no to its answer's memory suggestion. */
@@ -219,6 +221,8 @@ export interface QueuedQuestion {
   conversationId: string | null;
   /** The question as the conversation will show it. */
   text: string;
+  /** Asked in the quick panel, which follows it; the main window doesn't take it over. */
+  fromQuick?: boolean;
 }
 
 /** A started task, a refusal, or a question that waits for its turn. */
@@ -418,7 +422,8 @@ export type QuickShortcut = (typeof QUICK_SHORTCUTS)[number];
 
 /** What the quick panel shows: its latest question and a reduced view of its task. */
 export interface QuickState {
-  phase: "idle" | "running" | "approval" | "done" | "error";
+  /** "waiting": asked while Poko was busy; it starts on its own when its turn comes. */
+  phase: "idle" | "waiting" | "running" | "approval" | "done" | "error";
   question: string;
   /** The answer so far (streamed), or the final answer. */
   answer: string;

@@ -24,6 +24,7 @@ const IDLE: QuickState = {
 
 const characterFor = {
   idle: "idle",
+  waiting: "thinking",
   running: "working",
   approval: "approval",
   done: "success",
@@ -91,7 +92,7 @@ export function QuickPanel() {
     if (state.phase !== "done") stopSpeaking();
   }, [state.phase]);
 
-  const busy = state.phase === "running" || state.phase === "approval";
+  const busy = state.phase === "running" || state.phase === "approval" || state.phase === "waiting";
   // After an answer, the next question continues its conversation until 새로 묻기 (main
   // decides when it can); a question with the screen always starts fresh.
   const followingUp = state.followUp && !withScreen;
@@ -126,15 +127,17 @@ export function QuickPanel() {
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
           placeholder={
-            busy
-              ? "포코가 답하는 중이야…"
-              : withScreen
-                ? "이 화면에 대해 물어봐"
-                : selectionOn
-                  ? "선택한 글로 무엇을 할까? (예: 다듬어 줘, 요약해 줘)"
-                  : followingUp
-                    ? "이어서 물어봐"
-                    : "포코에게 물어봐"
+            state.phase === "waiting"
+              ? "앞 작업이 끝나면 물어볼게…"
+              : busy
+                ? "포코가 답하는 중이야…"
+                : withScreen
+                  ? "이 화면에 대해 물어봐"
+                  : selectionOn
+                    ? "선택한 글로 무엇을 할까? (예: 다듬어 줘, 요약해 줘)"
+                    : followingUp
+                      ? "이어서 물어봐"
+                      : "포코에게 물어봐"
           }
           rows={1}
           maxLength={10_000}
@@ -265,6 +268,15 @@ export function QuickPanel() {
           )}
           <div className="quick__actions">
             <span className="quick__hint">Esc로 닫기 · 닫아도 계속 진행돼</span>
+            {state.phase === "waiting" && (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void window.poko.quick.cancel().catch(() => false)}
+              >
+                취소
+              </button>
+            )}
             <button
               className={state.phase === "approval" ? "primary-button" : "secondary-button"}
               type="button"

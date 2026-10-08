@@ -62,7 +62,12 @@ export function queueConversations(): Set<string> {
 }
 
 export function waitingQuestions(): QueuedQuestion[] {
-  return waiting.map(({ taskId, conversationId, text }) => ({ taskId, conversationId, text }));
+  return waiting.map(({ taskId, conversationId, text, fromQuick }) => ({
+    taskId,
+    conversationId,
+    text,
+    ...(fromQuick ? { fromQuick } : {}),
+  }));
 }
 
 /**
@@ -89,6 +94,7 @@ export async function enqueueQuestion(input: {
   attachments: CheckedAttachment[];
   /** From reserveSlot: questions join in the order they were sent, whatever their awaits took. */
   ticket?: number;
+  fromQuick?: boolean;
 }): Promise<QueuedStart | { error: string }> {
   if (!ctx.database) throw new Error("Local storage is unavailable.");
   let taskId: string;
@@ -123,6 +129,7 @@ export async function enqueueQuestion(input: {
     taskId,
     conversationId: input.conversationId,
     text: input.shown,
+    ...(input.fromQuick ? { fromQuick: true } : {}),
   };
   if (input.ticket === undefined) nextTicket += 1;
   const ticket = input.ticket ?? nextTicket;
@@ -148,6 +155,7 @@ export function cancelQueued(taskId: string): boolean {
   waiting.splice(index, 1);
   // Recorded directly, not as a task event: nothing ran, so nothing ends (no notification).
   ctx.database?.recordTaskEvent(taskId, "cancelled", "보내기 전에 취소했어.");
+  ctx.quickPanel?.cancelled(taskId);
   dropAttachments(taskId);
   sendQueue();
   return true;
@@ -224,6 +232,7 @@ async function startWaiting(next: Waiting): Promise<boolean> {
   const conversation = conversationId ? ctx.database.getConversation(conversationId) : null;
   if (!conversation) {
     dropAttachments(next.taskId);
+    ctx.quickPanel?.cancelled(next.taskId, "작업을 시작하지 못했어. 다시 물어봐 줘.");
     return false;
   }
   const notice: TaskStartedNotice = {
@@ -233,6 +242,8 @@ async function startWaiting(next: Waiting): Promise<boolean> {
   };
   if (ctx.mainWindow && !ctx.mainWindow.isDestroyed() && !ctx.mainWindow.webContents.isDestroyed())
     ctx.mainWindow.webContents.send(IPC_CHANNELS.taskStarted, notice);
+  // A question asked in the quick panel streams there, as if it had started right away.
+  ctx.quickPanel?.started(next.taskId, conversation.id);
   if (!cwd) {
     fail(next.taskId, folderGoneMessage(next.folder));
     return false;

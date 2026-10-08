@@ -683,6 +683,15 @@ describe("asking while Poko is busy (Phase 17)", () => {
     expect(store.getState()).toMatchObject({ activeConversationId: "n", activeTaskId: "w" });
   });
 
+  it("leaves a quick panel question to the panel, even on the new-conversation screen", async () => {
+    store.setState({ activeConversationId: null });
+    world.changeQueue([{ taskId: "q", conversationId: null, text: "빠른", fromQuick: true }]);
+    world.startElsewhere({ taskId: "q", title: "빠른", conversation: conversation("n") });
+    await flush();
+    expect(world.calls.some((call) => call.method === "conversations.open")).toBe(false);
+    expect(store.getState().activeConversationId).toBeNull();
+  });
+
   it("cancels a waiting question and offers its text again only to an empty box", async () => {
     world.changeQueue([{ taskId: "w", conversationId: "a", text: "물어볼 것" }]);
     await store.getState().cancelWaitingQuestion("w");

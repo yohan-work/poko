@@ -594,6 +594,8 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
       (item) =>
         item.taskId === notice.taskId &&
         item.conversationId === null &&
+        // The quick panel follows its own question.
+        !item.fromQuick &&
         before.activeConversationId === null,
     );
     trackForeign(notice.taskId, notice.conversation.id);
