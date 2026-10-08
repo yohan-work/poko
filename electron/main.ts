@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, nativeTheme } from "electron";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { IPC_CHANNELS } from "./shared";
@@ -31,10 +31,15 @@ import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
 import { registerSetupHandlers } from "./app/setup";
 import { registerTaskHandlers } from "./app/tasks";
 import { registerWorkspaceHandlers } from "./app/workspace";
+import { openedAtLogin } from "./app/loginItem";
 import { kickQueue } from "./app/queue";
 
 /** Set when the app is quitting, so closing the main window really closes it. */
 let quitting = false;
+/** A Dock click while Poko was still starting: the window shows once it exists. */
+let showWhenReady = false;
+/** The first window exists; before that, a Dock click only asks for it to show. */
+let started = false;
 
 /** The menu bar icon, with the current shortcut shown next to 포코에게 묻기. */
 function refreshTray(): void {
@@ -70,7 +75,7 @@ function registerIpcHandlers(): void {
   registerRoutineYield();
 }
 
-async function createWindow(): Promise<void> {
+async function createWindow(options: { hidden?: boolean } = {}): Promise<void> {
   // Closing the window (Windows, Linux) froze the queue; a new window lets it go on.
   if (!quitting) {
     ctx.queueFrozen = false;
@@ -82,7 +87,10 @@ async function createWindow(): Promise<void> {
     minWidth: 620,
     minHeight: 620,
     title: "Poko",
-    show: true,
+    // Opened at login: Poko starts in the menu bar, and the Dock or 포코 열기 shows it.
+    show: !options.hidden || showWhenReady,
+    // The first show after a hidden start doesn't flash white.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1b1a" : "#f9f8f5",
     webPreferences: {
       preload: join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -120,6 +128,13 @@ async function createWindow(): Promise<void> {
 app
   .whenReady()
   .then(async () => {
+    // The hidden main window, the quick panel, and the overlay all count as windows, so a Dock
+    // click shows the main window instead of checking whether any window exists. Registered
+    // first, so a click during a quiet start (opened at login) isn't lost.
+    app.on("activate", () => {
+      if (started) void openMainWindow();
+      else showWhenReady = true;
+    });
     const userDataDirectory = app.getPath("userData");
     ctx.database = await PokoDatabase.open(
       join(userDataDirectory, "poko.sqlite"),
@@ -207,15 +222,16 @@ app
     await removeAttachments(ctx.attachmentsRoot).catch(() => undefined);
     ctx.refreshTray = refreshTray;
     registerIpcHandlers();
-    await createWindow();
+    // Read once: whether macOS opened Poko as a login item.
+    const hidden = openedAtLogin();
+    await createWindow({ hidden });
+    started = true;
+    // A Dock click while the hidden window was still loading.
+    if (hidden && showWhenReady) showMainWindow();
     applyQuickShortcut(ctx.database.getSettings().quickShortcut);
     refreshTray();
     // Routines run while Poko runs, window open or not (see docs/phases/phase-15.md).
     startRoutineScheduler();
-
-    // The hidden main window, the quick panel, and the overlay all count as windows, so a Dock
-    // click shows the main window instead of checking whether any window exists.
-    app.on("activate", () => void openMainWindow());
   })
   .catch(() => {
     dialog.showErrorBox(

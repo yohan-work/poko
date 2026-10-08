@@ -358,7 +358,7 @@ export function RoutinesPanel() {
       <PageHeader
         id="routines-title"
         title="루틴"
-        description="정해 둔 시간에 포코가 알아서 하는 일이야. 항상 읽기 전용으로 실행되고, 결과는 루틴마다 있는 대화에 쌓여. 포코가 켜져 있을 때만 돌아(창을 닫아도 메뉴 막대에서는 돌아)."
+        description="정해 둔 시간에 포코가 알아서 하는 일이야. 항상 읽기 전용으로 실행되고, 결과는 루틴마다 있는 대화에 쌓여. 포코가 켜져 있을 때만 돌아(창을 닫아도 메뉴 막대에서는 돌아). 설정에서 ‘로그인할 때 포코 열기’를 켜 두면 Mac을 켤 때 함께 시작해."
         action={
           editing === null && (
             <button

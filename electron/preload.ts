@@ -17,6 +17,7 @@ import {
   type EngineId,
   IPC_CHANNELS,
   type MemoryInput,
+  type LoginItemState,
   type ModelOption,
   type OverlayScene,
   type PersistedMemory,
@@ -53,6 +54,9 @@ const pokoApi = {
     get: (): Promise<SettingsView> => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
     set: (settings: Partial<AppSettings>): Promise<AppSettings> =>
       ipcRenderer.invoke(IPC_CHANNELS.settingsSet, settings),
+    /** 로그인할 때 포코 열기; returns what the system now has. */
+    setLoginItem: (enabled: boolean): Promise<LoginItemState> =>
+      ipcRenderer.invoke(IPC_CHANNELS.settingsSetLoginItem, enabled),
     /** Models the user can pick for an engine. */
     models: (engine: EngineId): Promise<ModelOption[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.modelsList, engine),

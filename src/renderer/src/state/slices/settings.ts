@@ -9,7 +9,17 @@ export const settingsSlice: Slice<SettingsSlice> = (set, get) => ({
   settings: null,
   quickShortcutOk: true,
   appVersion: null,
+  loginItem: null,
   settingsError: null,
+
+  setLoginItem: async (enabled) => {
+    set({ settingsError: null });
+    try {
+      set({ loginItem: await window.poko.settings.setLoginItem(enabled) });
+    } catch {
+      set({ settingsError: "로그인 항목을 바꾸지 못했어. 다시 시도해 줘." });
+    }
+  },
 
   loadSettings: async () => {
     // Preferences and screen status load separately, so a failed screen check can't lock
@@ -20,9 +30,9 @@ export const settingsSlice: Slice<SettingsSlice> = (set, get) => ({
       .then((status) => set({ screen: { ...get().screen, status } }))
       .catch(() => undefined);
     try {
-      const { settings, version, quickShortcutOk } = await window.poko.settings.get();
+      const { settings, version, quickShortcutOk, loginItem } = await window.poko.settings.get();
       if (saves !== settingsSaves) return;
-      set({ settings, appVersion: version, quickShortcutOk, settingsError: null });
+      set({ settings, appVersion: version, quickShortcutOk, loginItem, settingsError: null });
     } catch {
       set({ settingsError: "설정을 불러오지 못했어. 잠시 뒤 다시 시도해 줘." });
     }

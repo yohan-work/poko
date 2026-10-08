@@ -1,5 +1,6 @@
 import type {
   ApprovalChoice,
+  LoginItemState,
   AppSettings,
   AppView,
   CharacterState,
@@ -81,6 +82,9 @@ export interface SettingsSlice {
   /** False when another app already owns the quick panel shortcut. */
   quickShortcutOk: boolean;
   appVersion: string | null;
+  /** 로그인할 때 포코 열기, as main read it from the system (null: not loaded). */
+  loginItem: LoginItemState | null;
+  setLoginItem: (enabled: boolean) => Promise<void>;
   settingsError: string | null;
   /** Loads preferences and the screen permissions for 설정. */
   loadSettings: () => Promise<void>;

@@ -153,6 +153,40 @@ function QuickSection() {
   );
 }
 
+function StartSection() {
+  const loginItem = useAppStore((state) => state.loginItem);
+  const setLoginItem = useAppStore((state) => state.setLoginItem);
+  return (
+    <Section id="settings-start" title="시작">
+      <Row
+        label="로그인할 때 포코 열기"
+        detail={
+          loginItem?.unavailable === "development"
+            ? "설치한 앱에서만 쓸 수 있어."
+            : loginItem?.unavailable === "location"
+              ? "포코를 응용 프로그램 폴더로 옮긴 뒤에 쓸 수 있어."
+              : loginItem?.failed
+                ? "macOS가 포코를 로그인 항목에 넣지 못했어. 시스템 설정 → 일반 → 로그인 항목을 확인한 뒤 다시 켜 줘."
+                : loginItem?.needsApproval
+                  ? "시스템 설정 → 일반 → 로그인 항목에서 포코를 허용해 줘."
+                  : "Mac에 로그인하면 포코가 창 없이 메뉴 막대에서 시작해. 루틴도 앱을 열지 않아도 돌아."
+        }
+      >
+        <input
+          className="switch"
+          type="checkbox"
+          role="switch"
+          aria-label="로그인할 때 포코 열기"
+          aria-checked={loginItem?.enabled ?? false}
+          checked={loginItem?.enabled ?? false}
+          disabled={!loginItem?.available}
+          onChange={(event) => void setLoginItem(event.target.checked)}
+        />
+      </Row>
+    </Section>
+  );
+}
+
 function NotificationSection() {
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
@@ -442,6 +476,7 @@ export function SettingsPanel() {
       )}
       <EngineSection />
       <QuickSection />
+      <StartSection />
       <NotificationSection />
       <MemorySection />
       <ScreenSection />
