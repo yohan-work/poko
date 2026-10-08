@@ -248,8 +248,8 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
-      // Not behind a dialog (picking a window, setup, confirming edits).
-      if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
+      // Not behind a dialog: picking a window, setup, or a confirmation (edits, deleting).
+      if (document.querySelector('[aria-modal="true"], [role="alertdialog"], dialog[open]')) return;
       const state = useAppStore.getState();
       // By key position, so the shortcuts work with the Korean input source too.
       const key = event.code;
