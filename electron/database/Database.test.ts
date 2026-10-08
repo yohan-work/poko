@@ -1,7 +1,7 @@
 import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { ConversationGoneError, PokoDatabase } from "./Database";
 
