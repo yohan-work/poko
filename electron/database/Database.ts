@@ -1,14 +1,34 @@
-import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-sqlite";
 import { migrate } from "drizzle-orm/node-sqlite/migrator";
+import type { TaskContext } from "../agent/context";
 import { readWorkspacePath } from "../settings";
+import type {
+  ApprovalChoice,
+  ApprovalRequest,
+  AppSettings,
+  ConversationMatch,
+  EngineId,
+  RoutineResult,
+  RoutineSchedule,
+} from "../shared";
+import * as Approvals from "./approvals";
+import type { Db } from "./common";
+import type { ConversationRecord, MessageRecord } from "./conversations";
+import * as Conversations from "./conversations";
+import type { EditRecord } from "./edits";
+import * as Edits from "./edits";
+import type { MemoryRecord, MemoryType } from "./memories";
+import * as Memories from "./memories";
+import * as Preferences from "./preferences";
+import type { RoutineRecord } from "./routines";
+import * as Routines from "./routines";
 import {
-  approvals,
   activities,
+  approvals,
   conversations,
   edits,
   memories,
@@ -17,69 +37,19 @@ import {
   settings,
   tasks,
 } from "./schema";
-import {
-  type AppSettings,
-  type ApprovalChoice,
-  type ApprovalRequest,
-  CHECKPOINT_DAY_CHOICES,
-  type CheckpointDays,
-  type ConversationMatch,
-  type EngineId,
-  isModelName,
-  isReasoningEffort,
-  QUICK_SHORTCUTS,
-  type ReasoningEffort,
-  type QuickShortcut,
-  isSameMemory,
-  readRoutineSchedule,
-  type RoutineResult,
-  type RoutineSchedule,
-} from "../shared";
-import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
+import * as Tasks from "./tasks";
 
-/** A routine as main keeps it; times are ISO strings. */
-export interface RoutineRecord {
-  id: string;
-  title: string;
-  prompt: string;
-  schedule: RoutineSchedule;
-  workspacePath: string;
-  conversationId: string | null;
-  enabled: boolean;
-  scheduleChangedAt: string;
-  lastSlotAt: string | null;
-  lastRunAt: string | null;
-  lastResult: RoutineResult | null;
-  createdAt: string;
-}
+export { conversationTitle, isFolderPath } from "./common";
+export {
+  ConversationGoneError,
+  type ConversationRecord,
+  type MessageRecord,
+  snippetAround,
+} from "./conversations";
+export type { EditRecord } from "./edits";
+export type { MemoryRecord, MemoryType } from "./memories";
+export type { RoutineRecord } from "./routines";
 
-function readResult(raw: string | null): RoutineResult | null {
-  if (!raw) return null;
-  try {
-    const value = JSON.parse(raw) as RoutineResult;
-    return typeof value?.status === "string" && typeof value.at === "string" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-export type MemoryType = "preference" | "project" | "person" | "decision" | "fact" | "routine";
-export interface MemoryRecord {
-  id: string;
-  type: MemoryType;
-  content: string;
-  workspacePath: string | null;
-  importance: number;
-  source: string;
-  createdAt: string;
-  updatedAt: string;
-}
-export interface MessageRecord {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-}
 /** Task summary sent to the renderer at startup. */
 export interface TaskRecord {
   id: string;
@@ -96,43 +66,6 @@ export interface ActivityRecord {
   message: string;
   createdAt: string;
 }
-export interface EditRecord {
-  id: string;
-  taskId: string;
-  requestId: string;
-  conversationId: string | null;
-  workspace: string;
-  /** JSON of EditFile[] (see electron/edits/checkpoint.ts). */
-  files: string;
-  status: "pending" | "applied" | "failed" | "undone" | "expired";
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ConversationRecord {
-  id: string;
-  title: string;
-  updatedAt: string;
-  /** The resolved folder it works in, or null before its first task in a real folder. */
-  workspacePath: string | null;
-}
-
-/** A task's workspace that is a folder; screen tasks store `screen:{app}` instead. */
-export const isFolderPath = (workspace: string | null | undefined): workspace is string =>
-  typeof workspace === "string" && workspace.startsWith("/");
-
-/** The renderer sent a conversation that no longer exists. */
-export class ConversationGoneError extends Error {
-  constructor() {
-    super("The conversation no longer exists.");
-  }
-}
-
-/** A conversation's title: the first message, flattened, at most 40 characters. */
-export function conversationTitle(message: string): string {
-  const flat = message.replace(/\s+/g, " ").trim();
-  return Array.from(flat).slice(0, 40).join("") || "새 대화";
-}
 
 export interface BootstrapData {
   workspacePath: string | null;
@@ -144,21 +77,15 @@ export interface BootstrapData {
   activities: ActivityRecord[];
 }
 
-const now = (): string => new Date().toISOString();
-
-/** About 70 characters of a message around the first match, on one line. */
-export function snippetAround(content: string, needle: string): string {
-  const text = content.replace(/\s+/g, " ").trim();
-  const at = text.toLowerCase().indexOf(needle.toLowerCase());
-  const start = Math.max(0, at - 25);
-  const piece = text.slice(start, start + 70);
-  return `${start > 0 ? "…" : ""}${piece}${start + 70 < text.length ? "…" : ""}`;
-}
-
+/**
+ * The main process's database. Queries live in one module per area (conversations, tasks,
+ * approvals, edits, memories, routines, preferences); this class owns the connection and
+ * what spans every area: startup, bootstrap, export, and deleting all history.
+ */
 export class PokoDatabase {
   private constructor(
     private readonly client: DatabaseSync,
-    private readonly db: ReturnType<typeof drizzle>,
+    private readonly db: Db,
   ) {}
 
   static async open(
@@ -176,7 +103,7 @@ export class PokoDatabase {
       migrate(db, { migrationsFolder: migrationsPath });
       const database = new PokoDatabase(client, db);
       if (legacySettingsPath) await database.importLegacyWorkspace(legacySettingsPath);
-      database.recoverInterruptedTasks();
+      Tasks.recoverInterruptedTasks(db);
       return database;
     } catch (error) {
       client.close();
@@ -195,276 +122,43 @@ export class PokoDatabase {
     }
   }
 
-  /** Conversations, most recently active first. */
-  listConversations(): ConversationRecord[] {
-    return this.db
-      .select({
-        id: conversations.id,
-        title: conversations.title,
-        updatedAt: conversations.updatedAt,
-        workspacePath: conversations.workspacePath,
-      })
-      .from(conversations)
-      .orderBy(desc(conversations.updatedAt), desc(sql`${conversations}.rowid`))
-      .all();
-  }
-
-  getConversation(id: string): ConversationRecord | null {
-    return (
-      this.db
+  getBootstrapData(): BootstrapData {
+    const conversationId = this.getActiveConversationId();
+    return {
+      workspacePath: this.getWorkspace(),
+      conversationId,
+      conversations: this.listConversations(),
+      messages: conversationId ? this.getConversationMessages(conversationId) : [],
+      // Explicit columns: prompts and results stay in main rather than riding along to the renderer.
+      tasks: this.db
         .select({
-          id: conversations.id,
-          title: conversations.title,
-          updatedAt: conversations.updatedAt,
-          workspacePath: conversations.workspacePath,
+          id: tasks.id,
+          title: tasks.title,
+          status: tasks.status,
+          createdAt: tasks.createdAt,
+          completedAt: tasks.completedAt,
         })
-        .from(conversations)
-        .where(eq(conversations.id, id))
-        .get() ?? null
-    );
-  }
-
-  getConversationMessages(id: string): MessageRecord[] {
-    return this.db
-      .select({
-        id: messages.id,
-        role: messages.role,
-        content: messages.content,
-        createdAt: messages.createdAt,
-      })
-      .from(messages)
-      .where(eq(messages.conversationId, id))
-      .orderBy(asc(messages.createdAt), asc(sql`${messages}.rowid`))
-      .all() as MessageRecord[];
-  }
-
-  /**
-   * The conversation Poko shows: the saved one if it still exists, else the most recently
-   * active, else none (the greeting screen).
-   */
-  getActiveConversationId(): string | null {
-    const saved = this.db
-      .select()
-      .from(settings)
-      .where(eq(settings.key, "activeConversationId"))
-      .get()?.value;
-    if (saved && this.getConversation(saved)) return saved;
-    return this.listConversations()[0]?.id ?? null;
-  }
-
-  /** null means a new, not yet created conversation. */
-  setActiveConversation(id: string | null): void {
-    if (id === null) {
-      this.db.delete(settings).where(eq(settings.key, "activeConversationId")).run();
-      return;
-    }
-    const timestamp = now();
-    this.db
-      .insert(settings)
-      .values({ key: "activeConversationId", value: id, updatedAt: timestamp })
-      .onConflictDoUpdate({ target: settings.key, set: { value: id, updatedAt: timestamp } })
-      .run();
-  }
-
-  /** A pending edit row, created right before an approved file change is accepted. */
-  createEdit(row: {
-    id: string;
-    taskId: string;
-    requestId: string;
-    workspace: string;
-    files: string;
-  }): void {
-    const timestamp = now();
-    const conversationId =
-      this.db
-        .select({ conversationId: tasks.conversationId })
         .from(tasks)
-        .where(eq(tasks.id, row.taskId))
-        .get()?.conversationId ?? null;
-    this.db
-      .insert(edits)
-      .values({
-        ...row,
-        conversationId,
-        status: "pending",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
-      .run();
-  }
-
-  updateEdit(id: string, status: EditRecord["status"], files?: string): void {
-    this.db
-      .update(edits)
-      .set({ status, updatedAt: now(), ...(files !== undefined ? { files } : {}) })
-      .where(eq(edits.id, id))
-      .run();
-  }
-
-  getEdit(id: string): EditRecord | null {
-    return (
-      (this.db.select().from(edits).where(eq(edits.id, id)).get() as EditRecord | undefined) ?? null
-    );
-  }
-
-  pendingEdits(taskId: string): EditRecord[] {
-    return this.db
-      .select()
-      .from(edits)
-      .where(sql`${edits.taskId} = ${taskId} AND ${edits.status} = 'pending'`)
-      .all() as EditRecord[];
-  }
-
-  /** Edits shown in a conversation: applied, undone, and expired ones, oldest first. */
-  conversationEdits(conversationId: string): EditRecord[] {
-    return this.db
-      .select()
-      .from(edits)
-      .where(
-        sql`${edits.conversationId} = ${conversationId} AND ${edits.status} IN ('applied', 'undone', 'expired')`,
-      )
-      .orderBy(asc(edits.createdAt))
-      .all() as EditRecord[];
-  }
-
-  /** Ids of every edit in a conversation, so their checkpoints can be removed with it. */
-  conversationEditIds(conversationId: string): string[] {
-    return this.db
-      .select({ id: edits.id })
-      .from(edits)
-      .where(eq(edits.conversationId, conversationId))
-      .all()
-      .map((row) => row.id);
-  }
-
-  /**
-   * Edits older than `before`: applied ones become `expired` (still shown, without undo); ones
-   * that never applied (pending or failed) are deleted. Returns every id whose checkpoint goes.
-   */
-  expireEdits(before: string): string[] {
-    const applied = this.db
-      .select({ id: edits.id })
-      .from(edits)
-      .where(sql`${edits.status} = 'applied' AND ${edits.createdAt} < ${before}`)
-      .all();
-    for (const row of applied) this.updateEdit(row.id, "expired");
-    const stale = sql`${edits.status} IN ('pending', 'failed') AND ${edits.createdAt} < ${before}`;
-    const dropped = this.db.select({ id: edits.id }).from(edits).where(stale).all();
-    if (dropped.length) this.db.delete(edits).where(stale).run();
-    return [...applied, ...dropped].map((row) => row.id);
-  }
-
-  /** Whether edits are allowed in a workspace, keyed by its real path (the task's cwd). */
-  isEditsEnabled(realPath: string): boolean {
-    return (
-      this.db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, `editsEnabled:${realPath}`))
-        .get()?.value === "true"
-    );
-  }
-
-  setEditsEnabled(realPath: string, enabled: boolean): void {
-    const key = `editsEnabled:${realPath}`;
-    if (!enabled) {
-      this.db.delete(settings).where(eq(settings.key, key)).run();
-      return;
-    }
-    const timestamp = now();
-    this.db
-      .insert(settings)
-      .values({ key, value: "true", updatedAt: timestamp })
-      .onConflictDoUpdate({ target: settings.key, set: { value: "true", updatedAt: timestamp } })
-      .run();
-  }
-
-  /** The workspace (real path) a task ran in, or null. */
-  /** The newest task in a conversation, or null. */
-  latestTaskId(conversationId: string): string | null {
-    return (
-      this.db
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(eq(tasks.conversationId, conversationId))
-        .orderBy(desc(tasks.createdAt), desc(sql`${tasks}.rowid`))
-        .limit(1)
-        .get()?.id ?? null
-    );
-  }
-
-  hasTask(taskId: string): boolean {
-    return Boolean(this.db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get());
-  }
-
-  getTaskWorkspace(taskId: string): string | null {
-    return (
-      this.db.select({ workspace: tasks.workspace }).from(tasks).where(eq(tasks.id, taskId)).get()
-        ?.workspace ?? null
-    );
-  }
-
-  /** Pending file-change approvals of tasks in a workspace, to decline when edits are turned off. */
-  pendingFileChanges(realPath: string): Array<{ taskId: string; requestId: string }> {
-    return this.db
-      .select({ taskId: approvals.taskId, requestId: approvals.requestId })
-      .from(approvals)
-      .innerJoin(tasks, eq(tasks.id, approvals.taskId))
-      .where(
-        sql`${approvals.decision} = 'pending' AND ${approvals.kind} = 'file_change' AND ${tasks.workspace} = ${realPath}`,
-      )
-      .all();
-  }
-
-  /** The kind of a recorded approval request, or null when unknown. */
-  getApprovalKind(taskId: string, requestId: string): string | null {
-    return (
-      this.db
-        .select({ kind: approvals.kind })
-        .from(approvals)
-        .where(sql`${approvals.taskId} = ${taskId} AND ${approvals.requestId} = ${requestId}`)
-        .get()?.kind ?? null
-    );
-  }
-
-  /** Returns false when the conversation doesn't exist. The title is 1–80 characters. */
-  renameConversation(id: string, title: string): boolean {
-    const clean = title.replace(/\s+/g, " ").trim();
-    if (!clean || Array.from(clean).length > 80) throw new TypeError("Invalid title.");
-    const result = this.db
-      .update(conversations)
-      .set({ title: clean })
-      .where(eq(conversations.id, id))
-      .run();
-    return Number(result.changes) > 0;
-  }
-
-  /** Whether a running or approval-waiting task belongs to the conversation. */
-  hasRunningTask(conversationId: string): boolean {
-    return Boolean(
-      this.db
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(
-          sql`${tasks.conversationId} = ${conversationId} AND ${tasks.status} IN ('queued', 'running', 'waiting_approval')`,
-        )
-        .get(),
-    );
-  }
-
-  /**
-   * Deletes the conversation and its messages. Its tasks and Activity stay as the audit trail,
-   * detached from it (ON DELETE SET NULL). A deleted active conversation stops being active.
-   */
-  deleteConversation(id: string): boolean {
-    const deleted = this.db.transaction((tx) => {
-      const result = tx.delete(conversations).where(eq(conversations.id, id)).run();
-      tx.delete(settings)
-        .where(sql`${settings.key} = 'activeConversationId' AND ${settings.value} = ${id}`)
-        .run();
-      return Number(result.changes) > 0;
-    });
-    return deleted;
+        .orderBy(desc(tasks.createdAt))
+        .limit(100)
+        .all(),
+      // Join the task title so older activity stays labeled even when its task is not loaded.
+      activities: this.db
+        .select({
+          id: activities.id,
+          taskId: activities.taskId,
+          taskTitle: tasks.title,
+          type: activities.type,
+          message: activities.message,
+          createdAt: activities.createdAt,
+        })
+        .from(activities)
+        .innerJoin(tasks, eq(tasks.id, activities.taskId))
+        // rowid breaks same-millisecond ties so steps keep their insertion order.
+        .orderBy(desc(activities.createdAt), desc(sql`${activities}.rowid`))
+        .limit(500)
+        .all() as ActivityRecord[],
+    };
   }
 
   /** Everything Poko has kept, for 모두 내보내기. Checkpoint file contents are not included. */
@@ -512,573 +206,144 @@ export class PokoDatabase {
     });
   }
 
-  /** The conversation a task belongs to, or null when it was deleted. */
-  getTaskConversation(taskId: string): ConversationRecord | null {
-    const row = this.db
-      .select({ conversationId: tasks.conversationId })
-      .from(tasks)
-      .where(eq(tasks.id, taskId))
-      .get();
-    return row?.conversationId ? this.getConversation(row.conversationId) : null;
+  close(): void {
+    this.client.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    this.client.close();
   }
 
-  getBootstrapData(): BootstrapData {
-    const conversationId = this.getActiveConversationId();
-    const workspace = this.db
-      .select()
-      .from(settings)
-      .where(eq(settings.key, "workspacePath"))
-      .get();
-    return {
-      workspacePath: workspace?.value ?? null,
-      conversationId,
-      conversations: this.listConversations(),
-      messages: conversationId ? this.getConversationMessages(conversationId) : [],
-      // Explicit columns: prompts and results stay in main rather than riding along to the renderer.
-      tasks: this.db
-        .select({
-          id: tasks.id,
-          title: tasks.title,
-          status: tasks.status,
-          createdAt: tasks.createdAt,
-          completedAt: tasks.completedAt,
-        })
-        .from(tasks)
-        .orderBy(desc(tasks.createdAt))
-        .limit(100)
-        .all(),
-      // Join the task title so older activity stays labeled even when its task is not loaded.
-      activities: this.db
-        .select({
-          id: activities.id,
-          taskId: activities.taskId,
-          taskTitle: tasks.title,
-          type: activities.type,
-          message: activities.message,
-          createdAt: activities.createdAt,
-        })
-        .from(activities)
-        .innerJoin(tasks, eq(tasks.id, activities.taskId))
-        // rowid breaks same-millisecond ties so steps keep their insertion order.
-        .orderBy(desc(activities.createdAt), desc(sql`${activities}.rowid`))
-        .limit(500)
-        .all() as ActivityRecord[],
-    };
+  // Conversations
+
+  listConversations(): ConversationRecord[] {
+    return Conversations.listConversations(this.db);
+  }
+  getConversation(id: string): ConversationRecord | null {
+    return Conversations.getConversation(this.db, id);
+  }
+  getConversationMessages(id: string): MessageRecord[] {
+    return Conversations.getConversationMessages(this.db, id);
+  }
+  getActiveConversationId(): string | null {
+    return Conversations.getActiveConversationId(this.db);
+  }
+  setActiveConversation(id: string | null): void {
+    Conversations.setActiveConversation(this.db, id);
+  }
+  renameConversation(id: string, title: string): boolean {
+    return Conversations.renameConversation(this.db, id, title);
+  }
+  deleteConversation(id: string): boolean {
+    return Conversations.deleteConversation(this.db, id);
+  }
+  searchConversations(query: string, limit?: number): ConversationMatch[] {
+    return Conversations.searchConversations(this.db, query, limit);
   }
 
-  getWorkspace(): string | null {
-    return (
-      this.db.select().from(settings).where(eq(settings.key, "workspacePath")).get()?.value ?? null
-    );
-  }
+  // Tasks
 
-  getSettings(): AppSettings {
-    const rows = this.db
-      .select()
-      .from(settings)
-      .where(
-        sql`${settings.key} IN ('memoriesInContext', 'taskNotifications', 'checkpointDays', 'engine', 'codexModel', 'claudeModel', 'codexEffort', 'claudeEffort', 'quickShortcut')`,
-      )
-      .all();
-    const value = (key: string) => rows.find((row) => row.key === key)?.value;
-    const days = Number(value("checkpointDays"));
-    return {
-      engine: value("engine") === "claude" ? "claude" : "codex",
-      quickShortcut: (QUICK_SHORTCUTS as readonly string[]).includes(value("quickShortcut") ?? "")
-        ? (value("quickShortcut") as QuickShortcut)
-        : "Alt+Space",
-      codexModel: isModelName(value("codexModel")) ? (value("codexModel") as string) : null,
-      claudeModel: isModelName(value("claudeModel")) ? (value("claudeModel") as string) : null,
-      codexEffort: isReasoningEffort(value("codexEffort"))
-        ? (value("codexEffort") as ReasoningEffort)
-        : null,
-      claudeEffort: isReasoningEffort(value("claudeEffort"))
-        ? (value("claudeEffort") as ReasoningEffort)
-        : null,
-      memoriesInContext: value("memoriesInContext") !== "false",
-      taskNotifications: value("taskNotifications") !== "false",
-      checkpointDays: (CHECKPOINT_DAY_CHOICES as readonly number[]).includes(days)
-        ? (days as CheckpointDays)
-        : 30,
-    };
-  }
-
-  /** Saves the given preferences; anything invalid is ignored. Returns the saved settings. */
-  setSettings(input: Partial<AppSettings>): AppSettings {
-    const updates: [string, string][] = [];
-    if (input.engine === "codex" || input.engine === "claude")
-      updates.push(["engine", input.engine]);
-    if ((QUICK_SHORTCUTS as readonly unknown[]).includes(input.quickShortcut))
-      updates.push(["quickShortcut", input.quickShortcut as string]);
-    if (typeof input.memoriesInContext === "boolean")
-      updates.push(["memoriesInContext", String(input.memoriesInContext)]);
-    if (typeof input.taskNotifications === "boolean")
-      updates.push(["taskNotifications", String(input.taskNotifications)]);
-    if ((CHECKPOINT_DAY_CHOICES as readonly unknown[]).includes(input.checkpointDays))
-      updates.push(["checkpointDays", String(input.checkpointDays)]);
-    const timestamp = now();
-    // A model is saved by name, or cleared (back to the CLI's default) with null.
-    for (const key of ["codexModel", "claudeModel"] as const) {
-      const model = input[key];
-      if (model === null) this.db.delete(settings).where(eq(settings.key, key)).run();
-      else if (isModelName(model)) updates.push([key, model]);
-    }
-    // The same for efforts: a known level, or null for the default.
-    for (const key of ["codexEffort", "claudeEffort"] as const) {
-      const effort = input[key];
-      if (effort === null) this.db.delete(settings).where(eq(settings.key, key)).run();
-      else if (isReasoningEffort(effort)) updates.push([key, effort]);
-    }
-    for (const [key, value] of updates)
-      this.db
-        .insert(settings)
-        .values({ key, value, updatedAt: timestamp })
-        .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: timestamp } })
-        .run();
-    return this.getSettings();
-  }
-
-  /**
-   * The screen notice says where a screenshot goes, which depends on the engine, so it is
-   * accepted per engine. Codex keeps the original key.
-   */
-  private noticeKey(engine: EngineId): string {
-    return engine === "codex" ? "screenNoticeAccepted" : `screenNoticeAccepted:${engine}`;
-  }
-
-  isScreenNoticeAccepted(engine: EngineId = this.getSettings().engine): boolean {
-    return (
-      this.db
-        .select()
-        .from(settings)
-        .where(eq(settings.key, this.noticeKey(engine)))
-        .get()?.value === "true"
-    );
-  }
-
-  acceptScreenNotice(engine: EngineId = this.getSettings().engine): void {
-    const timestamp = now();
-    const key = this.noticeKey(engine);
-    this.db
-      .insert(settings)
-      .values({ key, value: "true", updatedAt: timestamp })
-      .onConflictDoUpdate({ target: settings.key, set: { value: "true", updatedAt: timestamp } })
-      .run();
-  }
-
-  /** Shows the screen notice again (for every engine) before the next screen task. */
-  resetScreenNotice(): void {
-    this.db.delete(settings).where(sql`${settings.key} LIKE 'screenNoticeAccepted%'`).run();
-  }
-
-  setWorkspace(path: string | null): void {
-    const timestamp = now();
-    if (path === null) {
-      this.db.delete(settings).where(eq(settings.key, "workspacePath")).run();
-    } else {
-      this.db
-        .insert(settings)
-        .values({ key: "workspacePath", value: path, updatedAt: timestamp })
-        .onConflictDoUpdate({ target: settings.key, set: { value: path, updatedAt: timestamp } })
-        .run();
-    }
-  }
-
-  /**
-   * Records the user's message and a running task in `conversationId`, or in a new conversation
-   * titled from the message when it is null. Throws ConversationGoneError for an id that no
-   * longer exists.
-   */
   createTask(message: string, workspace: string, conversation: string | null = null): string {
-    const id = randomUUID();
-    const timestamp = now();
-    if (conversation !== null && !this.getConversation(conversation))
-      throw new ConversationGoneError();
-    const conversationId = conversation ?? randomUUID();
-    this.db.transaction((tx) => {
-      if (conversation === null)
-        tx.insert(conversations)
-          .values({
-            id: conversationId,
-            title: conversationTitle(message),
-            workspacePath: isFolderPath(workspace) ? workspace : null,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          })
-          .run();
-      // A conversation without a folder yet (older, screen-only, or a routine's) takes this one.
-      else if (isFolderPath(workspace))
-        tx.update(conversations)
-          .set({ workspacePath: workspace })
-          .where(
-            sql`${conversations.id} = ${conversationId} AND ${conversations.workspacePath} IS NULL`,
-          )
-          .run();
-      tx.insert(messages)
-        .values({
-          id: randomUUID(),
-          conversationId,
-          role: "user",
-          content: message,
-          createdAt: timestamp,
-        })
-        .run();
-      tx.insert(tasks)
-        .values({
-          id,
-          title: message.slice(0, 120),
-          prompt: message,
-          provider: "codex",
-          status: "running",
-          workspace,
-          conversationId,
-          createdAt: timestamp,
-          completedAt: null,
-        })
-        .run();
-      tx.update(conversations)
-        .set({ updatedAt: timestamp })
-        .where(eq(conversations.id, conversationId))
-        .run();
-    });
-    return id;
+    return Tasks.createTask(this.db, message, workspace, conversation);
   }
-
   recordTaskEvent(
     taskId: string,
     type: string,
     activityMessage: string | null,
     result?: string,
   ): void {
-    const timestamp = now();
-    this.db.transaction((tx) => {
-      if (activityMessage)
-        tx.insert(activities)
-          .values({
-            id: randomUUID(),
-            taskId,
-            type,
-            message: activityMessage,
-            createdAt: timestamp,
-          })
-          .run();
-      if (type === "completed" || type === "error" || type === "cancelled") {
-        const status =
-          type === "completed" ? "completed" : type === "cancelled" ? "cancelled" : "failed";
-        tx.update(tasks)
-          .set({
-            status,
-            completedAt: timestamp,
-            ...(type === "completed" && result !== undefined ? { result } : {}),
-          })
-          .where(eq(tasks.id, taskId))
-          .run();
-        // A finished task can no longer act on an unanswered approval.
-        tx.update(approvals)
-          .set({ decision: type === "cancelled" ? "cancelled" : "expired", resolvedAt: timestamp })
-          .where(sql`${approvals.taskId} = ${taskId} AND ${approvals.decision} = 'pending'`)
-          .run();
-        // The reply belongs to the task's own conversation. A deleted conversation keeps the
-        // result on the task only.
-        const conversationId = tx
-          .select({ conversationId: tasks.conversationId })
-          .from(tasks)
-          .where(eq(tasks.id, taskId))
-          .get()?.conversationId;
-        if (result !== undefined && conversationId) {
-          tx.insert(messages)
-            .values({
-              id: randomUUID(),
-              conversationId,
-              role: "assistant",
-              content: result,
-              createdAt: timestamp,
-            })
-            .run();
-          tx.update(conversations)
-            .set({ updatedAt: timestamp })
-            .where(eq(conversations.id, conversationId))
-            .run();
-        }
-      }
-    });
+    Tasks.recordTaskEvent(this.db, taskId, type, activityMessage, result);
   }
-
-  /**
-   * Context for a task about to start: memories by priority and the most recent completed
-   * exchanges from the same conversation (newest first, excluding this task). Caps are applied
-   * by `limitContext`.
-   */
   getTaskContext(taskId: string): TaskContext {
-    const task = this.db
-      .select({ conversationId: tasks.conversationId })
-      .from(tasks)
-      .where(eq(tasks.id, taskId))
-      .get();
-    // Shared memories, and the folder memories of this task's own folder only.
-    const folder = this.getTaskWorkspace(taskId);
-    const memoryRows = this.getSettings().memoriesInContext
-      ? this.db
-          .select({ type: memories.type, content: memories.content })
-          .from(memories)
-          .where(
-            isFolderPath(folder)
-              ? sql`${memories.workspacePath} IS NULL OR ${memories.workspacePath} = ${folder}`
-              : sql`${memories.workspacePath} IS NULL`,
-          )
-          .orderBy(desc(memories.importance), desc(memories.updatedAt))
-          .limit(CONTEXT_LIMITS.memoryCount)
-          .all()
-      : [];
-    const exchangeRows = task?.conversationId
-      ? this.db
-          .select({ request: tasks.prompt, answer: tasks.result })
-          .from(tasks)
-          .where(
-            sql`${tasks.conversationId} = ${task.conversationId} AND ${tasks.status} = 'completed' AND ${tasks.result} IS NOT NULL AND ${tasks.id} <> ${taskId}`,
-          )
-          .orderBy(desc(tasks.createdAt), desc(sql`${tasks}.rowid`))
-          .limit(CONTEXT_LIMITS.exchangeCount)
-          .all()
-      : [];
-    return limitContext(
-      memoryRows,
-      exchangeRows.map((row) => ({ request: row.request, answer: row.answer ?? "" })),
-    );
+    return Tasks.getTaskContext(this.db, taskId);
+  }
+  latestTaskId(conversationId: string): string | null {
+    return Tasks.latestTaskId(this.db, conversationId);
+  }
+  hasTask(taskId: string): boolean {
+    return Tasks.hasTask(this.db, taskId);
+  }
+  getTaskWorkspace(taskId: string): string | null {
+    return Tasks.getTaskWorkspace(this.db, taskId);
+  }
+  hasRunningTask(conversationId: string): boolean {
+    return Tasks.hasRunningTask(this.db, conversationId);
+  }
+  getTaskConversation(taskId: string): ConversationRecord | null {
+    return Tasks.getTaskConversation(this.db, taskId);
   }
 
-  listMemories(): MemoryRecord[] {
-    return this.db
-      .select()
-      .from(memories)
-      .orderBy(desc(memories.updatedAt))
-      .all() as MemoryRecord[];
-  }
-
-  /**
-   * Conversations whose title or messages contain the text, newest first, each with a short
-   * piece of its newest matching message.
-   */
-  searchConversations(query: string, limit = 50): ConversationMatch[] {
-    const needle = query.trim();
-    if (!needle) return [];
-    const pattern = `%${needle.replace(/[\\%_]/g, "\\$&")}%`;
-    const titled = this.db
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(sql`${conversations.title} LIKE ${pattern} ESCAPE '\\'`)
-      .all();
-    // Grouped by conversation first, so a common word can't crowd out older conversations.
-    const inMessages = this.db
-      .selectDistinct({ conversationId: messages.conversationId })
-      .from(messages)
-      .where(sql`${messages.content} LIKE ${pattern} ESCAPE '\\'`)
-      .all();
-    const ids = new Set([
-      ...titled.map((row) => row.id),
-      ...inMessages.map((row) => row.conversationId),
-    ]);
-    const found = this.listConversations()
-      .filter((conversation) => ids.has(conversation.id))
-      .slice(0, limit);
-    // Only the shown conversations need a snippet: their newest matching message.
-    return found.map((conversation) => {
-      const hit = this.db
-        .select({ content: messages.content })
-        .from(messages)
-        .where(
-          sql`${messages.conversationId} = ${conversation.id} AND ${messages.content} LIKE ${pattern} ESCAPE '\\'`,
-        )
-        .orderBy(desc(messages.createdAt))
-        .limit(1)
-        .get();
-      return { ...conversation, snippet: hit ? snippetAround(hit.content, needle) : null };
-    });
-  }
-
-  searchMemories(query: string): MemoryRecord[] {
-    const escaped = query.replace(/[\\%_]/g, "\\$&");
-    return this.db
-      .select()
-      .from(memories)
-      .where(sql`${memories.content} LIKE ${`%${escaped}%`} ESCAPE '\\'`)
-      .orderBy(desc(memories.updatedAt))
-      .all() as MemoryRecord[];
-  }
-
-  /**
-   * Saves a memory in `folder` (a resolved path; null: every folder). The caller decides the
-   * folder: only 프로젝트 and 결정 memories have one.
-   */
-  saveMemory(
-    input: {
-      type: MemoryType;
-      content: string;
-      importance: number;
-      source?: string;
-    },
-    folder: string | null = null,
-  ): MemoryRecord {
-    // The same memory twice (two cards for one suggestion, a double click, or one already
-    // shared with every folder) is kept once.
-    const same = this.listMemories().find((memory) =>
-      isSameMemory(memory, { type: input.type, content: input.content, workspacePath: folder }),
-    );
-    if (same) return same;
-    const timestamp = now();
-    const record = {
-      id: randomUUID(),
-      type: input.type,
-      content: input.content.trim(),
-      workspacePath: folder,
-      importance: input.importance,
-      source: input.source ?? "user",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
-    this.db.insert(memories).values(record).run();
-    return record;
-  }
-
-  /**
-   * Changes what a memory says; its type and folder stay. Refused (null) when the memory is
-   * gone or another memory where it applies already says the same.
-   */
-  updateMemory(id: string, content: string): MemoryRecord | "duplicate" | null {
-    const all = this.listMemories();
-    const memory = all.find((item) => item.id === id);
-    if (!memory) return null;
-    const wanted = { type: memory.type, content, workspacePath: memory.workspacePath };
-    // Both ways: a shared memory may not repeat a folder memory either (both would reach it).
-    const repeats = (item: MemoryRecord) =>
-      isSameMemory(item, wanted) ||
-      (memory.workspacePath === null && isSameMemory({ ...item, workspacePath: null }, wanted));
-    if (all.some((item) => item.id !== id && repeats(item))) return "duplicate";
-    const updatedAt = now();
-    this.db
-      .update(memories)
-      .set({ content: content.trim(), updatedAt })
-      .where(eq(memories.id, id))
-      .run();
-    return { ...memory, content: content.trim(), updatedAt };
-  }
-
-  deleteMemory(id: string): boolean {
-    return this.db.delete(memories).where(eq(memories.id, id)).run().changes > 0;
-  }
-
-  private recoverInterruptedTasks(): void {
-    const timestamp = now();
-    this.db.transaction((tx) => {
-      tx.update(approvals)
-        .set({ decision: "expired", resolvedAt: timestamp })
-        .where(eq(approvals.decision, "pending"))
-        .run();
-      tx.update(tasks)
-        .set({ status: "failed", completedAt: timestamp })
-        .where(sql`${tasks.status} IN ('running', 'waiting_approval')`)
-        .run();
-    });
-  }
+  // Approvals
 
   recordApprovalRequest(request: ApprovalRequest): boolean {
-    const timestamp = now();
-    const canApprove = request.canApprove;
-    this.db.transaction((tx) => {
-      tx.insert(approvals)
-        .values({
-          id: randomUUID(),
-          taskId: request.taskId,
-          requestId: request.requestId,
-          kind: request.kind,
-          summary: request.summary,
-          cwd: request.cwd,
-          reason: request.reason,
-          decision: canApprove ? "pending" : "denied",
-          createdAt: timestamp,
-          resolvedAt: canApprove ? null : timestamp,
-        })
-        .run();
-      if (canApprove) {
-        tx.update(tasks)
-          .set({ status: "waiting_approval" })
-          .where(eq(tasks.id, request.taskId))
-          .run();
-      }
-      tx.insert(activities)
-        .values({
-          id: randomUUID(),
-          taskId: request.taskId,
-          type: "approval_requested",
-          message: canApprove
-            ? "포코가 작업 진행을 확인하고 있어."
-            : "안전한 확인 정보가 없어 요청을 거절했어.",
-          createdAt: timestamp,
-        })
-        .run();
-    });
-    return canApprove;
+    return Approvals.recordApprovalRequest(this.db, request);
+  }
+  resolveApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
+    return Approvals.resolveApproval(this.db, taskId, requestId, choice);
+  }
+  pendingFileChanges(realPath: string): Array<{ taskId: string; requestId: string }> {
+    return Approvals.pendingFileChanges(this.db, realPath);
+  }
+  getApprovalKind(taskId: string, requestId: string): string | null {
+    return Approvals.getApprovalKind(this.db, taskId, requestId);
   }
 
-  resolveApproval(taskId: string, requestId: string, choice: ApprovalChoice): boolean {
-    const timestamp = now();
-    return this.db.transaction((tx) => {
-      const pending = tx
-        .select({ id: approvals.id })
-        .from(approvals)
-        .where(
-          sql`${approvals.taskId} = ${taskId} AND ${approvals.requestId} = ${requestId} AND ${approvals.decision} = 'pending'`,
-        )
-        .get();
-      if (!pending) return false;
-      tx.update(approvals)
-        .set({ decision: choice === "approve" ? "approved" : "denied", resolvedAt: timestamp })
-        .where(eq(approvals.id, pending.id))
-        .run();
-      const stillWaiting = tx
-        .select({ id: approvals.id })
-        .from(approvals)
-        .where(sql`${approvals.taskId} = ${taskId} AND ${approvals.decision} = 'pending'`)
-        .get();
-      if (!stillWaiting) {
-        tx.update(tasks).set({ status: "running" }).where(eq(tasks.id, taskId)).run();
-      }
-      tx.insert(activities)
-        .values({
-          id: randomUUID(),
-          taskId,
-          type: choice === "approve" ? "approval_approved" : "approval_denied",
-          message:
-            choice === "approve" ? "확인했어. 이 요청을 한 번 진행할게." : "요청을 거절했어.",
-          createdAt: timestamp,
-        })
-        .run();
-      return true;
-    });
+  // Edits
+
+  createEdit(row: {
+    id: string;
+    taskId: string;
+    requestId: string;
+    workspace: string;
+    files: string;
+  }): void {
+    Edits.createEdit(this.db, row);
   }
+  updateEdit(id: string, status: EditRecord["status"], files?: string): void {
+    Edits.updateEdit(this.db, id, status, files);
+  }
+  getEdit(id: string): EditRecord | null {
+    return Edits.getEdit(this.db, id);
+  }
+  pendingEdits(taskId: string): EditRecord[] {
+    return Edits.pendingEdits(this.db, taskId);
+  }
+  conversationEdits(conversationId: string): EditRecord[] {
+    return Edits.conversationEdits(this.db, conversationId);
+  }
+  conversationEditIds(conversationId: string): string[] {
+    return Edits.conversationEditIds(this.db, conversationId);
+  }
+  expireEdits(before: string): string[] {
+    return Edits.expireEdits(this.db, before);
+  }
+
+  // Memories
+
+  listMemories(): MemoryRecord[] {
+    return Memories.listMemories(this.db);
+  }
+  searchMemories(query: string): MemoryRecord[] {
+    return Memories.searchMemories(this.db, query);
+  }
+  saveMemory(
+    input: { type: MemoryType; content: string; importance: number; source?: string },
+    folder: string | null = null,
+  ): MemoryRecord {
+    return Memories.saveMemory(this.db, input, folder);
+  }
+  updateMemory(id: string, content: string): MemoryRecord | "duplicate" | null {
+    return Memories.updateMemory(this.db, id, content);
+  }
+  deleteMemory(id: string): boolean {
+    return Memories.deleteMemory(this.db, id);
+  }
+
+  // Routines
 
   listRoutines(): RoutineRecord[] {
-    return this.db
-      .select()
-      .from(routines)
-      .orderBy(asc(routines.createdAt))
-      .all()
-      .flatMap((row) => {
-        // A schedule that no longer reads (an older format) leaves the routine out.
-        const schedule = readRoutineSchedule(JSON.parse(row.schedule));
-        if (!schedule) return [];
-        return [{ ...row, schedule, lastResult: readResult(row.lastResult) }];
-      });
+    return Routines.listRoutines(this.db);
   }
-
   getRoutine(id: string): RoutineRecord | null {
-    return this.listRoutines().find((routine) => routine.id === id) ?? null;
+    return Routines.getRoutine(this.db, id);
   }
-
-  /**
-   * Creates a routine (no id) or changes one. Creating, changing what or when it runs, or
-   * turning it back on resets `scheduleChangedAt`, so a time already past never runs.
-   */
   saveRoutine(input: {
     id?: string;
     title: string;
@@ -1087,111 +352,49 @@ export class PokoDatabase {
     enabled: boolean;
     workspacePath?: string;
   }): RoutineRecord {
-    const timestamp = now();
-    const existing = input.id ? this.getRoutine(input.id) : null;
-    if (input.id && !existing) throw new Error("The routine no longer exists.");
-    const schedule = JSON.stringify(input.schedule);
-    if (existing) {
-      const reset =
-        JSON.stringify(existing.schedule) !== schedule || (input.enabled && !existing.enabled);
-      this.db
-        .update(routines)
-        .set({
-          title: input.title,
-          prompt: input.prompt,
-          schedule,
-          enabled: input.enabled,
-          ...(reset ? { scheduleChangedAt: timestamp } : {}),
-        })
-        .where(eq(routines.id, existing.id))
-        .run();
-      return this.getRoutine(existing.id) as RoutineRecord;
-    }
-    if (!input.workspacePath) throw new Error("A routine needs a folder.");
-    const id = randomUUID();
-    this.db
-      .insert(routines)
-      .values({
-        id,
-        title: input.title,
-        prompt: input.prompt,
-        schedule,
-        workspacePath: input.workspacePath,
-        conversationId: null,
-        enabled: input.enabled,
-        scheduleChangedAt: timestamp,
-        lastSlotAt: null,
-        lastRunAt: null,
-        lastResult: null,
-        createdAt: timestamp,
-      })
-      .run();
-    return this.getRoutine(id) as RoutineRecord;
+    return Routines.saveRoutine(this.db, input);
   }
-
-  /** Deletes a routine; its conversation stays. */
   deleteRoutine(id: string): boolean {
-    return Number(this.db.delete(routines).where(eq(routines.id, id)).run().changes) > 0;
+    return Routines.deleteRoutine(this.db, id);
   }
-
-  /**
-   * Records how a run went. `slot` marks a scheduled time handled (run or skipped) so it is
-   * never tried again; a run the user started has none.
-   */
   recordRoutineRun(
     id: string,
     result: RoutineResult,
-    options: { slot?: string; ran?: boolean } = {},
+    options?: { slot?: string; ran?: boolean },
   ): void {
-    this.db
-      .update(routines)
-      .set({
-        lastResult: JSON.stringify(result),
-        ...(options.slot ? { lastSlotAt: options.slot } : {}),
-        ...(options.ran ? { lastRunAt: result.at } : {}),
-      })
-      .where(eq(routines.id, id))
-      .run();
+    Routines.recordRoutineRun(this.db, id, result, options);
   }
-
-  /**
-   * The routine's own conversation, "🔁 title", created when it has none (first run, or the
-   * user deleted it). Never made the active conversation.
-   */
   ensureRoutineConversation(id: string, folder: string): string {
-    const routine = this.getRoutine(id);
-    if (!routine) throw new Error("The routine no longer exists.");
-    const existing = routine.conversationId ? this.getConversation(routine.conversationId) : null;
-    // A conversation recorded in another folder is never continued (or relabeled): that would
-    // mix two projects' answers, so the routine starts a new one.
-    if (existing && (!existing.workspacePath || existing.workspacePath === folder)) {
-      if (!existing.workspacePath)
-        this.db
-          .update(conversations)
-          .set({ workspacePath: folder })
-          .where(eq(conversations.id, existing.id))
-          .run();
-      return existing.id;
-    }
-    const conversationId = randomUUID();
-    const timestamp = now();
-    this.db.transaction((tx) => {
-      tx.insert(conversations)
-        .values({
-          id: conversationId,
-          title: conversationTitle(`🔁 ${routine.title}`),
-          workspacePath: folder,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        })
-        .run();
-      tx.update(routines).set({ conversationId }).where(eq(routines.id, id)).run();
-    });
-    return conversationId;
+    return Routines.ensureRoutineConversation(this.db, id, folder);
   }
 
-  close(): void {
-    this.client.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-    this.client.close();
+  // Preferences
+
+  getWorkspace(): string | null {
+    return Preferences.getWorkspace(this.db);
+  }
+  setWorkspace(path: string | null): void {
+    Preferences.setWorkspace(this.db, path);
+  }
+  getSettings(): AppSettings {
+    return Preferences.getSettings(this.db);
+  }
+  setSettings(input: Partial<AppSettings>): AppSettings {
+    return Preferences.setSettings(this.db, input);
+  }
+  isScreenNoticeAccepted(engine?: EngineId): boolean {
+    return Preferences.isScreenNoticeAccepted(this.db, engine);
+  }
+  acceptScreenNotice(engine?: EngineId): void {
+    Preferences.acceptScreenNotice(this.db, engine);
+  }
+  resetScreenNotice(): void {
+    Preferences.resetScreenNotice(this.db);
+  }
+  isEditsEnabled(realPath: string): boolean {
+    return Preferences.isEditsEnabled(this.db, realPath);
+  }
+  setEditsEnabled(realPath: string, enabled: boolean): void {
+    Preferences.setEditsEnabled(this.db, realPath, enabled);
   }
 }
