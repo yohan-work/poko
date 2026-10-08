@@ -421,7 +421,9 @@ function applyTaskEvent(payload: TaskEventPayload): void {
       // A new answer replaces an unanswered suggestion; a suggestion comes with its answer.
       memorySuggestion:
         event.type === "completed"
-          ? (event.memory ?? null)
+          ? event.memory
+            ? { ...event.memory, taskId }
+            : null
           : status
             ? null
             : state.memorySuggestion,

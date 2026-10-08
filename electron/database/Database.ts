@@ -30,6 +30,7 @@ import {
   QUICK_SHORTCUTS,
   type ReasoningEffort,
   type QuickShortcut,
+  isSameMemory,
   readRoutineSchedule,
   type RoutineResult,
   type RoutineSchedule,
@@ -67,6 +68,7 @@ export interface MemoryRecord {
   id: string;
   type: MemoryType;
   content: string;
+  workspacePath: string | null;
   importance: number;
   source: string;
   createdAt: string;
@@ -378,6 +380,10 @@ export class PokoDatabase {
   }
 
   /** The workspace (real path) a task ran in, or null. */
+  hasTask(taskId: string): boolean {
+    return Boolean(this.db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get());
+  }
+
   getTaskWorkspace(taskId: string): string | null {
     return (
       this.db.select({ workspace: tasks.workspace }).from(tasks).where(eq(tasks.id, taskId)).get()
@@ -796,10 +802,17 @@ export class PokoDatabase {
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .get();
+    // Shared memories, and the folder memories of this task's own folder only.
+    const folder = this.getTaskWorkspace(taskId);
     const memoryRows = this.getSettings().memoriesInContext
       ? this.db
           .select({ type: memories.type, content: memories.content })
           .from(memories)
+          .where(
+            isFolderPath(folder)
+              ? sql`${memories.workspacePath} IS NULL OR ${memories.workspacePath} = ${folder}`
+              : sql`${memories.workspacePath} IS NULL`,
+          )
           .orderBy(desc(memories.importance), desc(memories.updatedAt))
           .limit(CONTEXT_LIMITS.memoryCount)
           .all()
@@ -880,17 +893,23 @@ export class PokoDatabase {
       .all() as MemoryRecord[];
   }
 
-  saveMemory(input: {
-    type: MemoryType;
-    content: string;
-    importance: number;
-    source?: string;
-  }): MemoryRecord {
-    // The same memory twice (two cards for one suggestion, a double click) is kept once.
-    const same = this.listMemories().find(
-      (memory) =>
-        memory.type === input.type &&
-        memory.content.trim().toLowerCase() === input.content.trim().toLowerCase(),
+  /**
+   * Saves a memory in `folder` (a resolved path; null: every folder). The caller decides the
+   * folder: only 프로젝트 and 결정 memories have one.
+   */
+  saveMemory(
+    input: {
+      type: MemoryType;
+      content: string;
+      importance: number;
+      source?: string;
+    },
+    folder: string | null = null,
+  ): MemoryRecord {
+    // The same memory twice (two cards for one suggestion, a double click, or one already
+    // shared with every folder) is kept once.
+    const same = this.listMemories().find((memory) =>
+      isSameMemory(memory, { type: input.type, content: input.content, workspacePath: folder }),
     );
     if (same) return same;
     const timestamp = now();
@@ -898,6 +917,7 @@ export class PokoDatabase {
       id: randomUUID(),
       type: input.type,
       content: input.content.trim(),
+      workspacePath: folder,
       importance: input.importance,
       source: input.source ?? "user",
       createdAt: timestamp,

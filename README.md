@@ -51,6 +51,7 @@ Screenshots use sample data.
 - [x] Select text in any app and ask about it from the quick panel
 - [x] Hear an answer read aloud with the Mac's voice
 - [x] Routines: requests Poko runs on a schedule, always read-only, each in its own conversation (Phase 15)
+- [x] Conversations and project memories belong to their folder, so projects never mix (Phase 16)
 
 ## What Poko is aiming for
 

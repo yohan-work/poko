@@ -16,6 +16,7 @@ export const memorySlice: Slice<MemorySlice> = (set, get) => ({
       type: suggestion.type,
       content: suggestion.content,
       importance: 3,
+      fromTaskId: suggestion.taskId,
     });
     set((state) =>
       state.memorySuggestion !== suggestion
@@ -45,7 +46,11 @@ export const memorySlice: Slice<MemorySlice> = (set, get) => ({
 
   saveMemory: async (input) => {
     try {
-      await window.poko.memory.save(input);
+      const saved = await window.poko.memory.save(input);
+      if ("error" in saved) {
+        set({ memoryError: saved.error });
+        return false;
+      }
     } catch {
       set({ memoryError: "기억을 저장하지 못했어. 내용을 확인해 줘." });
       return false;

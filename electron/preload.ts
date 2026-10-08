@@ -240,7 +240,8 @@ const pokoApi = {
     list: (): Promise<PersistedMemory[]> => ipcRenderer.invoke(IPC_CHANNELS.memoryList),
     search: (query: string): Promise<PersistedMemory[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.memorySearch, query),
-    save: (input: MemoryInput): Promise<PersistedMemory> =>
+    /** An error when a 프로젝트 or 결정 memory has no folder to belong to. */
+    save: (input: MemoryInput): Promise<PersistedMemory | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.memorySave, input),
     delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, id),
   },

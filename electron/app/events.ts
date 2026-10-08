@@ -1,10 +1,11 @@
-import { IPC_CHANNELS, type ApprovalRequest, type TaskEventPayload } from "../shared";
+import { type ApprovalRequest, IPC_CHANNELS, isSameMemory, type TaskEventPayload } from "../shared";
 import { replaceCitations } from "../screen/overlayScene";
 import { removeAttachments } from "../attachments/attachments";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { notifyTaskEvent } from "./notify";
 import { recordRoutineEnd } from "./routines";
 import { pointAt, screenTasks } from "./screen";
+import { suggestionFolder } from "./workspace";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
 export function deliverTaskEvent(incoming: TaskEventPayload): void {
@@ -27,12 +28,12 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
   }
   // A suggestion matching a saved memory isn't worth asking about again.
   if (payload.event.type === "completed" && payload.event.memory && ctx.database) {
-    const wanted = payload.event.memory.content.trim().toLowerCase();
+    const { memory: suggested } = payload.event;
     let known = false;
     try {
-      known = ctx.database
-        .listMemories()
-        .some((memory) => memory.content.trim().toLowerCase() === wanted);
+      const folder = suggestionFolder(suggested.type, payload.taskId);
+      const wanted = { ...suggested, workspacePath: folder === "gone" ? null : folder };
+      known = ctx.database.listMemories().some((memory) => isSameMemory(memory, wanted));
     } catch (error) {
       // Only the duplicate check is lost; the task still finishes normally.
       console.error("Could not check saved memories.", error);

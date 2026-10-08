@@ -3031,3 +3031,13 @@ html.is-quick body {
   border-color: var(--color-accent);
   color: var(--color-text);
 }
+
+.memory-card__folder {
+  color: var(--color-text-faint);
+  font-weight: 400;
+}
+
+.memory-scope {
+  margin: 0 0 12px;
+  justify-self: start;
+}
