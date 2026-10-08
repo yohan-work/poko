@@ -64,8 +64,15 @@ const pokoApi = {
       ipcRenderer.invoke(IPC_CHANNELS.dataDeleteAll, { confirm }),
   },
   workspace: {
+    /** Selects the folder this conversation works in; main knows the path. */
+    switchToConversationFolder: (
+      conversationId: string,
+    ): Promise<{ workspace: WorkspaceInfo | null } | { error: string; gone?: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.workspaceUseConversationFolder, conversationId),
     get: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceGet),
-    select: (): Promise<WorkspaceInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.workspaceSelect),
+    /** null when the dialog was cancelled; an error while Poko works. */
+    select: (): Promise<WorkspaceInfo | null | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.workspaceSelect),
   },
   tasks: {
     /** `conversationId` null starts a new conversation titled from the message. */

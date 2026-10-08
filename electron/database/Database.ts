@@ -111,7 +111,13 @@ export interface ConversationRecord {
   id: string;
   title: string;
   updatedAt: string;
+  /** The resolved folder it works in, or null before its first task in a real folder. */
+  workspacePath: string | null;
 }
+
+/** A task's workspace that is a folder; screen tasks store `screen:{app}` instead. */
+export const isFolderPath = (workspace: string | null | undefined): workspace is string =>
+  typeof workspace === "string" && workspace.startsWith("/");
 
 /** The renderer sent a conversation that no longer exists. */
 export class ConversationGoneError extends Error {
@@ -194,6 +200,7 @@ export class PokoDatabase {
         id: conversations.id,
         title: conversations.title,
         updatedAt: conversations.updatedAt,
+        workspacePath: conversations.workspacePath,
       })
       .from(conversations)
       .orderBy(desc(conversations.updatedAt), desc(sql`${conversations}.rowid`))
@@ -207,6 +214,7 @@ export class PokoDatabase {
           id: conversations.id,
           title: conversations.title,
           updatedAt: conversations.updatedAt,
+          workspacePath: conversations.workspacePath,
         })
         .from(conversations)
         .where(eq(conversations.id, id))
@@ -674,9 +682,18 @@ export class PokoDatabase {
           .values({
             id: conversationId,
             title: conversationTitle(message),
+            workspacePath: isFolderPath(workspace) ? workspace : null,
             createdAt: timestamp,
             updatedAt: timestamp,
           })
+          .run();
+      // A conversation without a folder yet (older, screen-only, or a routine's) takes this one.
+      else if (isFolderPath(workspace))
+        tx.update(conversations)
+          .set({ workspacePath: workspace })
+          .where(
+            sql`${conversations.id} = ${conversationId} AND ${conversations.workspacePath} IS NULL`,
+          )
           .run();
       tx.insert(messages)
         .values({
@@ -1085,11 +1102,21 @@ export class PokoDatabase {
    * The routine's own conversation, "🔁 title", created when it has none (first run, or the
    * user deleted it). Never made the active conversation.
    */
-  ensureRoutineConversation(id: string): string {
+  ensureRoutineConversation(id: string, folder: string): string {
     const routine = this.getRoutine(id);
     if (!routine) throw new Error("The routine no longer exists.");
-    if (routine.conversationId && this.getConversation(routine.conversationId))
-      return routine.conversationId;
+    const existing = routine.conversationId ? this.getConversation(routine.conversationId) : null;
+    // A conversation recorded in another folder is never continued (or relabeled): that would
+    // mix two projects' answers, so the routine starts a new one.
+    if (existing && (!existing.workspacePath || existing.workspacePath === folder)) {
+      if (!existing.workspacePath)
+        this.db
+          .update(conversations)
+          .set({ workspacePath: folder })
+          .where(eq(conversations.id, existing.id))
+          .run();
+      return existing.id;
+    }
     const conversationId = randomUUID();
     const timestamp = now();
     this.db.transaction((tx) => {
@@ -1097,6 +1124,7 @@ export class PokoDatabase {
         .values({
           id: conversationId,
           title: conversationTitle(`🔁 ${routine.title}`),
+          workspacePath: folder,
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -1104,11 +1132,6 @@ export class PokoDatabase {
       tx.update(routines).set({ conversationId }).where(eq(routines.id, id)).run();
     });
     return conversationId;
-  }
-
-  /** The routine whose conversation this is, if any. */
-  routineForConversation(conversationId: string): RoutineRecord | null {
-    return this.listRoutines().find((routine) => routine.conversationId === conversationId) ?? null;
   }
 
   close(): void {

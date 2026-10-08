@@ -66,7 +66,7 @@ export function registerDataHandlers(): void {
         await ctx.screenService
           ?.cleanupAll()
           .catch((error) => console.error("Could not remove screen files.", error));
-        return { ok: true, bootstrap: bootstrapData() };
+        return { ok: true, bootstrap: await bootstrapData() };
       } finally {
         ctx.deletingData = false;
       }

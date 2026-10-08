@@ -332,6 +332,60 @@ function ForeignBanner() {
   );
 }
 
+/** The last part of a folder path, as the folder button shows it. */
+const folderName = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
+
+/**
+ * Shown when the conversation on screen works in another folder than the one selected: a
+ * follow-up there would be refused, so it offers to switch with one click.
+ */
+function FolderBanner() {
+  const folder = useAppStore(
+    (state) =>
+      state.conversations.find((item) => item.id === state.activeConversationId)?.workspacePath ??
+      null,
+  );
+  const workspace = useAppStore((state) => state.workspace);
+  const isSending = useAppStore((state) => state.isSending);
+  const gone = useAppStore((state) => state.folderGone === state.activeConversationId);
+  const switchToConversationFolder = useAppStore((state) => state.switchToConversationFolder);
+  const newConversation = useAppStore((state) => state.newConversation);
+  // Shown also when no folder is selected: the switch picks it without the dialog.
+  if (!folder || folder === workspace?.realPath) return null;
+  const name = folderName(folder);
+  if (gone)
+    return (
+      <div className="foreign-banner" role="status">
+        <span>
+          이 대화의 <strong>{name}</strong> 폴더를 찾지 못했어. 새 대화에서 물어봐 줘.
+        </span>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={isSending}
+          onClick={() => void newConversation()}
+        >
+          새 대화
+        </button>
+      </div>
+    );
+  return (
+    <div className="foreign-banner" role="status">
+      <span>
+        이 대화는 <strong>{name}</strong> 폴더에서 나눈 대화야. 이어서 물으려면 폴더를 바꿔 줘.
+      </span>
+      <button
+        className="secondary-button"
+        type="button"
+        disabled={isSending}
+        onClick={() => void switchToConversationFolder()}
+      >
+        {name}로 바꾸기
+      </button>
+    </div>
+  );
+}
+
 export function ChatPanel() {
   const messages = useAppStore((state) => state.messages);
   const editNotes = useAppStore((state) => state.editNotes);
@@ -443,6 +497,7 @@ export function ChatPanel() {
       </div>
       <div className="chat-panel__composer">
         <ForeignBanner />
+        <FolderBanner />
         <Composer autoFocus={false} />
       </div>
     </section>

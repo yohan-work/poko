@@ -227,14 +227,13 @@ describe("PokoDatabase", () => {
       workspacePath: "/w/project",
     });
     expect(database.listRoutines()).toHaveLength(1);
-    const conversationId = database.ensureRoutineConversation(routine.id);
+    const conversationId = database.ensureRoutineConversation(routine.id, "/w/project");
     expect(database.getConversation(conversationId)?.title).toBe("🔁 아침 정리");
-    expect(database.ensureRoutineConversation(routine.id)).toBe(conversationId);
-    expect(database.routineForConversation(conversationId)?.id).toBe(routine.id);
+    expect(database.ensureRoutineConversation(routine.id, "/w/project")).toBe(conversationId);
     // Deleting the conversation keeps the routine; the next run gets a new conversation.
     database.deleteConversation(conversationId);
     expect(database.getRoutine(routine.id)?.conversationId).toBeNull();
-    expect(database.ensureRoutineConversation(routine.id)).not.toBe(conversationId);
+    expect(database.ensureRoutineConversation(routine.id, "/w/project")).not.toBe(conversationId);
     database.close();
   });
 
@@ -262,6 +261,44 @@ describe("PokoDatabase", () => {
     expect(database.getRoutine(routine.id)?.lastResult?.status).toBe("skipped");
     database.deleteAllHistory();
     expect(database.listRoutines()).toEqual([]);
+    database.close();
+  });
+
+  it("gives a conversation the folder of its first task in a real folder, and keeps it", async () => {
+    const database = await openDatabase();
+    const first = database.createTask("화면 보기", "screen:Safari");
+    const id = database.getTaskConversation(first)?.id as string;
+    // A screen task has no folder, so the conversation has none yet.
+    expect(database.getConversation(id)?.workspacePath).toBeNull();
+    database.createTask("README 봐 줘", "/w/a", id);
+    expect(database.getConversation(id)?.workspacePath).toBe("/w/a");
+    // A later task elsewhere never moves it.
+    database.createTask("또", "/w/b", id);
+    expect(database.getConversation(id)?.workspacePath).toBe("/w/a");
+    const fresh = database.getTaskConversation(database.createTask("새 질문", "/w/b"));
+    expect(fresh?.workspacePath).toBe("/w/b");
+    expect(database.listConversations().find((item) => item.id === id)?.workspacePath).toBe("/w/a");
+    database.close();
+  });
+
+  it("creates a routine's conversation with the routine's folder", async () => {
+    const database = await openDatabase();
+    const routine = database.saveRoutine({
+      title: "r",
+      prompt: "p",
+      schedule: { kind: "daily", time: "09:00" },
+      enabled: true,
+      workspacePath: "/w/project",
+    });
+    const id = database.ensureRoutineConversation(routine.id, "/real/project");
+    // No task yet, and it already belongs to the folder.
+    expect(database.getConversation(id)?.workspacePath).toBe("/real/project");
+    expect(database.ensureRoutineConversation(routine.id, "/real/project")).toBe(id);
+    // A conversation in another folder is left as it is; the routine starts a new one.
+    const moved = database.ensureRoutineConversation(routine.id, "/real/elsewhere");
+    expect(moved).not.toBe(id);
+    expect(database.getConversation(id)?.workspacePath).toBe("/real/project");
+    expect(database.getConversation(moved)?.workspacePath).toBe("/real/elsewhere");
     database.close();
   });
 

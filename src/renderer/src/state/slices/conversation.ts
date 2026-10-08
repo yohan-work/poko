@@ -4,6 +4,9 @@ import { adoptTask, foreignTasks, runTask, switchConversation, trackForeign } fr
 import { addActivity, fromBootstrap } from "../taskHelpers";
 import type { ConversationSlice, Slice } from "../types";
 
+/** Counts busy notes under the folder button, so only the latest one clears itself. */
+let busyNotes = 0;
+
 export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
   activeView: "conversation",
   characterState: "idle",
@@ -98,13 +101,48 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
     }
   },
 
+  folderGone: null,
+
+  switchToConversationFolder: async () => {
+    const id = get().activeConversationId;
+    if (!id) return;
+    const response = await window.poko.workspace
+      .switchToConversationFolder(id)
+      .catch(() => ({ error: "폴더를 바꾸지 못했어. 다시 시도해 줘." }));
+    if ("error" in response) {
+      // A folder that is gone can't be switched to; the line then says so instead.
+      set({
+        conversationError: response.error,
+        ...("gone" in response && response.gone ? { folderGone: id } : {}),
+      });
+      return;
+    }
+    set({
+      workspace: response.workspace,
+      conversationError: null,
+      workspaceError: null,
+      folderGone: null,
+    });
+    // Each folder keeps its own edit setting.
+    void get().loadEdits();
+  },
+
   selectWorkspace: async () => {
     if (get().isSelectingWorkspace) return;
     set({ characterState: "listening", isSelectingWorkspace: true, workspaceError: null });
 
     try {
       const workspace = await window.poko.workspace.select();
-      if (workspace) {
+      if (workspace && "error" in workspace) {
+        // Busy is passing: the note clears itself instead of staying as an error.
+        set({ characterState: "idle", workspaceError: workspace.error });
+        const note = ++busyNotes;
+        window.setTimeout(() => {
+          // Only the latest note clears itself; a newer one gets its own 4 seconds.
+          if (note === busyNotes && get().workspaceError === workspace.error)
+            set({ workspaceError: null });
+        }, 4000);
+      } else if (workspace) {
         set({ workspace, characterState: "success" });
         // Each folder keeps its own edit setting.
         void get().loadEdits();
@@ -149,12 +187,15 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
       content,
       async () => {
         asked = true;
-        const response = await window.poko.tasks.start(
-          message,
-          get().activeConversationId,
-          attachments,
-        );
-        if ("error" in response) refused = true;
+        const sentFrom = get().activeConversationId;
+        const response = await window.poko.tasks.start(message, sentFrom, attachments);
+        if ("error" in response) {
+          refused = true;
+          // The folder is gone: the line offers a new conversation instead of a switch. Only
+          // if the conversation it was sent from is still the one shown.
+          if (response.gone && get().activeConversationId === sentFrom)
+            set({ folderGone: sentFrom });
+        }
         return response;
       },
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",

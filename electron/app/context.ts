@@ -87,7 +87,9 @@ export async function startConversationTask(
   /** Runs after the task is recorded and before it starts, so its first event finds it known. */
   onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
   attachments: CheckedAttachment[] = [],
-): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
+): Promise<
+  { taskId: string; conversation: PersistedConversation } | { error: string; gone?: boolean }
+> {
   if (!ctx.agentCore || !ctx.database) throw new Error("Local storage is unavailable.");
   // This start is already counted in startingTasks, so another start makes it more than one.
   const busy = () => ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1;
@@ -95,19 +97,10 @@ export async function startConversationTask(
   const cwd = await resolveWorkspaceDirectory(ctx.database.getWorkspace());
   // Another task may have started while the folder was being checked.
   if (busy()) return { error: BUSY_MESSAGE };
-  // A routine's conversation continues only in the routine's own folder.
-  const routine = conversationId ? ctx.database.routineForConversation(conversationId) : null;
-  if (routine) {
-    const routineFolder = await resolveWorkspaceDirectory(routine.workspacePath).catch(() => null);
-    if (!routineFolder)
-      return {
-        error: `이 루틴의 ${basename(routine.workspacePath)} 폴더를 찾지 못했어. 새 대화에서 물어봐 줘.`,
-      };
-    if (routineFolder !== cwd)
-      return {
-        error: `이 대화는 ${basename(routine.workspacePath)} 폴더의 루틴이야. 그 폴더를 고른 뒤 이어서 물어봐 줘.`,
-      };
-  }
+  // A conversation continues only in its own folder, so one project's answers never
+  // become another project's context.
+  const refused = conversationId ? await folderMismatch(conversationId, cwd) : null;
+  if (refused) return { error: refused.message, ...(refused.gone ? { gone: true } : {}) };
   // The conversation shows which files were attached; their content goes only to the engine.
   const line = attachmentLine(attachments);
   const shown = line ? (message ? `${message}\n\n${line}` : line) : message;
@@ -144,21 +137,55 @@ export async function startConversationTask(
   return started;
 }
 
+export const folderGoneMessage = (folder: string) =>
+  `이 대화의 ${basename(folder)} 폴더를 찾지 못했어. 새 대화에서 물어봐 줘.`;
+
+/**
+ * A conversation's folder, resolved now: `resolved` is null when it no longer exists, and the
+ * whole result is null when the conversation has no folder yet.
+ */
+export async function conversationFolder(
+  conversationId: string,
+): Promise<{ folder: string; resolved: string | null } | null> {
+  const folder = ctx.database?.getConversation(conversationId)?.workspacePath;
+  if (!folder) return null;
+  return { folder, resolved: await resolveWorkspaceDirectory(folder).catch(() => null) };
+}
+
+/**
+ * Why a conversation can't continue in the selected folder `cwd` (resolved), or null when it
+ * can: it has no folder yet, or it resolves to this one (a folder reached through a link too).
+ */
+export async function folderMismatch(
+  conversationId: string,
+  cwd: string,
+): Promise<{ message: string; gone: boolean } | null> {
+  const found = await conversationFolder(conversationId);
+  if (!found || found.resolved === cwd) return null;
+  if (!found.resolved) return { message: folderGoneMessage(found.folder), gone: true };
+  const name = basename(found.folder);
+  return {
+    message: `이 대화는 ${name} 폴더에서 나눈 대화야. ${name}로 바꾼 뒤 이어서 물어봐 줘.`,
+    gone: false,
+  };
+}
+
 /** Whether any task is running or starting, so nothing it uses may be deleted. */
 export function anyTaskBusy(): boolean {
   return Boolean(ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 0);
 }
 
 /** What the renderer starts from: the workspace, conversations, tasks, and Activity. */
-export function bootstrapData(): AppBootstrap {
+export async function bootstrapData(): Promise<AppBootstrap> {
   if (!ctx.database) throw new Error("The database is not open.");
   const { workspacePath, ...data } = ctx.database.getBootstrapData();
-  return { ...data, workspace: workspaceInfo(workspacePath) };
+  return { ...data, workspace: await workspaceInfo(workspacePath) };
 }
 
-export function workspaceInfo(workspacePath: string | null): WorkspaceInfo | null {
+export async function workspaceInfo(workspacePath: string | null): Promise<WorkspaceInfo | null> {
   if (!workspacePath) return null;
-  return { path: workspacePath, name: basename(workspacePath) };
+  const realPath = await resolveWorkspaceDirectory(workspacePath).catch(() => null);
+  return { path: workspacePath, name: basename(workspacePath), realPath };
 }
 
 export function isTrustedRenderer(event: IpcMainInvokeEvent): boolean {

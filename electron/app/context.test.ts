@@ -1,8 +1,13 @@
+import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: {}, ipcMain: { handle: vi.fn() } }));
 
-const { BUSY_MESSAGE, ctx, isQuickPanel, startConversationTask } = await import("./context");
+const { BUSY_MESSAGE, ctx, folderMismatch, isQuickPanel, startConversationTask } = await import(
+  "./context"
+);
 
 describe("startConversationTask", () => {
   function fakeDatabase() {
@@ -33,6 +38,35 @@ describe("startConversationTask", () => {
     ctx.startingTasks = 0;
     ctx.database = null;
     ctx.agentCore = null;
+  });
+});
+
+describe("folderMismatch", () => {
+  it("lets a conversation continue only in its own folder", async () => {
+    const here = await realpath(tmpdir());
+    const conversations: Record<string, { workspacePath: string | null }> = {
+      none: { workspacePath: null },
+      same: { workspacePath: here },
+      other: { workspacePath: "/" },
+      gone: { workspacePath: "/no/such/folder/poko-test" },
+      // The same folder, stored as a link to it.
+      linked: { workspacePath: join(await mkdtemp(join(tmpdir(), "poko-link-")), "here") },
+    };
+    await symlink(here, conversations.linked.workspacePath as string);
+    ctx.database = { getConversation: (id: string) => conversations[id] ?? null } as never;
+    expect(await folderMismatch("none", here)).toBeNull();
+    expect(await folderMismatch("same", here)).toBeNull();
+    expect(await folderMismatch("other", here)).toEqual({
+      message: expect.stringContaining("폴더에서 나눈 대화야"),
+      gone: false,
+    });
+    expect(await folderMismatch("gone", here)).toEqual({
+      message: expect.stringContaining("폴더를 찾지 못했어"),
+      gone: true,
+    });
+    expect(await folderMismatch("linked", here)).toBeNull();
+    ctx.database = null;
+    await rm(dirname(conversations.linked.workspacePath as string), { recursive: true });
   });
 });
 

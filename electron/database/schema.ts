@@ -9,6 +9,8 @@ export const settings = sqliteTable("settings", {
 export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
+  /** The resolved folder the conversation works in; null until a task in a real folder. */
+  workspacePath: text("workspace_path"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -76,6 +78,8 @@ export const memories = sqliteTable(
       enum: ["preference", "project", "person", "decision", "fact", "routine"],
     }).notNull(),
     content: text("content").notNull(),
+    /** The resolved folder a project or decision memory belongs to; null: every folder. */
+    workspacePath: text("workspace_path"),
     importance: integer("importance").notNull().default(3),
     source: text("source").notNull(),
     createdAt: text("created_at").notNull(),
