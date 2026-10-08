@@ -1,16 +1,16 @@
 import {
-  spawn as nodeSpawn,
   type ChildProcessWithoutNullStreams,
+  spawn as nodeSpawn,
   type SpawnOptions,
 } from "node:child_process";
-import { access, readdir } from "node:fs/promises";
 import { constants } from "node:fs";
+import { access, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
-import type { AgentEvent, AgentTask } from "../../shared";
 import type { AgentProvider } from "../../agent/AgentProvider";
-import { parseCodexJsonlLine, type CodexRecord } from "./jsonl";
+import type { AgentEvent, AgentTask } from "../../shared";
+import { type CodexRecord, parseCodexJsonlLine } from "./jsonl";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_JSONL_LINE_LENGTH = 1024 * 1024;

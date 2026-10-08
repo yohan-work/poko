@@ -3,13 +3,13 @@ import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { ClaudeRuntime } from "../providers/claude/ClaudeCodeProvider";
+import { resolveCliExecutable } from "../providers/codex/CodexProvider";
 import {
   codexEnvironment,
   findNodeDirectory,
   nodeCandidates,
 } from "../providers/codex/codexEnvironment";
-import { resolveCliExecutable } from "../providers/codex/CodexProvider";
-import type { ClaudeRuntime } from "../providers/claude/ClaudeCodeProvider";
 import type { ClaudeSetup } from "../shared";
 import type { RunResult } from "./codexSetup";
 

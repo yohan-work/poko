@@ -1,6 +1,6 @@
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentTask } from "../../shared";
 import { CodexProvider, type SpawnProcess } from "./CodexProvider";

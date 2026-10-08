@@ -1,14 +1,14 @@
 import { ipcMain } from "electron";
-import {
-  type ActiveTaskInfo,
-  IPC_CHANNELS,
-  type ApprovalChoice,
-  type ApprovalOutcome,
-} from "../shared";
 import { checkAttachments } from "../attachments/attachments";
 import {
-  ctx,
+  type ActiveTaskInfo,
+  type ApprovalChoice,
+  type ApprovalOutcome,
+  IPC_CHANNELS,
+} from "../shared";
+import {
   CONVERSATION_GONE,
+  ctx,
   handleTaskStart,
   isTrustedRenderer,
   pendingApprovalEvents,
@@ -17,6 +17,7 @@ import {
   startConversationTask,
   startingConversations,
 } from "./context";
+import { cancelQueued, waitingQuestions } from "./queue";
 import { markRoutineStopped, routineTitleFor } from "./routines";
 
 /** Approval answers in progress, so a double click can't checkpoint or answer twice. */
@@ -47,7 +48,22 @@ export function registerTaskHandlers(): void {
       throw new TypeError("The request is too long.");
     }
 
-    return startConversationTask(rawMessage.trim(), conversationId, undefined, attachments);
+    // Only the main window queues a question while Poko is busy (Phase 17).
+    return startConversationTask(rawMessage.trim(), conversationId, undefined, attachments, {
+      allowQueue: true,
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.taskQueued, (event) => {
+    if (!isTrustedRenderer(event)) throw new Error("Unknown renderer requested the queue.");
+    return waitingQuestions();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.taskCancelQueued, (event, rawTaskId: unknown) => {
+    if (!isTrustedRenderer(event)) throw new Error("Unknown renderer cancelled a question.");
+    if (typeof rawTaskId !== "string" || rawTaskId.length > 100)
+      throw new TypeError("A valid task id is required.");
+    return cancelQueued(rawTaskId);
   });
 
   ipcMain.handle(IPC_CHANNELS.conversationOpen, (event, raw: unknown) => {

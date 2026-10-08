@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
 import type { AppView, ConversationMatch } from "../../../electron/shared";
-import { useAppStore } from "./state/appStore";
-import { ChatPanel } from "./components/chat/ChatPanel";
 import { ActivityPanel } from "./components/activity/ActivityPanel";
-import { TasksPanel } from "./components/activity/TasksPanel";
-import { RoutinesPanel } from "./components/activity/RoutinesPanel";
 import { MemoryPanel } from "./components/activity/MemoryPanel";
+import { RoutinesPanel } from "./components/activity/RoutinesPanel";
+import { TasksPanel } from "./components/activity/TasksPanel";
 import { Character, stateLabels } from "./components/character/Character";
-import { Icon, type IconName } from "./components/Icon";
-import { ConversationItem } from "./components/sidebar/ConversationItem";
+import { ChatPanel } from "./components/chat/ChatPanel";
 import { EditsConfirm } from "./components/edits/EditsConfirm";
-import { SetupScreen } from "./components/setup/SetupScreen";
+import { Icon, type IconName } from "./components/Icon";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
+import { SetupScreen } from "./components/setup/SetupScreen";
+import { ConversationItem } from "./components/sidebar/ConversationItem";
 import { useNow } from "./lib/useNow";
+import { useAppStore } from "./state/appStore";
 
 const navigation: { id: AppView; label: string; icon: IconName }[] = [
   { id: "conversation", label: "대화", icon: "chat" },

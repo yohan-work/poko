@@ -1,13 +1,14 @@
 import {
+  type ChildProcessWithoutNullStreams,
   execFile,
   spawn as nodeSpawn,
-  type ChildProcessWithoutNullStreams,
   type SpawnOptions,
 } from "node:child_process";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { createInterface } from "node:readline";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { createInterface } from "node:readline";
+import type { AgentProvider } from "../../agent/AgentProvider";
 import {
   type AgentEvent,
   type AgentTask,
@@ -16,16 +17,15 @@ import {
   isUnavailableModelError,
   type ModelOption,
 } from "../../shared";
-import type { AgentProvider } from "../../agent/AgentProvider";
-import { signalProcess } from "./CodexProvider";
 import {
   encodeRequestId,
+  type IncomingMessage,
   isRecord,
+  type JsonRpcId,
   parseIncomingMessage,
   readString,
-  type IncomingMessage,
-  type JsonRpcId,
 } from "./appServerProtocol";
+import { signalProcess } from "./CodexProvider";
 
 const MAX_LINE_LENGTH = 1024 * 1024;
 const MAX_DIFF_LENGTH = 120_000;

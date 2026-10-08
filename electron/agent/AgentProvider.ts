@@ -1,4 +1,4 @@
-import type { AgentTask, AgentEvent, ApprovalChoice } from "../shared";
+import type { AgentEvent, AgentTask, ApprovalChoice } from "../shared";
 
 export interface AgentProvider {
   runTask(input: AgentTask, options?: { signal?: AbortSignal }): AsyncIterable<AgentEvent>;

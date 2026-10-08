@@ -1,22 +1,7 @@
-import { app, type BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { basename, join } from "node:path";
-import {
-  type AppBootstrap,
-  IPC_CHANNELS,
-  type PendingApprovalEvent,
-  type PersistedConversation,
-  type WorkspaceInfo,
-} from "../shared";
+import { app, type BrowserWindow, type IpcMainInvokeEvent, ipcMain } from "electron";
 import type { AgentCore } from "../agent/AgentCore";
 import type { AgentProvider } from "../agent/AgentProvider";
-import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
-import { ConversationGoneError, type PokoDatabase } from "../database/Database";
-import type { ScreenService } from "../screen/ScreenService";
-import type { ScreenOverlay } from "../screen/ScreenOverlay";
-import type { ScreenAgent } from "../screen/ScreenAgent";
-import type { EditManager } from "../edits/EditManager";
-import type { SetupService } from "../setup/SetupService";
-import type { QuickPanel } from "../quick/QuickPanel";
 import { resolveWorkspaceDirectory } from "../agent/workspace";
 import {
   attachedTextSection,
@@ -25,7 +10,31 @@ import {
   removeAttachments,
   writeImages,
 } from "../attachments/attachments";
+import { ConversationGoneError, type PokoDatabase } from "../database/Database";
+import type { EditManager } from "../edits/EditManager";
+import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
+import type { QuickPanel } from "../quick/QuickPanel";
+import type { ScreenAgent } from "../screen/ScreenAgent";
+import type { ScreenOverlay } from "../screen/ScreenOverlay";
+import type { ScreenService } from "../screen/ScreenService";
 import type { ClaudeSetupService } from "../setup/claudeSetup";
+import type { SetupService } from "../setup/SetupService";
+import {
+  type AppBootstrap,
+  IPC_CHANNELS,
+  type PendingApprovalEvent,
+  type PersistedConversation,
+  type WorkspaceInfo,
+} from "../shared";
+import {
+  enqueueQuestion,
+  hasWaiting,
+  kickQueue,
+  QUEUE_FULL,
+  type QueuedStart,
+  releaseSlot,
+  reserveSlot,
+} from "./queue";
 
 /**
  * Main-process state shared by the IPC handlers: the window, the database, and the services.
@@ -49,6 +58,8 @@ export const ctx = {
   startingTasks: 0,
   /** 모든 데이터 삭제 is in progress; no task may start. */
   deletingData: false,
+  /** Poko is quitting: waiting questions stay waiting (see queue.ts). */
+  queueFrozen: false,
   quickPanel: null as QuickPanel | null,
   /** False when another app already owns the quick panel shortcut. */
   quickShortcutOk: true,
@@ -79,7 +90,8 @@ export const BUSY_MESSAGE = "포코가 이미 다른 작업을 하고 있어. �
 /**
  * Starts a conversation task from either the main window or the quick panel. Refuses before
  * recording anything while another task runs or starts, so a busy refusal never leaves an empty
- * conversation behind. Call only from a `handleTaskStart` handler (it counts this start).
+ * conversation behind. With `allowQueue` (the main window), a busy Poko queues the question
+ * instead. Call only from a `handleTaskStart` handler (it counts this start).
  */
 export async function startConversationTask(
   message: string,
@@ -87,23 +99,60 @@ export async function startConversationTask(
   /** Runs after the task is recorded and before it starts, so its first event finds it known. */
   onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
   attachments: CheckedAttachment[] = [],
+  options: { allowQueue?: boolean } = {},
 ): Promise<
-  { taskId: string; conversation: PersistedConversation } | { error: string; gone?: boolean }
+  | { taskId: string; conversation: PersistedConversation }
+  | QueuedStart
+  | { error: string; gone?: boolean }
 > {
   if (!ctx.agentCore || !ctx.database) throw new Error("Local storage is unavailable.");
   // This start is already counted in startingTasks, so another start makes it more than one.
-  const busy = () => ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1;
-  if (busy()) return { error: BUSY_MESSAGE };
-  const cwd = await resolveWorkspaceDirectory(ctx.database.getWorkspace());
-  // Another task may have started while the folder was being checked.
-  if (busy()) return { error: BUSY_MESSAGE };
-  // A conversation continues only in its own folder, so one project's answers never
-  // become another project's context.
-  const refused = conversationId ? await folderMismatch(conversationId, cwd) : null;
-  if (refused) return { error: refused.message, ...(refused.gone ? { gone: true } : {}) };
-  // The conversation shows which files were attached; their content goes only to the engine.
-  const line = attachmentLine(attachments);
-  const shown = line ? (message ? `${message}\n\n${line}` : line) : message;
+  // A waiting question counts too, so a new one never runs ahead of it.
+  const busy = () =>
+    ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1 || hasWaiting();
+  let queued = false;
+  // Holds a place in the queue right away (no await between the check and the hold).
+  const wait = (): { error: string } | null => {
+    if (!options.allowQueue) return { error: BUSY_MESSAGE };
+    if (!reserveSlot()) return { error: QUEUE_FULL };
+    queued = true;
+    return null;
+  };
+  if (busy()) {
+    const refused = wait();
+    if (refused) return refused;
+  }
+  try {
+    const cwd = await resolveWorkspaceDirectory(ctx.database.getWorkspace());
+    // Another task may have started while the folder was being checked.
+    if (!queued && busy()) {
+      const refused = wait();
+      if (refused) return refused;
+    }
+    // A conversation continues only in its own folder, so one project's answers never
+    // become another project's context.
+    const refused = conversationId ? await folderMismatch(conversationId, cwd) : null;
+    if (refused) return { error: refused.message, ...(refused.gone ? { gone: true } : {}) };
+    // The conversation shows which files were attached; their content goes only to the engine.
+    const line = attachmentLine(attachments);
+    const shown = line ? (message ? `${message}\n\n${line}` : line) : message;
+    if (queued)
+      return await enqueueQuestion({ shown, message, conversationId, folder: cwd, attachments });
+    return await startNow(message, shown, cwd, conversationId, attachments, onRecorded);
+  } finally {
+    if (queued) releaseSlot();
+  }
+}
+
+async function startNow(
+  message: string,
+  shown: string,
+  cwd: string,
+  conversationId: string | null,
+  attachments: CheckedAttachment[],
+  onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
+): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
+  if (!ctx.agentCore || !ctx.database) throw new Error("Local storage is unavailable.");
   const started = recordTaskStart(ctx.database, shown, cwd, conversationId);
   if ("error" in started) return started;
   const { taskId } = started;
@@ -170,9 +219,11 @@ export async function folderMismatch(
   };
 }
 
-/** Whether any task is running or starting, so nothing it uses may be deleted. */
+/** Whether any task is running, starting, or waiting, so nothing it uses may be deleted. */
 export function anyTaskBusy(): boolean {
-  return Boolean(ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 0);
+  return Boolean(
+    ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 0 || hasWaiting(),
+  );
 }
 
 /** What the renderer starts from: the workspace, conversations, tasks, and Activity. */
@@ -218,6 +269,8 @@ export function handleTaskStart(
       return await handler(event, raw);
     } finally {
       ctx.startingTasks -= 1;
+      // A question that queued while this start was in flight may start now.
+      if (ctx.startingTasks === 0) kickQueue();
       if (key) {
         const left = (startingConversations.get(key) ?? 1) - 1;
         if (left > 0) startingConversations.set(key, left);

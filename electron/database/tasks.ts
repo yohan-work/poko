@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
 import { conversationTitle, type Db, isFolderPath, now } from "./common";
 import { ConversationGoneError, type ConversationRecord, getConversation } from "./conversations";
@@ -17,13 +17,63 @@ export function createTask(
   workspace: string,
   conversation: string | null = null,
 ): string {
-  const id = randomUUID();
-  const timestamp = now();
+  const id = queueTask(db, message, workspace, conversation);
+  startQueuedTask(db, id);
+  return id;
+}
+
+/**
+ * Records a question that waits for its turn: only the task, with no message and no new
+ * conversation yet, so the conversation keeps its order until it starts (see startQueuedTask).
+ * Throws ConversationGoneError for a conversation id that no longer exists.
+ */
+export function queueTask(
+  db: Db,
+  message: string,
+  workspace: string,
+  conversation: string | null = null,
+): string {
   if (conversation !== null && !getConversation(db, conversation))
     throw new ConversationGoneError();
-  const conversationId = conversation ?? randomUUID();
-  db.transaction((tx) => {
-    if (conversation === null)
+  const id = randomUUID();
+  db.insert(tasks)
+    .values({
+      id,
+      title: message.slice(0, 120),
+      prompt: message,
+      provider: "codex",
+      status: "queued",
+      workspace,
+      conversationId: conversation,
+      createdAt: now(),
+      completedAt: null,
+    })
+    .run();
+  return id;
+}
+
+/**
+ * Starts a queued task: its conversation (created now for a new one, titled from the message),
+ * the user's message, and `running`, together. Returns the conversation id, or null when the
+ * task isn't queued.
+ */
+export function startQueuedTask(db: Db, taskId: string): string | null {
+  const timestamp = now();
+  return db.transaction((tx) => {
+    const task = tx
+      .select({
+        prompt: tasks.prompt,
+        workspace: tasks.workspace,
+        conversationId: tasks.conversationId,
+        status: tasks.status,
+      })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .get();
+    if (task?.status !== "queued") return null;
+    const { prompt: message, workspace } = task;
+    const conversationId = task.conversationId ?? randomUUID();
+    if (task.conversationId === null)
       tx.insert(conversations)
         .values({
           id: conversationId,
@@ -50,25 +100,13 @@ export function createTask(
         createdAt: timestamp,
       })
       .run();
-    tx.insert(tasks)
-      .values({
-        id,
-        title: message.slice(0, 120),
-        prompt: message,
-        provider: "codex",
-        status: "running",
-        workspace,
-        conversationId,
-        createdAt: timestamp,
-        completedAt: null,
-      })
-      .run();
+    tx.update(tasks).set({ status: "running", conversationId }).where(eq(tasks.id, taskId)).run();
     tx.update(conversations)
       .set({ updatedAt: timestamp })
       .where(eq(conversations.id, conversationId))
       .run();
+    return conversationId;
   });
-  return id;
 }
 
 export function recordTaskEvent(
@@ -223,8 +261,24 @@ export function getTaskConversation(db: Db, taskId: string): ConversationRecord 
   return row?.conversationId ? getConversation(db, row.conversationId) : null;
 }
 
-/** Tasks left running at an unclean shutdown fail, and their approvals expire. */
+/** What a question that was still waiting when Poko quit shows in its conversation. */
+export const QUIT_BEFORE_ASKING = "포코가 꺼져서 묻지 못했어.";
+
+/**
+ * Tasks left running at an unclean shutdown fail, and their approvals expire. Questions that
+ * were still waiting are added to their conversation, failed, so their text isn't lost.
+ */
 export function recoverInterruptedTasks(db: Db): void {
+  const waiting = db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(eq(tasks.status, "queued"))
+    .orderBy(asc(tasks.createdAt), asc(sql`${tasks}.rowid`))
+    .all();
+  for (const { id } of waiting) {
+    startQueuedTask(db, id);
+    recordTaskEvent(db, id, "error", QUIT_BEFORE_ASKING, QUIT_BEFORE_ASKING);
+  }
   const timestamp = now();
   db.transaction((tx) => {
     tx.update(approvals)

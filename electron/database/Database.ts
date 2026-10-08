@@ -243,6 +243,12 @@ export class PokoDatabase {
   createTask(message: string, workspace: string, conversation: string | null = null): string {
     return Tasks.createTask(this.db, message, workspace, conversation);
   }
+  queueTask(message: string, workspace: string, conversation: string | null = null): string {
+    return Tasks.queueTask(this.db, message, workspace, conversation);
+  }
+  startQueuedTask(taskId: string): string | null {
+    return Tasks.startQueuedTask(this.db, taskId);
+  }
   recordTaskEvent(
     taskId: string,
     type: string,

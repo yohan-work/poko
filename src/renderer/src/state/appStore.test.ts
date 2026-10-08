@@ -3,6 +3,7 @@ import type {
   ActiveTaskInfo,
   AgentEvent,
   PersistedConversation,
+  QueuedQuestion,
   TaskEventPayload,
   TaskStartedNotice,
 } from "../../../../electron/shared";
@@ -40,13 +41,28 @@ function fakePoko() {
       calls.push({ method, args });
       return result(...args);
     };
-  const startReply = deferred<unknown>();
+  // One reply per start, answered oldest first.
+  const startReplies: Deferred<unknown>[] = [];
+  let answeredStarts = 0;
+  const startReply = (): Promise<unknown> => {
+    const reply = deferred<unknown>();
+    startReplies.push(reply);
+    return reply.promise;
+  };
+  const queueListeners = new Set<(queue: QueuedQuestion[]) => void>();
+  let cancelQueuedReply = true;
   const openReply = deferred<unknown>();
   const settingsReply = deferred<unknown>();
   const screenReply = deferred<unknown>();
   const poko = {
     tasks: {
-      start: record("tasks.start", () => startReply.promise),
+      start: record("tasks.start", startReply),
+      queued: record("tasks.queued", async () => [] as QueuedQuestion[]),
+      cancelQueued: record("tasks.cancelQueued", async () => cancelQueuedReply),
+      onQueueChanged: (listener: (queue: QueuedQuestion[]) => void) => {
+        queueListeners.add(listener);
+        return () => queueListeners.delete(listener);
+      },
       cancel: record("tasks.cancel", async () => true),
       onEvent: (listener: (payload: TaskEventPayload) => void) => {
         listeners.add(listener);
@@ -101,7 +117,17 @@ function fakePoko() {
     emit: (taskId: string, event: AgentEvent) => {
       for (const listener of [...listeners]) listener({ taskId, event });
     },
-    replyToStart: (value: unknown) => startReply.resolve(value),
+    replyToStart: (value: unknown) => {
+      const reply = startReplies[answeredStarts];
+      answeredStarts += 1;
+      reply?.resolve(value);
+    },
+    changeQueue: (queue: QueuedQuestion[]) => {
+      for (const listener of [...queueListeners]) listener(queue);
+    },
+    setCancelQueued: (value: boolean) => {
+      cancelQueuedReply = value;
+    },
     replyToOpen: (value: unknown) => openReply.resolve(value),
     startElsewhere: (notice: TaskStartedNotice) => {
       for (const listener of [...startedListeners]) listener(notice);
@@ -484,8 +510,15 @@ describe("a task started elsewhere (the quick panel)", () => {
       foreignApproval: { conversationId: "q" },
     });
     expect(store.getState().conversations[0].id).toBe("q");
-    expect(await store.getState().sendMessage("다른 질문")).toBe("refused");
-    expect(world.calls.some((call) => call.method === "tasks.start")).toBe(false);
+    // Sent while Poko works elsewhere, the question waits; the shown conversation stays as is.
+    const waiting = store.getState().sendMessage("다른 질문");
+    world.replyToStart({ queued: { taskId: "w1", conversationId: "a", text: "다른 질문" } });
+    expect(await waiting).toBe("queued");
+    expect(store.getState()).toMatchObject({
+      isSending: false,
+      messages: [],
+      waitingQuestions: [{ taskId: "w1", conversationId: "a", text: "다른 질문" }],
+    });
 
     world.setActive({ taskId: "qt", conversationId: "q", approvals: [] });
     const adopting = store.getState().showForeignTask();
@@ -574,5 +607,101 @@ describe("a task started elsewhere (the quick panel)", () => {
     world.emit("qt", { type: "output", content: " 뒷부분", itemId: "m1" });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(store.getState().streaming?.text).toBe("앞부분 뒷부분");
+  });
+});
+
+describe("asking while Poko is busy (Phase 17)", () => {
+  it("queues a follow-up without touching the running answer", async () => {
+    const first = store.getState().sendMessage("첫 질문");
+    world.replyToStart({ taskId: "t1", conversation: conversation("a") });
+    await first;
+    world.emit("t1", { type: "output", content: "쓰는 중", itemId: "m" });
+
+    const second = store.getState().sendMessage("이어서 질문");
+    expect(world.calls.at(-1)).toEqual({ method: "tasks.start", args: ["이어서 질문", "a", []] });
+    world.replyToStart({ queued: { taskId: "t2", conversationId: "a", text: "이어서 질문" } });
+    expect(await second).toBe("queued");
+    expect(store.getState()).toMatchObject({ activeTaskId: "t1", isSending: true });
+    expect(store.getState().messages.map((item) => item.content)).toEqual(["첫 질문"]);
+    expect(store.getState().waitingQuestions.map((item) => item.taskId)).toEqual(["t2"]);
+
+    // Its turn: the answer ends, main starts it, and the conversation on screen takes it over.
+    world.emit("t1", { type: "completed", result: "첫 답" });
+    world.setActive({ taskId: "t2", conversationId: "a", approvals: [] });
+    world.startElsewhere({ taskId: "t2", title: "이어서 질문", conversation: conversation("a") });
+    expect(store.getState().waitingQuestions).toEqual([]);
+    world.replyToOpen({
+      messages: [
+        { id: "1", role: "user", content: "첫 질문", createdAt: "x" },
+        { id: "2", role: "assistant", content: "첫 답", createdAt: "x" },
+        { id: "3", role: "user", content: "이어서 질문", createdAt: "x" },
+      ],
+    });
+    await vi.waitFor(() => expect(store.getState().isSending).toBe(true));
+    expect(store.getState().activeTaskId).toBe("t2");
+    expect(store.getState().messages.map((item) => item.content)).toEqual([
+      "첫 질문",
+      "첫 답",
+      "이어서 질문",
+    ]);
+  });
+
+  it("shows main's refusal without disturbing the running task", async () => {
+    const first = store.getState().sendMessage("첫 질문");
+    world.replyToStart({ taskId: "t1", conversation: conversation("a") });
+    await first;
+    const second = store.getState().sendMessage("넷째 질문");
+    world.replyToStart({ error: "기다리는 질문이 너무 많아. 하나가 끝난 뒤에 보내 줘." });
+    expect(await second).toBe("refused");
+    expect(store.getState()).toMatchObject({
+      activeTaskId: "t1",
+      isSending: true,
+      errorMessage: "기다리는 질문이 너무 많아. 하나가 끝난 뒤에 보내 줘.",
+    });
+    expect(store.getState().messages.map((item) => item.content)).toEqual(["첫 질문"]);
+  });
+
+  it("undoes the shown send when main queues a question the window thought would start", async () => {
+    const sending = store.getState().sendMessage("질문");
+    expect(store.getState().isSending).toBe(true);
+    world.replyToStart({ queued: { taskId: "w", conversationId: "a", text: "질문" } });
+    expect(await sending).toBe("queued");
+    expect(store.getState()).toMatchObject({ isSending: false, messages: [] });
+    expect(store.getState().waitingQuestions.map((item) => item.taskId)).toEqual(["w"]);
+  });
+
+  it("follows main's list, and takes over a question that waited on the new-conversation screen", async () => {
+    store.setState({ activeConversationId: null });
+    world.changeQueue([{ taskId: "w", conversationId: null, text: "새 질문" }]);
+    expect(store.getState().waitingQuestions).toHaveLength(1);
+    world.setActive({ taskId: "w", conversationId: "n", approvals: [] });
+    world.startElsewhere({ taskId: "w", title: "새 질문", conversation: conversation("n") });
+    world.replyToOpen({
+      messages: [{ id: "1", role: "user", content: "새 질문", createdAt: "x" }],
+    });
+    await vi.waitFor(() => expect(store.getState().isSending).toBe(true));
+    expect(store.getState()).toMatchObject({ activeConversationId: "n", activeTaskId: "w" });
+  });
+
+  it("cancels a waiting question and offers its text again only to an empty box", async () => {
+    world.changeQueue([{ taskId: "w", conversationId: "a", text: "물어볼 것" }]);
+    await store.getState().cancelWaitingQuestion("w");
+    expect(world.calls.at(-1)).toEqual({ method: "tasks.cancelQueued", args: ["w"] });
+    expect(store.getState().waitingQuestions).toEqual([]);
+    expect(store.getState().composerPrefill).toMatchObject({ text: "물어볼 것", ifEmpty: true });
+  });
+
+  it("leaves a question that already started to its take-over", async () => {
+    world.changeQueue([{ taskId: "w", conversationId: "a", text: "물어볼 것" }]);
+    world.setCancelQueued(false);
+    await store.getState().cancelWaitingQuestion("w");
+    expect(store.getState().composerPrefill).toBeNull();
+  });
+
+  it("refuses screen tasks while questions wait", async () => {
+    world.changeQueue([{ taskId: "w", conversationId: "a", text: "물어볼 것" }]);
+    expect(await store.getState().lookAtWindow(1, "뭐야?")).toBe(false);
+    expect(world.calls.some((call) => call.method === "screen.look")).toBe(false);
+    expect(store.getState().conversationError).toContain("다른 작업 중");
   });
 });

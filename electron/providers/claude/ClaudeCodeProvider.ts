@@ -1,4 +1,4 @@
-import { type ChildProcessWithoutNullStreams, spawn, type SpawnOptions } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, type SpawnOptions, spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { extname, join, relative } from "node:path";
@@ -9,7 +9,7 @@ import {
   type ApprovalChoice,
   isUnavailableModelError,
 } from "../../shared";
-import { type PlannedEdit, planEdit } from "./claudeEdits";
+import { signalProcess } from "../codex/CodexProvider";
 import {
   COMMANDS_NOTE,
   commandEnvironment,
@@ -18,8 +18,8 @@ import {
   commandsBlockedReason,
   toolchainReads,
 } from "./claudeCommands";
+import { type PlannedEdit, planEdit } from "./claudeEdits";
 import { descendantsOf, stopTaskProcesses, type TaskProcessFinder } from "./taskProcesses";
-import { signalProcess } from "../codex/CodexProvider";
 
 const MAX_LINE_LENGTH = 4 * 1024 * 1024;
 const TASK_TIMEOUT_MS = 10 * 60 * 1000;

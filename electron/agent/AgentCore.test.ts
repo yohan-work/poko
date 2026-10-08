@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentEvent, AgentTask } from "../shared";
-import type { AgentProvider } from "./AgentProvider";
 import { AgentCore } from "./AgentCore";
+import type { AgentProvider } from "./AgentProvider";
 
 class FakeProvider implements AgentProvider {
   async *runTask(
@@ -18,6 +18,23 @@ class FakeProvider implements AgentProvider {
 }
 
 describe("AgentCore", () => {
+  it("tells idle listeners only after the task has left, so the next one can start there", async () => {
+    let core: AgentCore;
+    const sawTerminalWhileActive: boolean[] = [];
+    core = new AgentCore(new FakeProvider(), (payload) => {
+      if (payload.event.type === "completed") sawTerminalWhileActive.push(core.hasActiveTasks);
+    });
+    const startedFromIdle: string[] = [];
+    core.onIdle(() => {
+      // Starts one more task, once.
+      if (startedFromIdle.length === 0)
+        startedFromIdle.push(core.startTask({ prompt: "next", cwd: "/w", taskId: "next" }));
+    });
+    core.startTask({ prompt: "first", cwd: "/w", taskId: "first" });
+    await vi.waitFor(() => expect(startedFromIdle).toEqual(["next"]));
+    expect(sawTerminalWhileActive[0]).toBe(true);
+  });
+
   it("creates task ids and forwards provider events without exposing a cwd input to IPC", async () => {
     const publish = vi.fn();
     const core = new AgentCore(new FakeProvider(), publish, "Inspect before suggesting.");

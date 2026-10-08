@@ -4,7 +4,6 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { desktopCapturer, shell } from "electron";
 import type { ScreenStatus, ScreenWindow } from "../shared";
-import type { Capture } from "./ScreenAgent";
 import {
   type ActRequest,
   HelperError,
@@ -18,6 +17,7 @@ import {
 } from "./axHelper";
 import { captureMatchesWindow, windowIdFromSource } from "./capture";
 import { buildLookPrompt } from "./lookPrompt";
+import type { Capture } from "./ScreenAgent";
 
 const SETTINGS_URLS = {
   screen: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",

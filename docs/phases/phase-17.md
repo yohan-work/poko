@@ -95,3 +95,14 @@ Poko still runs **one task at a time**. A question sent while it is busy waits i
 - Reordering or editing a waiting question.
 - Running waiting questions after a restart.
 - Queueing screen tasks.
+
+## Status
+
+- **Milestone 1 (the queue in main and the main window) is done.**
+  - A waiting question is a `queued` task with no message. `startQueuedTask` adds the message when its turn comes, so the conversation keeps its order.
+  - `electron/app/queue.ts` holds the queue. `AgentCore.onIdle` and the end of a screen run start the next question, and `before-quit` and `closed` freeze the queue.
+  - The quick panel, screen tasks, routines, folder changes, and 모든 데이터 삭제 wait or refuse while anything waits.
+  - **Real app**, with a test profile and Codex:
+    - a follow-up sent while the first answer was being written showed as 대기 중 with 취소;
+    - it started on its own after the first answer, and it used that answer as context ("한 문장으로 줄여 줘" shortened it);
+    - 취소 removed a waiting question and put its text back into the empty box.

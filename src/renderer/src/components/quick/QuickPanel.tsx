@@ -1,11 +1,11 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { QuickState } from "../../../../../electron/shared";
+import { stopSpeaking } from "../../lib/speech";
 import { Character } from "../character/Character";
+import { CopyButton } from "../chat/CopyButton";
 import { DictationButton } from "../chat/DictationButton";
 import { Markdown } from "../chat/Markdown";
-import { CopyButton } from "../chat/CopyButton";
 import { SpeakButton } from "../chat/SpeakButton";
-import { stopSpeaking } from "../../lib/speech";
 
 const IDLE: QuickState = {
   phase: "idle",

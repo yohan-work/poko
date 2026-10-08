@@ -1,13 +1,17 @@
 import type { StoreApi } from "zustand";
-import type { PersistedConversation, TaskEventPayload } from "../../../../electron/shared";
+import type {
+  QueuedQuestion,
+  TaskEventPayload,
+  TaskStartResponse,
+} from "../../../../electron/shared";
 import { applyDeltas, createDeltaBuffer } from "../lib/streaming";
 import {
   activityText,
   addActivity,
   createMessage,
   eventCharacterState,
-  sessionTaskStatus,
   questionText,
+  sessionTaskStatus,
 } from "./taskHelpers";
 import type { AppState, PendingApproval } from "./types";
 
@@ -281,30 +285,32 @@ let switching = false;
 
 /**
  * Shows the user's message, starts a task, and follows its events until it ends. `start`
- * returns the new task id, or an `error` to show instead. Resolves true when the task started.
+ * returns the new task id, a waiting question (Poko is busy), or an `error` to show instead.
+ * While Poko is busy the window's running task stays as it is: the question shows in the
+ * waiting list until its turn (Phase 17). Resolves to how it went; false when nothing started.
  */
 export async function runTask(
   content: string,
-  start: () => Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }>,
+  start: () => Promise<TaskStartResponse>,
   failure: string,
-): Promise<boolean> {
+): Promise<"started" | "queued" | false> {
   const set = store.setState;
   if (switching || adopting) return false;
-  if (store.getState().busyElsewhere) {
-    set({ conversationError: "포코가 다른 작업 중이야. 끝난 뒤에 다시 보내 줘." });
-    return false;
-  }
+  const before = store.getState();
+  const busy = before.isSending || before.busyElsewhere;
   const userMessage = createMessage("user", content);
-  set((state) => ({
-    activeView: "conversation",
-    characterState: "thinking",
-    errorMessage: null,
-    conversationError: null,
-    retryable: null,
-    isSending: true,
-    progressMessage: "포코가 요청을 살펴보고 있어.",
-    messages: [...state.messages, userMessage],
-  }));
+  const showSending = (): void =>
+    set((state) => ({
+      activeView: "conversation",
+      characterState: "thinking",
+      errorMessage: null,
+      conversationError: null,
+      retryable: null,
+      isSending: true,
+      progressMessage: "포코가 요청을 살펴보고 있어.",
+      messages: [...state.messages, userMessage],
+    }));
+  if (!busy) showSending();
 
   // Until the start reply names the task, every event is held (see routeTaskEvent), then each
   // goes where it belongs: this task's to the window, any other to foreign handling.
@@ -316,6 +322,11 @@ export async function runTask(
   };
 
   const fail = (error: string) => {
+    // While another task runs, only the message box says why; its conversation stays as is.
+    if (busy) {
+      set({ errorMessage: error });
+      return;
+    }
     // A start that failed can be tried again, as with an answer that failed.
     const question = questionText(content);
     set((state) => ({
@@ -336,6 +347,28 @@ export async function runTask(
       release();
       return false;
     }
+    if ("queued" in response) {
+      const { queued } = response;
+      set((state) => ({
+        // Main was busy after all (a task started elsewhere just now): the message waits.
+        ...(busy
+          ? {}
+          : {
+              messages: state.messages.filter((item) => item.id !== userMessage.id),
+              isSending: false,
+              characterState: "idle" as const,
+              progressMessage: null,
+            }),
+        errorMessage: null,
+        waitingQuestions: state.waitingQuestions.some((item) => item.taskId === queued.taskId)
+          ? state.waitingQuestions
+          : [...state.waitingQuestions, queued],
+      }));
+      release();
+      return "queued";
+    }
+    // Started right away although this window thought Poko was busy (it just became free).
+    if (busy) showSending();
     const startedTaskId = response.taskId;
     const createdAt = new Date().toISOString();
     const { conversation } = response;
@@ -353,7 +386,7 @@ export async function runTask(
       ].slice(0, 50),
     }));
     release();
-    return true;
+    return "started";
   } catch {
     fail(failure);
     release();
@@ -496,7 +529,24 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
   store = created;
   const poko = typeof window === "undefined" ? undefined : window.poko;
   poko?.tasks?.onEvent?.(routeTaskEvent);
+  const setWaiting = (queue: QueuedQuestion[]): void => {
+    store.setState({ waitingQuestions: queue });
+  };
+  poko?.tasks?.onQueueChanged?.(setWaiting);
+  void poko?.tasks
+    ?.queued?.()
+    .then(setWaiting)
+    .catch(() => undefined);
   poko?.tasks?.onStarted?.((notice) => {
+    // A question this window left waiting on the new-conversation screen becomes that
+    // conversation when it starts there.
+    const before = store.getState();
+    const waitedHere = before.waitingQuestions.some(
+      (item) =>
+        item.taskId === notice.taskId &&
+        item.conversationId === null &&
+        before.activeConversationId === null,
+    );
     trackForeign(notice.taskId, notice.conversation.id);
     if (notice.routineTitle)
       store.setState({ busyRoutine: { taskId: notice.taskId, title: notice.routineTitle } });
@@ -510,12 +560,15 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
         { id: notice.taskId, title: notice.title, status: "running" as const, createdAt },
         ...state.tasks.filter((task) => task.id !== notice.taskId),
       ].slice(0, 50),
+      waitingQuestions: state.waitingQuestions.filter((item) => item.taskId !== notice.taskId),
     }));
-    // A run in the conversation on screen (a routine's) is taken over, so it shows live.
+    // A run in the conversation on screen (a routine's, or a question that waited there) is
+    // taken over, so it shows live.
     const state = store.getState();
     if (
       state.activeView === "conversation" &&
-      state.activeConversationId === notice.conversation.id &&
+      (state.activeConversationId === notice.conversation.id ||
+        (waitedHere && state.activeConversationId === null)) &&
       !state.isSending
     )
       void adoptTask(notice.taskId, notice.conversation.id);

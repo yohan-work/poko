@@ -1,6 +1,6 @@
 import { ipcMain, powerMonitor } from "electron";
-import type { RoutineRecord } from "../database/Database";
 import { resolveWorkspaceDirectory } from "../agent/workspace";
+import type { RoutineRecord } from "../database/Database";
 import { RoutineRunner, type StartOutcome } from "../routines/RoutineRunner";
 import { nextRun } from "../routines/schedule";
 import {
@@ -11,6 +11,7 @@ import {
   type TaskStartedNotice,
 } from "../shared";
 import { ctx, isTrustedRenderer } from "./context";
+import { hasWaiting, kickQueue } from "./queue";
 
 /** Running routine tasks, so their end is written to the routine's last result. */
 export const routineTasks = new Map<string, string>();
@@ -44,9 +45,14 @@ export async function startRoutineTask(
   if (!ctx.agentCore || !ctx.database || ctx.deletingData) return { busy: true };
   ctx.startingTasks += 1;
   try {
-    // This start is counted, so another start makes it more than one.
+    // This start is counted, so another start makes it more than one. Questions the user left
+    // waiting go first.
     const busy = () =>
-      ctx.deletingData || ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1;
+      ctx.deletingData ||
+      ctx.agentCore?.hasActiveTasks ||
+      ctx.screenRun ||
+      ctx.startingTasks > 1 ||
+      hasWaiting();
     if (busy()) return { busy: true };
     let cwd: string;
     try {
@@ -98,6 +104,7 @@ export async function startRoutineTask(
     return { started: true, taskId };
   } finally {
     ctx.startingTasks -= 1;
+    kickQueue();
   }
 }
 

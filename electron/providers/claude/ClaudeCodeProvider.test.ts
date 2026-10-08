@@ -1,8 +1,5 @@
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { describe, expect, it } from "vitest";
-import type { AgentEvent, AgentTask } from "../../shared";
+import { EventEmitter } from "node:events";
 import {
   existsSync,
   mkdtempSync,
@@ -14,6 +11,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
+import { describe, expect, it } from "vitest";
+import type { AgentEvent, AgentTask } from "../../shared";
 import {
   ClaudeCodeProvider,
   claudeArgs,

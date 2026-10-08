@@ -1,18 +1,18 @@
-import { isUnavailableModelError } from "../../shared";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentEvent, AgentTask } from "../../shared";
+import { isUnavailableModelError } from "../../shared";
 import {
   CodexAppServerProvider,
-  getFileChanges,
-  isInside,
   disabledFeatures,
   editRefusal,
+  getFileChanges,
+  isInside,
   parseFeatureList,
   permissionProfile,
   touchesGitDirectory,

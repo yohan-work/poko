@@ -1,8 +1,9 @@
-import { type ApprovalRequest, IPC_CHANNELS, isSameMemory, type TaskEventPayload } from "../shared";
-import { replaceCitations } from "../screen/overlayScene";
 import { removeAttachments } from "../attachments/attachments";
+import { replaceCitations } from "../screen/overlayScene";
+import { type ApprovalRequest, IPC_CHANNELS, isSameMemory, type TaskEventPayload } from "../shared";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { notifyTaskEvent } from "./notify";
+import { noteTaskEnded } from "./queue";
 import { recordRoutineEnd } from "./routines";
 import { pointAt, screenTasks } from "./screen";
 import { suggestionFolder } from "./workspace";
@@ -50,6 +51,8 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
   if (finished) {
     recordRoutineEnd(payload.taskId, event.type, event.type === "error" ? event.error : undefined);
     void settleEdits(payload.taskId);
+    // The next waiting question starts once Poko is idle, after these edits settle.
+    noteTaskEnded(payload.taskId);
     // Attached images are needed only while the task runs.
     const attached = attachmentDirs.get(payload.taskId);
     attachmentDirs.delete(payload.taskId);

@@ -1,15 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { OUTPUT_PROGRESS, useAppStore } from "../../state/appStore";
-import { Character } from "../character/Character";
-import { Icon } from "../Icon";
-import { ApprovalCard } from "./ApprovalCard";
-import { Markdown } from "./Markdown";
-import { ScreenPicker } from "./ScreenPicker";
-import { EffortSelect, ModelSelect } from "./ModelSelect";
-import { DictationButton } from "./DictationButton";
-import { CopyButton } from "./CopyButton";
-import { SpeakButton } from "./SpeakButton";
-import { EditNoteItem } from "./EditNoteItem";
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import {
   type ChatAttachment,
   type EditNote,
@@ -20,6 +9,17 @@ import { MAX_FILES, readAttachment } from "../../lib/attachments";
 import { folderName } from "../../lib/folder";
 import { stopSpeaking } from "../../lib/speech";
 import { useNow } from "../../lib/useNow";
+import { OUTPUT_PROGRESS, useAppStore } from "../../state/appStore";
+import { Character } from "../character/Character";
+import { Icon } from "../Icon";
+import { ApprovalCard } from "./ApprovalCard";
+import { CopyButton } from "./CopyButton";
+import { DictationButton } from "./DictationButton";
+import { EditNoteItem } from "./EditNoteItem";
+import { Markdown } from "./Markdown";
+import { EffortSelect, ModelSelect } from "./ModelSelect";
+import { ScreenPicker } from "./ScreenPicker";
+import { SpeakButton } from "./SpeakButton";
 
 function greeting(date = new Date()): string {
   const hour = date.getHours();
@@ -85,6 +85,12 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   const setEdits = useAppStore((state) => state.setEdits);
   const openScreen = useAppStore((state) => state.openScreen);
   const busyElsewhere = useAppStore((state) => state.busyElsewhere);
+  const anyWaiting = useAppStore((state) => state.waitingQuestions.length > 0);
+  // While Poko works, the button sends (the question waits) when there is something to send,
+  // and stops the running task when the box is empty.
+  const hasContent = draft.trim().length > 0 || attachments.length > 0;
+  const stopMode = isSending && !hasContent;
+  const busy = isSending || busyElsewhere || anyWaiting;
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
@@ -97,6 +103,8 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
     if (!prefill) return;
     // Taken once: a message box shown later (another page, a new conversation) starts empty.
     takeComposerPrefill();
+    // A cancelled waiting question never replaces what the user is typing.
+    if (prefill.ifEmpty && inputRef.current?.value.trim()) return;
     setDraft(prefill.text);
     const input = inputRef.current;
     input?.focus();
@@ -114,7 +122,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = draft.trim();
-    if ((!message && attachments.length === 0) || isSending || busyElsewhere || reading > 0) return;
+    if ((!message && attachments.length === 0) || reading > 0) return;
     const sent = attachments;
     setDraft("");
     setAttachments([]);
@@ -201,7 +209,6 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
           onKeyDown={handleKeyDown}
           placeholder={workspace ? "무엇을 같이 살펴볼까?" : "먼저 작업할 폴더를 골라 줘"}
           rows={1}
-          disabled={isSending}
           aria-describedby={errorMessage ? "composer-error" : undefined}
           aria-invalid={Boolean(errorMessage)}
         />
@@ -210,7 +217,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             className="chip"
             type="button"
             onClick={() => void selectWorkspace()}
-            disabled={isSelectingWorkspace || isSending}
+            disabled={isSelectingWorkspace || busy}
             title={workspace?.path ?? "작업할 폴더 선택"}
           >
             <Icon name="folder" />
@@ -221,13 +228,13 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             className="chip"
             type="button"
             onClick={() => void openScreen()}
-            disabled={isSending}
+            disabled={busy}
             title="고른 창을 보고 설명해 줘"
           >
             <Icon name="screen" />
             <span>화면 보기</span>
           </button>
-          <DictationButton target={inputRef} disabled={isSending} />
+          <DictationButton target={inputRef} />
           <button
             className="composer__mode"
             type="button"
@@ -246,24 +253,20 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
           <EffortSelect />
           <button
             className="send-button"
-            type={isSending ? "button" : "submit"}
-            onClick={isSending ? () => void cancelTask() : undefined}
-            disabled={
-              isSending
-                ? !activeTaskId
-                : (!draft.trim() && attachments.length === 0) || busyElsewhere || reading > 0
-            }
-            data-state={isSending ? "cancel" : "send"}
-            aria-label={isSending ? "작업 멈추기" : "메시지 보내기"}
+            type={stopMode ? "button" : "submit"}
+            onClick={stopMode ? () => void cancelTask() : undefined}
+            disabled={stopMode ? !activeTaskId : !hasContent || reading > 0}
+            data-state={stopMode ? "cancel" : "send"}
+            aria-label={stopMode ? "작업 멈추기" : "메시지 보내기"}
             title={
-              isSending
+              stopMode
                 ? "작업 멈추기 (⌘.)"
-                : busyElsewhere
-                  ? "포코가 다른 작업 중이야. 끝난 뒤에 보낼 수 있어."
+                : busy
+                  ? "보내 두면 지금 작업이 끝난 뒤에 물어볼게. (Enter)"
                   : "보내기 (Enter)"
             }
           >
-            <Icon name={isSending ? "stop" : "send"} />
+            <Icon name={stopMode ? "stop" : "send"} />
           </button>
         </div>
       </div>
@@ -333,6 +336,33 @@ function MemorySuggestionCard() {
 }
 
 /** Under a failed or stopped answer: send the same question again, or change it first. */
+/** Questions sent while Poko was busy, waiting in this conversation (or this new one). */
+function WaitingRows() {
+  const activeConversationId = useAppStore((state) => state.activeConversationId);
+  const all = useAppStore((state) => state.waitingQuestions);
+  const cancel = useAppStore((state) => state.cancelWaitingQuestion);
+  const waiting = all.filter((item) => item.conversationId === activeConversationId);
+  if (waiting.length === 0) return null;
+  return (
+    <>
+      {waiting.map((item) => (
+        <li className="message message--user message--waiting" key={item.taskId}>
+          <span className="waiting-chip">대기 중</span>
+          <p className="waiting-text">{item.text}</p>
+          <button
+            className="secondary-button waiting-cancel"
+            type="button"
+            onClick={() => void cancel(item.taskId)}
+            title="이 질문을 보내지 않고 취소해"
+          >
+            취소
+          </button>
+        </li>
+      ))}
+    </>
+  );
+}
+
 function RetryRow() {
   const retryable = useAppStore(
     (state) =>
@@ -494,6 +524,9 @@ export function ChatPanel() {
           </h1>
           <ForeignBanner />
           <RoutineBusyBanner />
+          <ol className="message-list message-list--waiting" aria-label="기다리는 질문">
+            <WaitingRows />
+          </ol>
           <Composer autoFocus />
           <p className="welcome__hint">
             포코가 고른 폴더의 파일을 읽고 구조와 개선점을 살펴볼게. 명령 실행이나 파일 변경은 항상
@@ -558,6 +591,7 @@ export function ChatPanel() {
                 </p>
               </li>
             )}
+          <WaitingRows />
         </ol>
         <div ref={endRef} />
       </div>
