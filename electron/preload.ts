@@ -120,12 +120,16 @@ const pokoApi = {
      * `withScreen` includes the window that was in front when the panel opened, and
      * `withSelection` the text selected there; main keeps both and adds them itself.
      */
+    /** `followUp` continues the conversation whose answer the panel shows (main knows which). */
     ask: (
       question: string,
       withScreen: boolean,
       withSelection = false,
+      followUp = false,
     ): Promise<{ ok: true } | { error: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.quickAsk, { question, withScreen, withSelection }),
+      ipcRenderer.invoke(IPC_CHANNELS.quickAsk, { question, withScreen, withSelection, followUp }),
+    /** 새로 묻기: the next question starts a new conversation. */
+    fresh: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickFresh),
     hide: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.quickHide),
     /** Yes or no to the answer's memory suggestion; main saves the one it kept. */
     remember: (keep: boolean): Promise<boolean> =>

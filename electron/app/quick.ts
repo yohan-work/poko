@@ -107,6 +107,7 @@ export function registerQuickHandlers(): void {
       question?: unknown;
       withScreen?: unknown;
       withSelection?: unknown;
+      followUp?: unknown;
     };
     if (
       typeof request.question !== "string" ||
@@ -115,11 +116,13 @@ export function registerQuickHandlers(): void {
     )
       throw new TypeError("A non-empty question is required.");
     const question = request.question.trim();
+    // Only the conversation main knows the panel is showing; the panel never names one.
+    const continued = request.followUp === true ? ctx.quickPanel.followUpConversation : null;
     // Only the window main recorded when the panel opened, and only if the user included it.
     const windowId = request.withScreen === true ? frontWindowId : null;
     if (request.withScreen === true && windowId === null) {
       const message = "함께 볼 화면이 없어. 화면 없이 다시 물어봐 줘.";
-      ctx.quickPanel.refuse(question, message);
+      ctx.quickPanel.refuse(question, message, continued);
       return { error: message };
     }
     // The selection main read when the panel opened, as a text attachment: shown in the
@@ -148,8 +151,8 @@ export function registerQuickHandlers(): void {
       };
       started =
         windowId === null
-          ? await startConversationTask(question, null, onRecorded, selection)
-          : await startScreenLook(windowId, question, null, onRecorded);
+          ? await startConversationTask(question, continued, onRecorded, selection)
+          : await startScreenLook(windowId, question, continued, onRecorded);
     } catch (error) {
       // For example no folder selected: the message is already plain Korean.
       started = { error: error instanceof Error ? error.message : "작업을 시작하지 못했어." };
@@ -161,7 +164,7 @@ export function registerQuickHandlers(): void {
         });
     }
     if ("error" in started) {
-      ctx.quickPanel.refuse(question, started.error);
+      ctx.quickPanel.refuse(question, started.error, continued);
       return { error: started.error };
     }
     return { ok: true };
@@ -192,6 +195,12 @@ export function registerQuickHandlers(): void {
       return false;
     }
     ctx.quickPanel.settleMemory("saved");
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.quickFresh, (event) => {
+    if (!isQuickPanel(event)) throw new Error("Unknown sender asked for a new question.");
+    ctx.quickPanel?.startFresh();
     return true;
   });
 

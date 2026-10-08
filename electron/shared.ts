@@ -38,6 +38,8 @@ export const IPC_CHANNELS = {
   modelsList: "models:list",
   quickAsk: "quick:ask",
   quickHide: "quick:hide",
+  /** 새로 묻기: the panel's next question starts a new conversation. */
+  quickFresh: "quick:fresh",
   quickOpenInApp: "quick:open-in-app",
   /** The panel's content height, so the window never covers more than the panel. */
   quickResize: "quick:resize",

@@ -91,13 +91,16 @@ export function QuickPanel() {
   }, [state.phase]);
 
   const busy = state.phase === "running" || state.phase === "approval";
+  // After an answer, the next question continues its conversation until 새로 묻기.
+  const followingUp =
+    (state.phase === "done" || state.phase === "error") && Boolean(state.conversationId);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const question = draft.trim();
     if (!question || busy) return;
     setDraft("");
-    void window.poko.quick.ask(question, withScreen && !state.screenHint, selectionOn);
+    void window.poko.quick.ask(question, withScreen && !state.screenHint, selectionOn, followingUp);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -128,7 +131,9 @@ export function QuickPanel() {
                 ? "이 화면에 대해 물어봐"
                 : selectionOn
                   ? "선택한 글로 무엇을 할까? (예: 다듬어 줘, 요약해 줘)"
-                  : "포코에게 물어봐"
+                  : followingUp
+                    ? "이어서 물어봐"
+                    : "포코에게 물어봐"
           }
           rows={1}
           maxLength={10_000}
@@ -192,6 +197,22 @@ export function QuickPanel() {
             <span>{withScreen ? "함께 보는 중" : "화면과 함께 묻기"}</span>
           </button>
           {state.screenHint && <span className="quick__hint">{state.screenHint}</span>}
+        </div>
+      )}
+      {followingUp && (
+        <div className="quick__screen">
+          <span className="quick__hint">이 대화에 이어서 물어.</span>
+          <button
+            type="button"
+            className="quick__screen-chip"
+            onClick={() => {
+              void window.poko.quick.fresh();
+              inputRef.current?.focus();
+            }}
+          >
+            <span aria-hidden="true">+</span>
+            <span>새로 묻기</span>
+          </button>
         </div>
       )}
       {state.phase !== "idle" && (

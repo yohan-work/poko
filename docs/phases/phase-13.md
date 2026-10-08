@@ -200,3 +200,10 @@ Verified in the built app:
 - **Where:** a 읽어 주기 button under each answer (shown on hover, or while reading) and under a finished answer in the quick panel. Pressing it again, or reading another answer, stops the first. Switching conversations stops it too.
 - **How:** Web Speech synthesis in the renderer, using the Mac's own voices; a Korean voice is picked for Korean text. Nothing leaves the Mac, and no main-process API was needed.
 - **What is read:** `speakableText` drops Markdown marks and link targets, reads tables as cells, and says "(코드는 생략할게.)" in place of code blocks.
+
+## Follow-up: following up in the panel
+
+- **After an answer:** the panel says "이 대화에 이어서 물어." and the input becomes "이어서 물어봐". The next question continues that conversation, with its history as context. **새로 묻기** starts a new one.
+- **Who decides the conversation:** main does. `quick:ask` only says `followUp`, and main uses the conversation whose finished answer the panel shows (`followUpConversation`), never one named by the panel, and never a task still running or waiting.
+- **When it is refused:** a refused follow-up keeps its conversation for the next try. A follow-up in a conversation from another folder is refused by the Phase 16 folder check, like any message.
+

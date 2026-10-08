@@ -100,19 +100,40 @@ export class QuickPanel {
     this.send();
   }
 
-  /** A question that couldn't start: busy, no folder, and so on. */
-  refuse(question: string, message: string): void {
+  /**
+   * A question that couldn't start: busy, no folder, and so on. A follow-up that was refused
+   * keeps its conversation, so the next try still continues it.
+   */
+  refuse(question: string, message: string, conversationId: string | null = null): void {
     const { screen, screenHint, selection, opened } = this.state;
     this.state = {
       ...IDLE_STATE,
       phase: "error",
       question,
       message,
+      conversationId,
       screen,
       screenHint,
       selection,
       opened,
     };
+    this.send();
+  }
+
+  /**
+   * The conversation the next question continues: the one whose answer the panel shows, once
+   * it has finished (never one still running or waiting for approval).
+   */
+  get followUpConversation(): string | null {
+    const { phase, conversationId } = this.state;
+    return phase === "done" || phase === "error" ? conversationId : null;
+  }
+
+  /** 새로 묻기: the next question starts a new conversation. */
+  startFresh(): void {
+    if (this.state.phase === "running" || this.state.phase === "approval") return;
+    const { screen, screenHint, selection, opened } = this.state;
+    this.state = { ...IDLE_STATE, screen, screenHint, selection, opened };
     this.send();
   }
 
