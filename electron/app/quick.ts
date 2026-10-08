@@ -177,9 +177,13 @@ export function registerQuickHandlers(): void {
       ctx.quickPanel.settleMemory("dropped");
       return false;
     }
+    const panel = ctx.quickPanel;
+    const taskId = panel.taskId;
     try {
       if (!ctx.database) throw new Error("Local storage is unavailable.");
-      const scope = await memoryFolder(memory.type, ctx.quickPanel.taskId);
+      const scope = await memoryFolder(memory.type, taskId ?? undefined);
+      // Answered meanwhile (a second click, or a new question replaced the card).
+      if (panel.pendingMemory !== memory) return false;
       if (typeof scope === "object" && scope !== null) throw new Error(scope.error);
       ctx.database.saveMemory({ type: memory.type, content: memory.content, importance: 3 }, scope);
     } catch (error) {

@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { Routine, RoutineInput, RoutineSchedule } from "../../../../../electron/shared";
+import { folderName } from "../../lib/folder";
 import { relativeTime } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
 import { useAppStore } from "../../state/appStore";
@@ -30,10 +31,6 @@ function resultLabel(routine: Routine, now: Date): string | null {
     case "skipped":
       return `건너뛰었어 · ${when}${result.message ? ` · ${result.message}` : ""}`;
   }
-}
-
-function folderName(path: string): string {
-  return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
 function RoutineForm({

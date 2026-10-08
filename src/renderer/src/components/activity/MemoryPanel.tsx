@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "re
 import type { PersistedMemory } from "../../../../../electron/shared";
 import { FOLDER_MEMORY_TYPES, type MemoryInput } from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
+import { folderName } from "../../lib/folder";
 import { relativeTime } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
 import { Icon } from "../Icon";
@@ -92,7 +93,9 @@ export function MemoryPanel() {
   const workspace = useAppStore((state) => state.workspace);
   // "이 폴더": the memories tasks in the selected folder get (shared ones and its own).
   const [onlyHere, setOnlyHere] = useState(false);
-  const shown = onlyHere
+  // The filter applies only while it can be seen and changed.
+  const filtering = onlyHere && Boolean(workspace?.realPath);
+  const shown = filtering
     ? memories.filter(
         (memory) => !memory.workspacePath || memory.workspacePath === workspace?.realPath,
       )
@@ -149,7 +152,11 @@ export function MemoryPanel() {
       )}
       {shown.length === 0 ? (
         <EmptyState>
-          {query ? "검색과 맞는 기억이 없어." : "아직 저장된 기억이 없어. 새 기억을 추가해 볼까?"}
+          {query
+            ? "검색과 맞는 기억이 없어."
+            : filtering && memories.length > 0
+              ? "이 폴더에 쓰이는 기억이 없어. 다른 폴더의 기억은 '모두'에서 볼 수 있어."
+              : "아직 저장된 기억이 없어. 새 기억을 추가해 볼까?"}
         </EmptyState>
       ) : (
         <ul className="card-grid" aria-label="저장된 기억">
@@ -190,10 +197,13 @@ function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: (
         {memory.workspacePath ? (
           <span className="memory-card__folder" title={memory.workspacePath}>
             {" · "}
-            {memory.workspacePath.split("/").filter(Boolean).at(-1)} 폴더
+            {folderName(memory.workspacePath)} 폴더
           </span>
         ) : FOLDER_MEMORY_TYPES.includes(memory.type) ? (
-          <span className="memory-card__folder" title="폴더가 정해지기 전에 저장된 기억이야.">
+          <span
+            className="memory-card__folder"
+            title="어느 폴더에도 묶이지 않은 기억이야. 모든 작업에 전달돼."
+          >
             {" · "}모든 폴더
           </span>
         ) : null}

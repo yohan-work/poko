@@ -1,17 +1,11 @@
-import {
-  type ApprovalRequest,
-  FOLDER_MEMORY_TYPES,
-  IPC_CHANNELS,
-  isSameMemory,
-  type TaskEventPayload,
-} from "../shared";
-import { isFolderPath } from "../database/Database";
+import { type ApprovalRequest, IPC_CHANNELS, isSameMemory, type TaskEventPayload } from "../shared";
 import { replaceCitations } from "../screen/overlayScene";
 import { removeAttachments } from "../attachments/attachments";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { notifyTaskEvent } from "./notify";
 import { recordRoutineEnd } from "./routines";
 import { pointAt, screenTasks } from "./screen";
+import { suggestionFolder } from "./workspace";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
 export function deliverTaskEvent(incoming: TaskEventPayload): void {
@@ -37,12 +31,8 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
     const { memory: suggested } = payload.event;
     let known = false;
     try {
-      const folder = ctx.database.getTaskWorkspace(payload.taskId);
-      const wanted = {
-        ...suggested,
-        workspacePath:
-          FOLDER_MEMORY_TYPES.includes(suggested.type) && isFolderPath(folder) ? folder : null,
-      };
+      const folder = suggestionFolder(suggested.type, payload.taskId);
+      const wanted = { ...suggested, workspacePath: folder === "gone" ? null : folder };
       known = ctx.database.listMemories().some((memory) => isSameMemory(memory, wanted));
     } catch (error) {
       // Only the duplicate check is lost; the task still finishes normally.

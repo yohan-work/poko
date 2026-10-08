@@ -23,11 +23,30 @@ export async function memoryFolder(
 ): Promise<string | null | { error: string }> {
   if (!FOLDER_MEMORY_TYPES.includes(type) || !ctx.database) return null;
   if (typeof fromTaskId === "string" && fromTaskId.length <= 100) {
-    const folder = ctx.database.getTaskWorkspace(fromTaskId);
-    return isFolderPath(folder) ? folder : null;
+    const folder = suggestionFolder(type, fromTaskId);
+    return folder === "gone"
+      ? { error: "이 기억을 제안한 작업이 지워져서 어느 폴더 것인지 알 수 없어." }
+      : folder;
   }
-  const selected = await resolveWorkspaceDirectory(ctx.database.getWorkspace()).catch(() => null);
-  return selected ?? { error: "프로젝트나 결정 기억은 폴더에 속해. 먼저 작업할 폴더를 선택해 줘." };
+  const saved = ctx.database.getWorkspace();
+  if (!saved) return { error: "프로젝트나 결정 기억은 폴더에 속해. 먼저 작업할 폴더를 선택해 줘." };
+  const selected = await resolveWorkspaceDirectory(saved).catch(() => null);
+  return selected ?? { error: "선택한 작업 폴더를 찾지 못했어. 폴더를 다시 선택해 줘." };
+}
+
+/**
+ * The folder a suggested memory belongs to: the suggesting task's folder for 프로젝트 and 결정
+ * (null, shared, for a screen task or another type), or "gone" when that task no longer
+ * exists. Saving and the suggestion filter both use it, so they never disagree.
+ */
+export function suggestionFolder(
+  type: MemoryInput["type"],
+  taskId: string,
+): string | null | "gone" {
+  if (!FOLDER_MEMORY_TYPES.includes(type) || !ctx.database) return null;
+  if (!ctx.database.hasTask(taskId)) return "gone";
+  const folder = ctx.database.getTaskWorkspace(taskId);
+  return isFolderPath(folder) ? folder : null;
 }
 
 const FOLDER_BUSY = "포코가 작업 중이라 지금은 폴더를 바꿀 수 없어. 끝난 뒤에 다시 해 줘.";

@@ -16,6 +16,7 @@ import {
   type PersistedMessage,
 } from "../../../../../electron/shared";
 import { MAX_FILES, readAttachment } from "../../lib/attachments";
+import { folderName } from "../../lib/folder";
 import { stopSpeaking } from "../../lib/speech";
 import { useNow } from "../../lib/useNow";
 
@@ -331,9 +332,6 @@ function ForeignBanner() {
     </div>
   );
 }
-
-/** The last part of a folder path, as the folder button shows it. */
-const folderName = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
 
 /**
  * Shown when the conversation on screen works in another folder than the one selected: a
