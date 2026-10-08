@@ -1,14 +1,14 @@
 import { ipcMain } from "electron";
-import { checkAttachments } from "../attachments/attachments";
 import {
   type ActiveTaskInfo,
+  IPC_CHANNELS,
   type ApprovalChoice,
   type ApprovalOutcome,
-  IPC_CHANNELS,
 } from "../shared";
+import { checkAttachments } from "../attachments/attachments";
 import {
-  CONVERSATION_GONE,
   ctx,
+  CONVERSATION_GONE,
   handleTaskStart,
   isTrustedRenderer,
   pendingApprovalEvents,
@@ -17,8 +17,8 @@ import {
   startConversationTask,
   startingConversations,
 } from "./context";
-import { cancelQueued, waitingQuestions } from "./queue";
 import { markRoutineStopped, routineTitleFor } from "./routines";
+import { cancelQueued, waitingQuestions } from "./queue";
 
 /** Approval answers in progress, so a double click can't checkpoint or answer twice. */
 const answering = new Set<string>();

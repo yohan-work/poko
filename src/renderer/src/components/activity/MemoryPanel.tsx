@@ -1,10 +1,10 @@
-import { type FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { PersistedMemory } from "../../../../../electron/shared";
 import { FOLDER_MEMORY_TYPES, type MemoryInput } from "../../../../../electron/shared";
+import { useAppStore } from "../../state/appStore";
 import { folderName } from "../../lib/folder";
 import { relativeTime } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
-import { useAppStore } from "../../state/appStore";
 import { Icon } from "../Icon";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 

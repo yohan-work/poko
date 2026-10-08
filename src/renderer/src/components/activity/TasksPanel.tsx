@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
+import { useAppStore, type SessionTask } from "../../state/appStore";
 import { relativeTime } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
-import { type SessionTask, useAppStore } from "../../state/appStore";
 import { EmptyState, Page, PageHeader, SearchField } from "../page/Page";
 
 const statusLabel: Record<SessionTask["status"], string> = {

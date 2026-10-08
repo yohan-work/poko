@@ -1,13 +1,13 @@
 import type { AgentEvent, ApprovalChoice, ScreenActionPreview } from "../shared";
-import type { WindowSnapshot } from "./axHelper";
 import {
   type ActKind,
   type ActRequest,
   type AxElement,
-  actRequest,
   type Frame,
   HelperError,
+  actRequest,
 } from "./axHelper";
+import type { WindowSnapshot } from "./axHelper";
 import { elementName } from "./overlayScene";
 import {
   buildStepPrompt,

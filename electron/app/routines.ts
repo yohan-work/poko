@@ -1,6 +1,6 @@
 import { ipcMain, powerMonitor } from "electron";
-import { resolveWorkspaceDirectory } from "../agent/workspace";
 import type { RoutineRecord } from "../database/Database";
+import { resolveWorkspaceDirectory } from "../agent/workspace";
 import { RoutineRunner, type StartOutcome } from "../routines/RoutineRunner";
 import { nextRun } from "../routines/schedule";
 import {

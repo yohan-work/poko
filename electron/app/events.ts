@@ -1,12 +1,12 @@
-import { removeAttachments } from "../attachments/attachments";
-import { replaceCitations } from "../screen/overlayScene";
 import { type ApprovalRequest, IPC_CHANNELS, isSameMemory, type TaskEventPayload } from "../shared";
+import { replaceCitations } from "../screen/overlayScene";
+import { removeAttachments } from "../attachments/attachments";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { notifyTaskEvent } from "./notify";
-import { noteTaskEnded } from "./queue";
 import { recordRoutineEnd } from "./routines";
 import { pointAt, screenTasks } from "./screen";
 import { suggestionFolder } from "./workspace";
+import { noteTaskEnded } from "./queue";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
 export function deliverTaskEvent(incoming: TaskEventPayload): void {

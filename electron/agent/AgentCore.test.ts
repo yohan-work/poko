@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentEvent, AgentTask } from "../shared";
-import { AgentCore } from "./AgentCore";
 import type { AgentProvider } from "./AgentProvider";
+import { AgentCore } from "./AgentCore";
 
 class FakeProvider implements AgentProvider {
   async *runTask(

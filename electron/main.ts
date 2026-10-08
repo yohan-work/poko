@@ -1,37 +1,37 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { app, BrowserWindow, dialog, globalShortcut } from "electron";
+import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { IPC_CHANNELS } from "./shared";
 import { AgentCore } from "./agent/AgentCore";
+import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
+import { PokoDatabase } from "./database/Database";
+import { ScreenService } from "./screen/ScreenService";
+import { ScreenOverlay } from "./screen/ScreenOverlay";
+import { EditManager } from "./edits/EditManager";
+import { SetupService } from "./setup/SetupService";
+import { ClaudeSetupService } from "./setup/claudeSetup";
 import { EngineProvider } from "./agent/EngineProvider";
+import { ClaudeCodeProvider } from "./providers/claude/ClaudeCodeProvider";
 import { ctx, showMainWindow } from "./app/context";
+import { applyQuickShortcut, registerQuickHandlers, toggleQuickPanel } from "./app/quick";
+import { QuickPanel } from "./quick/QuickPanel";
+import { removeAttachments } from "./attachments/attachments";
+import { showTray } from "./quick/tray";
+import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
 import { registerDictationHandlers } from "./app/dictation";
-import { registerEditsHandlers } from "./app/edits";
-import { deliverTaskEvent } from "./app/events";
-import { kickQueue } from "./app/queue";
-import { applyQuickShortcut, registerQuickHandlers, toggleQuickPanel } from "./app/quick";
 import {
   registerRoutineHandlers,
   registerRoutineYield,
   startRoutineScheduler,
 } from "./app/routines";
+import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
 import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
 import { registerSetupHandlers } from "./app/setup";
 import { registerTaskHandlers } from "./app/tasks";
 import { registerWorkspaceHandlers } from "./app/workspace";
-import { removeAttachments } from "./attachments/attachments";
-import { PokoDatabase } from "./database/Database";
-import { EditManager } from "./edits/EditManager";
-import { ClaudeCodeProvider } from "./providers/claude/ClaudeCodeProvider";
-import { CodexAppServerProvider } from "./providers/codex/CodexAppServerProvider";
-import { QuickPanel } from "./quick/QuickPanel";
-import { showTray } from "./quick/tray";
-import { ScreenOverlay } from "./screen/ScreenOverlay";
-import { ScreenService } from "./screen/ScreenService";
-import { ClaudeSetupService } from "./setup/claudeSetup";
-import { SetupService } from "./setup/SetupService";
-import { IPC_CHANNELS } from "./shared";
+import { kickQueue } from "./app/queue";
 
 /** Set when the app is quitting, so closing the main window really closes it. */
 let quitting = false;

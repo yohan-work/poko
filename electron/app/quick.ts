@@ -18,7 +18,6 @@ import {
 function isLatestTurn(conversationId: string, taskId: string | null): boolean {
   return taskId === null || ctx.database?.latestTaskId(conversationId) === taskId;
 }
-
 import { startScreenLook } from "./screen";
 import { memoryFolder } from "./workspace";
 

@@ -1,8 +1,6 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, realpath } from "node:fs/promises";
-import type { CodexRuntime } from "../providers/codex/CodexAppServerProvider";
-import { resolveCodexExecutable } from "../providers/codex/CodexProvider";
 import {
   codexEnvironment,
   findNodeDirectory,
@@ -10,6 +8,8 @@ import {
   nodeCandidates,
   nodeOnPath,
 } from "../providers/codex/codexEnvironment";
+import type { CodexRuntime } from "../providers/codex/CodexAppServerProvider";
+import { resolveCodexExecutable } from "../providers/codex/CodexProvider";
 import type { CodexSetup } from "../shared";
 import { checkCodexSetup, type RunResult } from "./codexSetup";
 

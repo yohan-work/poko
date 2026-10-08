@@ -10,8 +10,8 @@ import {
   addActivity,
   createMessage,
   eventCharacterState,
-  questionText,
   sessionTaskStatus,
+  questionText,
 } from "./taskHelpers";
 import type { AppState, PendingApproval } from "./types";
 

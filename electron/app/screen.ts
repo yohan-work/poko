@@ -1,12 +1,12 @@
-import { randomUUID } from "node:crypto";
 import { globalShortcut, ipcMain } from "electron";
 import type { AgentProvider } from "../agent/AgentProvider";
+import { randomUUID } from "node:crypto";
+import { IPC_CHANNELS, type PersistedConversation } from "../shared";
+import type { ScreenService } from "../screen/ScreenService";
 import { type AxElement, HelperError, type WindowSnapshot } from "../screen/axHelper";
-import { buildOverlayScene, citedElements } from "../screen/overlayScene";
 import type { Capture } from "../screen/ScreenAgent";
 import { ScreenAgent } from "../screen/ScreenAgent";
-import type { ScreenService } from "../screen/ScreenService";
-import { IPC_CHANNELS, type PersistedConversation } from "../shared";
+import { buildOverlayScene, citedElements } from "../screen/overlayScene";
 import {
   ctx,
   handleTaskStart,

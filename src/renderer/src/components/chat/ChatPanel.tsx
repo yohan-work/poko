@@ -1,4 +1,15 @@
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { OUTPUT_PROGRESS, useAppStore } from "../../state/appStore";
+import { Character } from "../character/Character";
+import { Icon } from "../Icon";
+import { ApprovalCard } from "./ApprovalCard";
+import { Markdown } from "./Markdown";
+import { ScreenPicker } from "./ScreenPicker";
+import { EffortSelect, ModelSelect } from "./ModelSelect";
+import { DictationButton } from "./DictationButton";
+import { CopyButton } from "./CopyButton";
+import { SpeakButton } from "./SpeakButton";
+import { EditNoteItem } from "./EditNoteItem";
 import {
   type ChatAttachment,
   type EditNote,
@@ -9,17 +20,6 @@ import { MAX_FILES, readAttachment } from "../../lib/attachments";
 import { folderName } from "../../lib/folder";
 import { stopSpeaking } from "../../lib/speech";
 import { useNow } from "../../lib/useNow";
-import { OUTPUT_PROGRESS, useAppStore } from "../../state/appStore";
-import { Character } from "../character/Character";
-import { Icon } from "../Icon";
-import { ApprovalCard } from "./ApprovalCard";
-import { CopyButton } from "./CopyButton";
-import { DictationButton } from "./DictationButton";
-import { EditNoteItem } from "./EditNoteItem";
-import { Markdown } from "./Markdown";
-import { EffortSelect, ModelSelect } from "./ModelSelect";
-import { ScreenPicker } from "./ScreenPicker";
-import { SpeakButton } from "./SpeakButton";
 
 function greeting(date = new Date()): string {
   const hour = date.getHours();

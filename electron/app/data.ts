@@ -1,5 +1,5 @@
-import { join } from "node:path";
 import { app, dialog, ipcMain, shell } from "electron";
+import { join } from "node:path";
 import { localDate, writePrivateFile } from "../export/privateFile";
 import {
   type DataExportResult,

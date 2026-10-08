@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
-import { resolveWorkspaceDirectory } from "../agent/workspace";
 import { IPC_CHANNELS } from "../shared";
+import { resolveWorkspaceDirectory } from "../agent/workspace";
 import { ctx, isTrustedRenderer, notifyEditsChanged, readConversationId } from "./context";
 
 /** The edit switch, approved changes, and undo. */

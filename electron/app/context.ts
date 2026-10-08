@@ -1,7 +1,22 @@
+import { app, type BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { basename, join } from "node:path";
-import { app, type BrowserWindow, type IpcMainInvokeEvent, ipcMain } from "electron";
+import {
+  type AppBootstrap,
+  IPC_CHANNELS,
+  type PendingApprovalEvent,
+  type PersistedConversation,
+  type WorkspaceInfo,
+} from "../shared";
 import type { AgentCore } from "../agent/AgentCore";
 import type { AgentProvider } from "../agent/AgentProvider";
+import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
+import { ConversationGoneError, type PokoDatabase } from "../database/Database";
+import type { ScreenService } from "../screen/ScreenService";
+import type { ScreenOverlay } from "../screen/ScreenOverlay";
+import type { ScreenAgent } from "../screen/ScreenAgent";
+import type { EditManager } from "../edits/EditManager";
+import type { SetupService } from "../setup/SetupService";
+import type { QuickPanel } from "../quick/QuickPanel";
 import { resolveWorkspaceDirectory } from "../agent/workspace";
 import {
   attachedTextSection,
@@ -10,22 +25,7 @@ import {
   removeAttachments,
   writeImages,
 } from "../attachments/attachments";
-import { ConversationGoneError, type PokoDatabase } from "../database/Database";
-import type { EditManager } from "../edits/EditManager";
-import type { CodexAppServerProvider } from "../providers/codex/CodexAppServerProvider";
-import type { QuickPanel } from "../quick/QuickPanel";
-import type { ScreenAgent } from "../screen/ScreenAgent";
-import type { ScreenOverlay } from "../screen/ScreenOverlay";
-import type { ScreenService } from "../screen/ScreenService";
 import type { ClaudeSetupService } from "../setup/claudeSetup";
-import type { SetupService } from "../setup/SetupService";
-import {
-  type AppBootstrap,
-  IPC_CHANNELS,
-  type PendingApprovalEvent,
-  type PersistedConversation,
-  type WorkspaceInfo,
-} from "../shared";
 import {
   enqueueQuestion,
   hasWaiting,
