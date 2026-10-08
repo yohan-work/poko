@@ -1,6 +1,6 @@
 # Poko architecture
 
-Poko is a local-first desktop character that accepts a user's request, decides whether work should run, delegates that work to an agent provider, and presents a concise result. The first release is an Electron application with a character-led conversation UI and a read-only Codex CLI worker.
+Poko is a local-first desktop character that accepts a user's request, decides whether work should run, delegates that work to an agent provider, and presents a concise result. The first release is an Electron application with a character-led conversation UI. Work runs on Codex or Claude Code, read-only by default, with approved edits and (on Claude Code) sandboxed commands.
 
 ## Scope and implementation shape
 
@@ -19,7 +19,10 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   │   ├── quick.ts         # quick panel channels and its global shortcut
 │   │   ├── edits.ts         # edit switch, approved changes, undo
 │   │   ├── settings.ts      # 설정 preferences and app version
-│   │   ├── setup.ts         # Codex setup check and sign-in
+│   │   ├── setup.ts         # Codex and Claude Code setup check and sign-in
+│   │   ├── routines.ts      # 루틴 page channels and starting a routine's run
+│   │   ├── notify.ts        # task notifications
+│   │   ├── dictation.ts     # starting macOS Dictation in Poko's own window
 │   │   └── workspace.ts     # workspace, app data, memories
 │   ├── preload.ts           # narrow, typed renderer bridge
 │   ├── eventGuards.ts       # shape checks for task events sent to the renderer
@@ -32,7 +35,9 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── quick/               # the quick panel window and its reduced task view
 │   ├── edits/               # checkpoints and undo for approved changes
 │   ├── screen/              # window capture, accessibility helper, overlay, step loop
-│   ├── setup/               # Codex setup check
+│   ├── setup/               # Codex and Claude Code setup checks
+│   ├── routines/            # routine schedule and the timer that runs them
+│   ├── notify/              # the one-line text of a task notification
 │   ├── providers/codex/     # Codex App Server adapter and environment
 │   └── providers/claude/    # Claude Code (stream-json) adapter, edit planning, sandboxed commands
 ├── src/renderer/
@@ -130,11 +135,11 @@ type AgentEvent =
   | { type: "error"; error: string };
 ```
 
-The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and the selected workspace as `cwd`, parses JSONL incrementally, and turns process failures or malformed events into error events. It does not forward raw stdout to the renderer. A Claude provider can implement the same interface later.
+The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and the selected workspace as `cwd`, parses JSONL incrementally, and turns process failures or malformed events into error events. It does not forward raw stdout to the renderer. Phase 11 added a Claude Code provider behind the same interface.
 
 Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:minimal` platform paths and the selected `:workspace_roots` as read-only, and disable command network access. The task ignores user-level Codex config so an existing broad sandbox setting cannot replace Poko's policy; Codex authentication remains in the user's Codex home. Unsupported profile configuration fails closed, with no broad read-only fallback. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. Phase 03 persists task, conversation, Activity, workspace, and explicit memory records.
 
-`codex exec --json` is intentionally non-interactive and is not the approval transport. In Phase 04 the main process runs `CodexAppServerProvider`, a per-task `codex app-server --listen stdio://` child speaking JSONL JSON-RPC, so it can receive and answer one-shot command/file approval requests. Agent Core and the Poko event model are unchanged; approval requests become `approvalRequired` events. Requests that are malformed, outside the workspace, broaden network or exec policy, or use an unsupported method are declined or stop the task. Tasks still run in read-only mode; writes stay disabled until pause-before-action semantics and sandbox enforcement are verified on supported operating systems. See [the Phase 04 plan](phases/phase-04.md).
+`codex exec --json` is intentionally non-interactive and is not the approval transport. In Phase 04 the main process runs `CodexAppServerProvider`, a per-task `codex app-server --listen stdio://` child speaking JSONL JSON-RPC, so it can receive and answer one-shot command/file approval requests. Agent Core and the Poko event model are unchanged; approval requests become `approvalRequired` events. Requests that are malformed, outside the workspace, broaden network or exec policy, or use an unsupported method are declined or stop the task. Phase 04 kept tasks read-only; Phase 08 added approved file edits with checkpoints and undo, and Phase 12 added approved commands inside a sandbox on Claude Code. See [the Phase 04 plan](phases/phase-04.md).
 
 In Phase 05 the main process builds a `TaskContext` for each task before it starts: saved memories by importance, and the most recent completed exchanges from the task's conversation (`tasks.conversation_id`, `tasks.result`), capped by count and characters in `electron/agent/context.ts`. Agent Core formats it into the prompt between the project guidance and the user request. Memories are labeled as user-written facts that never override the safety rules. Assistant answers render as Markdown in the renderer, with raw HTML escaped, links that don't navigate, and images that don't load. They stream in from `output` deltas grouped by agent message item. Partial answers are never persisted. See [the Phase 05 plan](phases/phase-05.md).
 
@@ -148,7 +153,7 @@ Classify operations as:
 - **Write:** create or modify files, or install dependencies; apply the selected task mode and approval policy.
 - **Dangerous:** delete data, push, reset, deploy, or affect an external service; require explicit user approval for the concrete action.
 
-Phase 01 has no shell or provider execution. Phase 02 uses Codex's restricted read-only permission profile. Phase 04 adds the user approval UI and a write policy. Never claim that a confirmation dialog alone confines a process to the workspace.
+Phase 01 has no shell or provider execution. Phase 02 uses Codex's restricted read-only permission profile. Phase 04 adds the user approval UI, Phase 08 approved edits, and Phase 12 sandboxed commands. Never claim that a confirmation dialog alone confines a process to the workspace.
 
 ## Persistence model
 
@@ -159,11 +164,13 @@ The initial schema is:
 | Table | Responsibility | Initial fields |
 | --- | --- | --- |
 | `settings` | app preferences and workspace | `key`, `value`, `updated_at` |
-| `conversations` | conversation identity | `id`, `title`, `workspace_path`, `created_at`, `updated_at` |
+| `conversations` | conversation identity | `id`, `title`, `created_at`, `updated_at` |
 | `messages` | user and assistant messages | `id`, `conversation_id`, `role`, `content`, `created_at` |
 | `tasks` | provider work lifecycle | `id`, `title`, `prompt`, `provider`, `status`, `workspace`, `created_at`, `completed_at` |
 | `activities` | user-readable and technical timeline | `id`, `task_id`, `type`, `message`, `created_at` |
-| `memories` | explicit searchable personal/project facts | `id`, `type`, `content`, `importance`, `source`, `workspace_path`, `created_at`, `updated_at` |
+| `memories` | explicit searchable personal/project facts | `id`, `type`, `content`, `importance`, `source`, `created_at`, `updated_at` |
+
+Later migrations added `tasks.conversation_id` and `tasks.result` (Phase 05), the `approvals` (Phase 04), `edits` (Phase 08), and `routines` (Phase 15) tables, and `workspace_path` on conversations and memories (Phase 16); `electron/database/schema.ts` is the current schema.
 
 Add foreign keys and indexes with the first migration. Import the existing workspace path from `settings.json` into the settings row only when no database value exists; retain the old file during migration. Mark tasks left in `running` at an unclean shutdown as failed on next startup. Persist explicit memory records with parameterized literal text search. A memory is saved only when the user writes it or says yes to a suggestion; there is no vector database. SQLite content is local but unencrypted in v0.1, so keep API keys and tokens out of it. Close the database after workers stop during app shutdown.
 
@@ -189,7 +196,7 @@ Phase 06 adds privileged main-process capabilities, all behind narrow IPC:
 - a transparent, click-through overlay `BrowserWindow` for the character
 - a global stop shortcut
 
-The renderer never captures, reads, or acts on other apps. Each action is approved individually, re-verified right before it runs, and limited to the picked app. During a screen task, Codex is meant to run with a permission profile that reads only an empty temp folder, and its command and file-change requests are declined. That profile must pass a real-run check in milestone 1 before screen tasks ship. Actions are limited to the web content of `http`/`https` pages in browsers. Browser automation (Playwright) remains out of scope.
+The renderer never captures, reads, or acts on other apps. Each action is approved individually, re-verified right before it runs, and limited to the picked app. During a screen task, Codex runs with a permission profile that reads only an empty temp folder, and its command and file-change requests are declined; Claude Code runs with no tools at all (Phase 11). Actions are limited to the web content of `http`/`https` pages in browsers. Browser automation (Playwright) remains out of scope.
 
 ## Routines (Phase 15)
 
