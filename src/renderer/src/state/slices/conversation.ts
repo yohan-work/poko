@@ -4,6 +4,8 @@ import { adoptTask, foreignTasks, runTask, switchConversation, trackForeign } fr
 import { addActivity, fromBootstrap } from "../taskHelpers";
 import type { ConversationSlice, Slice } from "../types";
 
+const YIELD_FAILED = "루틴을 멈추지 못했어. 잠시 뒤 다시 시도해 줘.";
+
 /** Counts busy notes under the folder button, so only the latest one clears itself. */
 let busyNotes = 0;
 
@@ -24,9 +26,9 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
     const routine = get().busyRoutine;
     if (!routine) return;
     const free = await window.poko.routines.yieldRun(routine.taskId).catch(() => false);
-    set({
-      conversationError: free ? null : "루틴을 멈추지 못했어. 잠시 뒤 다시 시도해 줘.",
-    });
+    if (!free) set({ conversationError: YIELD_FAILED });
+    // Only this banner's own error goes; anything else stays until it is read.
+    else if (get().conversationError === YIELD_FAILED) set({ conversationError: null });
   },
   foreignApproval: null,
   showForeignTask: async () => {
@@ -103,6 +105,9 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
       const live = await window.poko.tasks.active().catch(() => null);
       if (live) {
         trackForeign(live.taskId, live.conversationId, live.approvals);
+        // A routine running across a reload still shows its banner (cleared if taken over).
+        if (live.routineTitle)
+          set({ busyRoutine: { taskId: live.taskId, title: live.routineTitle } });
         if (live.conversationId) await adoptTask(live.taskId, live.conversationId);
       }
     } catch {

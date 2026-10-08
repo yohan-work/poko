@@ -434,6 +434,8 @@ export interface ActiveTaskInfo {
   approvals: PendingApprovalEvent[];
   /** The answer written so far, so a window taking the task over doesn't start mid-sentence. */
   answer?: { text: string; itemId: string | null };
+  /** Set when the task is a routine run (see TaskStartedNotice). */
+  routineTitle?: string;
 }
 
 /** An approval card as the renderer shows it. */
