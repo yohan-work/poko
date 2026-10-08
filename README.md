@@ -52,6 +52,7 @@ Screenshots use sample data.
 - [x] Hear an answer read aloud with the Mac's voice
 - [x] Routines: requests Poko runs on a schedule, always read-only, each in its own conversation (Phase 15)
 - [x] Conversations and project memories belong to their folder, so projects never mix (Phase 16)
+- [x] Retry or change a failed question, copy an answer, and keyboard shortcuts (⌘N, ⌘K, ⌘., ⌘,)
 
 ## What Poko is aiming for
 

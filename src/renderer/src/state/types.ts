@@ -177,6 +177,16 @@ export interface ConversationSlice {
   workspaceError: string | null;
   initializeWorkspace: () => Promise<void>;
   selectWorkspace: () => Promise<void>;
+  /**
+   * The question whose answer failed or was stopped in this conversation, so it can be sent
+   * again as it was (not offered for files or screen tasks, whose content isn't kept).
+   */
+  retryable: { conversationId: string | null; question: string } | null;
+  retryLast: () => Promise<void>;
+  /** Puts the last question back into the message box to change it. */
+  editLastQuestion: () => void;
+  /** Text for the message box to take (each new nonce once). */
+  composerPrefill: { text: string; nonce: number } | null;
   /** A conversation whose folder was found missing, so its line offers a new conversation. */
   folderGone: string | null;
   /** Selects the folder the shown conversation works in (its 폴더로 바꾸기 button). */

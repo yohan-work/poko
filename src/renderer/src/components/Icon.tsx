@@ -56,6 +56,13 @@ const paths = {
     </>
   ),
   plus: <path d="M10 4.5v11M4.5 10h11" />,
+  copy: (
+    <>
+      <rect x="7" y="7" width="9" height="9" rx="1.6" />
+      <path d="M13 7V5.6A1.6 1.6 0 0 0 11.4 4H5.6A1.6 1.6 0 0 0 4 5.6v5.8A1.6 1.6 0 0 0 5.6 13H7" />
+    </>
+  ),
+  check: <path d="M5 10.5l3.2 3.2L15 7" />,
   repeat: (
     <>
       <path d="M4 9V8a3 3 0 0 1 3-3h8l-2-2M16 11v1a3 3 0 0 1-3 3H5l2 2" />

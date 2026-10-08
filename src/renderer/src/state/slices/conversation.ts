@@ -1,7 +1,7 @@
 import type { ApprovalOutcome } from "../../../../../electron/shared";
 import { cleanAttachmentName } from "../../../../../electron/shared";
 import { adoptTask, foreignTasks, runTask, switchConversation, trackForeign } from "../taskFlow";
-import { addActivity, fromBootstrap } from "../taskHelpers";
+import { addActivity, fromBootstrap, questionText } from "../taskHelpers";
 import type { ConversationSlice, Slice } from "../types";
 
 /** Counts busy notes under the folder button, so only the latest one clears itself. */
@@ -102,6 +102,27 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
   },
 
   folderGone: null,
+  retryable: null,
+  composerPrefill: null,
+
+  retryLast: async () => {
+    const retry = get().retryable;
+    if (!retry || get().isSending || retry.conversationId !== get().activeConversationId) return;
+    set({ retryable: null });
+    // Refused (busy, another folder): offered again, nothing was recorded.
+    if ((await get().sendMessage(retry.question)) === "refused") set({ retryable: retry });
+  },
+
+  editLastQuestion: () => {
+    const last = [...get().messages].reverse().find((message) => message.role === "user");
+    if (!last) return;
+    set({
+      composerPrefill: {
+        text: questionText(last.content) ?? last.content,
+        nonce: (get().composerPrefill?.nonce ?? 0) + 1,
+      },
+    });
+  },
 
   switchToConversationFolder: async () => {
     const id = get().activeConversationId;

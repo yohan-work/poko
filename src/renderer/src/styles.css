@@ -3041,3 +3041,15 @@ html.is-quick body {
   margin: 0 0 12px;
   justify-self: start;
 }
+
+.retry-row {
+  display: flex;
+  margin-left: 40px;
+  gap: 8px;
+  list-style: none;
+}
+
+.retry-row .icon {
+  width: 14px;
+  height: 14px;
+}

@@ -7,6 +7,7 @@ import { Markdown } from "./Markdown";
 import { ScreenPicker } from "./ScreenPicker";
 import { EffortSelect, ModelSelect } from "./ModelSelect";
 import { DictationButton } from "./DictationButton";
+import { CopyButton } from "./CopyButton";
 import { SpeakButton } from "./SpeakButton";
 import { EditNoteItem } from "./EditNoteItem";
 import {
@@ -88,6 +89,16 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
   }, [autoFocus]);
+
+  // 고쳐서 묻기: the last question comes back into the box, ready to change.
+  const prefill = useAppStore((state) => state.composerPrefill);
+  useEffect(() => {
+    if (!prefill) return;
+    setDraft(prefill.text);
+    const input = inputRef.current;
+    input?.focus();
+    input?.setSelectionRange(prefill.text.length, prefill.text.length);
+  }, [prefill]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the draft changes
   useEffect(() => {
@@ -243,7 +254,7 @@ function Composer({ autoFocus }: { autoFocus: boolean }) {
             aria-label={isSending ? "작업 멈추기" : "메시지 보내기"}
             title={
               isSending
-                ? "작업 멈추기"
+                ? "작업 멈추기 (⌘.)"
                 : busyElsewhere
                   ? "포코가 다른 작업 중이야. 끝난 뒤에 보낼 수 있어."
                   : "보내기 (Enter)"
@@ -319,6 +330,31 @@ function MemorySuggestionCard() {
 }
 
 /** A task started from the quick panel waits for approval in another conversation. */
+/** Under a failed or stopped answer: send the same question again, or change it first. */
+function RetryRow() {
+  const retryable = useAppStore(
+    (state) =>
+      !state.isSending &&
+      state.retryable !== null &&
+      state.retryable.conversationId === state.activeConversationId,
+  );
+  const retryLast = useAppStore((state) => state.retryLast);
+  const editLastQuestion = useAppStore((state) => state.editLastQuestion);
+  if (!retryable) return null;
+  return (
+    <li className="retry-row">
+      <button className="secondary-button" type="button" onClick={() => void retryLast()}>
+        <Icon name="repeat" />
+        <span>다시 시도</span>
+      </button>
+      <button className="secondary-button" type="button" onClick={editLastQuestion}>
+        <Icon name="pencil" />
+        <span>고쳐서 묻기</span>
+      </button>
+    </li>
+  );
+}
+
 function ForeignBanner() {
   const foreignApproval = useAppStore((state) => state.foreignApproval);
   const showForeignTask = useAppStore((state) => state.showForeignTask);
@@ -465,6 +501,7 @@ export function ChatPanel() {
                   <Markdown>{entry.content}</Markdown>
                   <div className="message__actions">
                     <SpeakButton id={entry.id} text={entry.content} />
+                    <CopyButton text={entry.content} />
                   </div>
                 </div>
               </li>
@@ -476,6 +513,7 @@ export function ChatPanel() {
               <Markdown>{streamingText}</Markdown>
             </li>
           )}
+          <RetryRow />
           <ApprovalCard />
           <MemorySuggestionCard />
           {/* Keep showing progress (tools, steps after an approval) below a streamed message;

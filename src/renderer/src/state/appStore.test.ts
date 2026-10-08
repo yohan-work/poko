@@ -233,6 +233,34 @@ describe("memory suggestions", () => {
   });
 });
 
+describe("retrying", () => {
+  it("offers a failed question again as it was, and puts it back to change it", async () => {
+    const sending = store.getState().sendMessage("README 요약해 줘");
+    world.replyToStart({ taskId: "t1", conversation: conversation("a") });
+    await sending;
+    world.emit("t1", { type: "error", error: "작업을 마치지 못했어." });
+    expect(store.getState().retryable).toEqual({
+      conversationId: "a",
+      question: "README 요약해 줘",
+    });
+    store.getState().editLastQuestion();
+    expect(store.getState().composerPrefill?.text).toBe("README 요약해 줘");
+    void store.getState().retryLast();
+    expect(world.calls.filter((call) => call.method === "tasks.start")).toHaveLength(2);
+    expect(store.getState().retryable).toBeNull();
+  });
+
+  it("doesn't offer a question with files, whose content isn't kept", async () => {
+    store.setState({
+      messages: [{ id: "u", role: "user", content: "봐 줘\n\n📎 a.png", createdAt: "x" }],
+      activeTaskId: "t2",
+      isSending: true,
+    });
+    world.emit("t2", { type: "cancelled" });
+    expect(store.getState().retryable).toBeNull();
+  });
+});
+
 describe("switching conversations", () => {
   it("refuses to switch while sending, but returning to the shown conversation is fine", async () => {
     void store.getState().sendMessage("질문");

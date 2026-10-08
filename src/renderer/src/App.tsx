@@ -158,7 +158,7 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             type="button"
             onClick={() => void newConversation()}
             disabled={isSending}
-            title={isSending ? busyHint : "새 대화 시작"}
+            title={isSending ? busyHint : "새 대화 시작 (⌘N)"}
           >
             <Icon name="plus" />
             <span>새 대화</span>
@@ -174,6 +174,7 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             <Icon name="search" />
             <span className="sr-only">대화 검색</span>
             <input
+              id="conversation-search"
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -181,7 +182,7 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
                 // Escape while composing (Korean IME) only cancels the syllable.
                 if (event.key === "Escape" && !event.nativeEvent.isComposing) setQuery("");
               }}
-              placeholder="대화 검색"
+              placeholder="대화 검색 (⌘K)"
               maxLength={200}
             />
           </label>
@@ -242,6 +243,33 @@ export function App() {
   useEffect(() => {
     void initializeWorkspace();
   }, [initializeWorkspace]);
+
+  // ⌘N new conversation, ⌘K search conversations, ⌘. stop, ⌘, settings.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+      const state = useAppStore.getState();
+      const key = event.key.toLowerCase();
+      if (key === "n" && !event.shiftKey) {
+        event.preventDefault();
+        void state.newConversation();
+      } else if (key === "k") {
+        event.preventDefault();
+        setSidebarOpen(true);
+        state.setActiveView("conversation");
+        // After the sidebar (and its search field) is on screen.
+        window.setTimeout(() => document.getElementById("conversation-search")?.focus(), 0);
+      } else if (key === ".") {
+        event.preventDefault();
+        if (state.isSending) void state.cancelTask();
+      } else if (key === ",") {
+        event.preventDefault();
+        state.setActiveView("settings");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="app-shell" data-sidebar={isSidebarOpen ? "open" : "closed"}>

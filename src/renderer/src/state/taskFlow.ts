@@ -7,6 +7,7 @@ import {
   createMessage,
   eventCharacterState,
   sessionTaskStatus,
+  questionText,
 } from "./taskHelpers";
 import type { AppState, PendingApproval } from "./types";
 
@@ -253,6 +254,7 @@ export async function switchConversation(id: string | null): Promise<void> {
       memorySuggestionError: null,
       // Checked again when it is next used, so a folder that came back works.
       folderGone: null,
+      retryable: null,
       messages: response.messages,
       streaming: null,
       errorMessage: null,
@@ -292,6 +294,7 @@ export async function runTask(
     characterState: "thinking",
     errorMessage: null,
     conversationError: null,
+    retryable: null,
     isSending: true,
     progressMessage: "포코가 요청을 살펴보고 있어.",
     messages: [...state.messages, userMessage],
@@ -396,6 +399,19 @@ function applyTaskEvent(payload: TaskEventPayload): void {
             ]
           : state.messages;
 
+    // A failed or stopped answer can be asked again, as it was.
+    const lastQuestion =
+      event.type === "error" || event.type === "cancelled"
+        ? [...state.messages].reverse().find((item) => item.role === "user")
+        : undefined;
+    const question = lastQuestion ? questionText(lastQuestion.content) : null;
+    const retryable =
+      status === null
+        ? state.retryable
+        : question
+          ? { conversationId: state.activeConversationId, question }
+          : null;
+
     const waitingForUser = event.type === "approvalRequired" && event.canApprove;
     const tasks = state.tasks.map((task) =>
       task.id !== taskId
@@ -429,6 +445,7 @@ function applyTaskEvent(payload: TaskEventPayload): void {
             : state.memorySuggestion,
       // An error belongs to the card it was shown on.
       memorySuggestionError: status ? null : state.memorySuggestionError,
+      retryable,
       characterState:
         status === null && pendingApprovals.length > 0 ? "approval" : eventCharacterState(event),
       errorMessage: event.type === "error" ? event.error : null,
