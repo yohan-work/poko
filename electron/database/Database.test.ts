@@ -340,6 +340,17 @@ describe("PokoDatabase", () => {
     database.close();
   });
 
+  it("changes what a memory says, keeping its type and folder, and refuses a duplicate", async () => {
+    const database = await openDatabase();
+    const memory = database.saveMemory({ type: "project", content: "pnpm", importance: 3 }, "/w/a");
+    database.saveMemory({ type: "project", content: "Biome를 써", importance: 3 }, "/w/a");
+    const updated = database.updateMemory(memory.id, " pnpm을 써 ");
+    expect(updated).toMatchObject({ content: "pnpm을 써", type: "project", workspacePath: "/w/a" });
+    expect(database.updateMemory(memory.id, "Biome를 써")).toBe("duplicate");
+    expect(database.updateMemory("missing", "x")).toBeNull();
+    database.close();
+  });
+
   it("keeps the same memory once", async () => {
     const database = await openDatabase();
     const first = database.saveMemory({ type: "fact", content: "답은 짧게", importance: 3 });

@@ -940,6 +940,25 @@ export class PokoDatabase {
     return record;
   }
 
+  /**
+   * Changes what a memory says; its type and folder stay. Refused (null) when the memory is
+   * gone or another memory where it applies already says the same.
+   */
+  updateMemory(id: string, content: string): MemoryRecord | "duplicate" | null {
+    const memory = this.listMemories().find((item) => item.id === id);
+    if (!memory) return null;
+    const wanted = { type: memory.type, content, workspacePath: memory.workspacePath };
+    if (this.listMemories().some((item) => item.id !== id && isSameMemory(item, wanted)))
+      return "duplicate";
+    const updatedAt = now();
+    this.db
+      .update(memories)
+      .set({ content: content.trim(), updatedAt })
+      .where(eq(memories.id, id))
+      .run();
+    return { ...memory, content: content.trim(), updatedAt };
+  }
+
   deleteMemory(id: string): boolean {
     return this.db.delete(memories).where(eq(memories.id, id)).run().changes > 0;
   }

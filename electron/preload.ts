@@ -248,6 +248,9 @@ const pokoApi = {
     save: (input: MemoryInput): Promise<PersistedMemory | { error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.memorySave, input),
     delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.memoryDelete, id),
+    /** Changes what a memory says; its type and folder stay. */
+    update: (id: string, content: string): Promise<PersistedMemory | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.memoryUpdate, id, content),
   },
 };
 

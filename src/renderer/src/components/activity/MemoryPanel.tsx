@@ -173,7 +173,60 @@ export function MemoryPanel() {
   );
 }
 
+/** Changes what a memory says, in place; Escape or 취소 keeps it as it was. */
+function MemoryEditor({ memory, onDone }: { memory: PersistedMemory; onDone: () => void }) {
+  const updateMemory = useAppStore((state) => state.updateMemory);
+  const [content, setContent] = useState(memory.content);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const changed = content.trim() && content.trim() !== memory.content;
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!changed || saving) return;
+    setSaving(true);
+    const failed = await updateMemory(memory.id, content);
+    setSaving(false);
+    if (failed) setError(failed);
+    else onDone();
+  }
+
+  return (
+    <form className="memory-form memory-card__editor" onSubmit={(event) => void submit(event)}>
+      <label className="sr-only" htmlFor={`memory-edit-${memory.id}`}>
+        기억 고치기
+      </label>
+      <textarea
+        id={`memory-edit-${memory.id}`}
+        value={content}
+        onChange={(event) => setContent(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !event.nativeEvent.isComposing) onDone();
+        }}
+        maxLength={4000}
+        rows={3}
+        // biome-ignore lint/a11y/noAutofocus: the user just asked to edit this memory
+        autoFocus
+      />
+      {error && (
+        <p className="page-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="memory-form__actions">
+        <button className="secondary-button" type="button" onClick={onDone}>
+          취소
+        </button>
+        <button className="primary-button" type="submit" disabled={!changed || saving}>
+          저장
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: () => void }) {
+  const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const now = useNow();
   const [overflows, setOverflows] = useState(false);
@@ -208,23 +261,37 @@ function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: (
           </span>
         ) : null}
       </span>
-      <div>
-        <p ref={contentRef} className={`memory-card__content${expanded ? " is-expanded" : ""}`}>
-          {memory.content}
-        </p>
-        {(overflows || expanded) && (
-          <button
-            className="memory-card__more"
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {expanded ? "접기" : "더 보기"}
-          </button>
-        )}
-      </div>
+      {editing ? (
+        <MemoryEditor memory={memory} onDone={() => setEditing(false)} />
+      ) : (
+        <div>
+          <p ref={contentRef} className={`memory-card__content${expanded ? " is-expanded" : ""}`}>
+            {memory.content}
+          </p>
+          {(overflows || expanded) && (
+            <button
+              className="memory-card__more"
+              type="button"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded ? "접기" : "더 보기"}
+            </button>
+          )}
+        </div>
+      )}
       <div className="memory-card__footer">
         <time dateTime={memory.updatedAt}>{relativeTime(memory.updatedAt, now)}</time>
+        <button
+          className="icon-button memory-card__edit"
+          type="button"
+          onClick={() => setEditing(true)}
+          disabled={editing}
+          aria-label="기억 고치기"
+          title="기억 고치기"
+        >
+          <Icon name="pencil" />
+        </button>
         <button
           className="icon-button memory-card__delete"
           type="button"

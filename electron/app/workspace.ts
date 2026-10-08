@@ -144,6 +144,23 @@ export function registerWorkspaceHandlers(): void {
       scope,
     );
   });
+  ipcMain.handle(IPC_CHANNELS.memoryUpdate, (event, rawId: unknown, rawContent: unknown) => {
+    if (!isTrustedRenderer(event) || !ctx.database)
+      throw new Error("Unknown renderer requested memory update.");
+    if (
+      typeof rawId !== "string" ||
+      rawId.length > 100 ||
+      typeof rawContent !== "string" ||
+      !rawContent.trim() ||
+      rawContent.length > 4000
+    )
+      return { error: "기억 내용을 다시 확인해 줘." };
+    const updated = ctx.database.updateMemory(rawId, rawContent);
+    if (updated === "duplicate") return { error: "같은 내용의 기억이 이미 있어." };
+    if (!updated) return { error: "이 기억을 찾을 수 없어." };
+    return updated;
+  });
+
   ipcMain.handle(IPC_CHANNELS.memoryDelete, (event, rawId: unknown) => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer requested memory delete.");

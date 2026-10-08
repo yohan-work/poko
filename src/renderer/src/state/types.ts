@@ -125,6 +125,8 @@ export interface MemorySlice {
   /** Resolves false when the memory could not be saved. */
   saveMemory: (input: MemoryInput) => Promise<boolean>;
   deleteMemory: (id: string) => Promise<void>;
+  /** Resolves an error message, or null when the memory now says `content`. */
+  updateMemory: (id: string, content: string) => Promise<string | null>;
 }
 
 /** The window picker for screen tasks. */

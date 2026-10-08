@@ -25,6 +25,7 @@ export const IPC_CHANNELS = {
   memorySearch: "memory:search",
   memorySave: "memory:save",
   memoryDelete: "memory:delete",
+  memoryUpdate: "memory:update",
   approvalRespond: "approval:respond",
   screenStatus: "screen:status",
   screenOpenSettings: "screen:open-settings",
