@@ -19,6 +19,15 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
   streaming: null,
   pendingApprovals: [],
   busyElsewhere: false,
+  busyRoutine: null,
+  yieldRoutine: async () => {
+    const routine = get().busyRoutine;
+    if (!routine) return;
+    const free = await window.poko.routines.yieldRun(routine.taskId).catch(() => false);
+    set({
+      conversationError: free ? null : "루틴을 멈추지 못했어. 잠시 뒤 다시 시도해 줘.",
+    });
+  },
   foreignApproval: null,
   showForeignTask: async () => {
     const [taskId, foreign] = [...foreignTasks.entries()].at(-1) ?? [];

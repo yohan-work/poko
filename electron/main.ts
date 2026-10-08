@@ -20,7 +20,11 @@ import { showTray } from "./quick/tray";
 import { deliverTaskEvent } from "./app/events";
 import { registerDataHandlers } from "./app/data";
 import { registerDictationHandlers } from "./app/dictation";
-import { registerRoutineHandlers, startRoutineScheduler } from "./app/routines";
+import {
+  registerRoutineHandlers,
+  registerRoutineYield,
+  startRoutineScheduler,
+} from "./app/routines";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
 import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
@@ -62,6 +66,7 @@ function registerIpcHandlers(): void {
   registerQuickHandlers();
   registerDictationHandlers();
   registerRoutineHandlers();
+  registerRoutineYield();
 }
 
 async function createWindow(): Promise<void> {

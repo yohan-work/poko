@@ -233,6 +233,29 @@ describe("memory suggestions", () => {
   });
 });
 
+describe("a routine running", () => {
+  it("names the routine and stops it on request, then clears when it ends", async () => {
+    const stopped: string[] = [];
+    (world.poko as unknown as { routines: unknown }).routines = {
+      yieldRun: async (taskId: string) => {
+        stopped.push(taskId);
+        return true;
+      },
+    } as never;
+    world.startElsewhere({
+      taskId: "rt",
+      title: "정리해 줘",
+      conversation: conversation("r"),
+      routineTitle: "아침 정리",
+    });
+    expect(store.getState().busyRoutine).toEqual({ taskId: "rt", title: "아침 정리" });
+    await store.getState().yieldRoutine();
+    expect(stopped).toEqual(["rt"]);
+    world.emit("rt", { type: "cancelled" });
+    expect(store.getState()).toMatchObject({ busyRoutine: null, busyElsewhere: false });
+  });
+});
+
 describe("retrying", () => {
   it("offers a failed question again as it was, and puts it back to change it", async () => {
     const sending = store.getState().sendMessage("README 요약해 줘");

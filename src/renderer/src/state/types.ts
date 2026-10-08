@@ -168,6 +168,9 @@ export interface ConversationSlice {
   pendingApprovals: PendingApproval[];
   /** A task started elsewhere (the quick panel) is running, so this window can't start one. */
   busyElsewhere: boolean;
+  /** The routine run keeping Poko busy, which 멈추고 지금 묻기 can stop. */
+  busyRoutine: { taskId: string; title: string } | null;
+  yieldRoutine: () => Promise<void>;
   /** A task started elsewhere waits for approval in this conversation (null: unknown yet). */
   foreignApproval: { conversationId: string | null } | null;
   /** Shows the conversation of a task started elsewhere and takes it over, cards included. */

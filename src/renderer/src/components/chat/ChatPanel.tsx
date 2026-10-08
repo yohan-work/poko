@@ -357,6 +357,32 @@ function RetryRow() {
   );
 }
 
+/** A routine run keeps Poko busy: say which, and offer to stop it and ask now. */
+function RoutineBusyBanner() {
+  const routine = useAppStore((state) => state.busyRoutine);
+  const yieldRoutine = useAppStore((state) => state.yieldRoutine);
+  const [stopping, setStopping] = useState(false);
+  if (!routine) return null;
+  return (
+    <div className="foreign-banner" role="status">
+      <span>
+        🔁 <strong>{routine.title}</strong> 루틴이 실행 중이야. 끝나면 물을 수 있어.
+      </span>
+      <button
+        className="secondary-button"
+        type="button"
+        disabled={stopping}
+        onClick={() => {
+          setStopping(true);
+          void yieldRoutine().finally(() => setStopping(false));
+        }}
+      >
+        {stopping ? "멈추는 중" : "멈추고 지금 묻기"}
+      </button>
+    </div>
+  );
+}
+
 /** A task started from the quick panel waits for approval in another conversation. */
 function ForeignBanner() {
   const foreignApproval = useAppStore((state) => state.foreignApproval);
@@ -467,6 +493,7 @@ export function ChatPanel() {
             <span>{greeting(now)}</span>
           </h1>
           <ForeignBanner />
+          <RoutineBusyBanner />
           <Composer autoFocus />
           <p className="welcome__hint">
             포코가 고른 폴더의 파일을 읽고 구조와 개선점을 살펴볼게. 명령 실행이나 파일 변경은 항상
@@ -536,6 +563,7 @@ export function ChatPanel() {
       </div>
       <div className="chat-panel__composer">
         <ForeignBanner />
+        <RoutineBusyBanner />
         <FolderBanner />
         <Composer autoFocus={false} />
       </div>
