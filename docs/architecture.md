@@ -1,6 +1,6 @@
 # Poko architecture
 
-Poko is a local-first desktop character that accepts a user's request, decides whether work should run, delegates that work to an agent provider, and presents a concise result. The first release is an Electron application with a character-led conversation UI and a read-only Codex CLI worker.
+Poko is a local-first desktop character that accepts a user's request, decides whether work should run, delegates that work to an agent provider, and presents a concise result. The first release is an Electron application with a character-led conversation UI. Work runs on Codex or Claude Code, read-only by default, with approved edits and (on Claude Code) sandboxed commands.
 
 ## Scope and implementation shape
 
@@ -19,7 +19,10 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   │   ├── quick.ts         # quick panel channels and its global shortcut
 │   │   ├── edits.ts         # edit switch, approved changes, undo
 │   │   ├── settings.ts      # 설정 preferences and app version
-│   │   ├── setup.ts         # Codex setup check and sign-in
+│   │   ├── setup.ts         # Codex and Claude Code setup check and sign-in
+│   │   ├── routines.ts      # 루틴 page channels and starting a routine's run
+│   │   ├── notify.ts        # task notifications
+│   │   ├── dictation.ts     # starting macOS Dictation in Poko's own window
 │   │   └── workspace.ts     # workspace, app data, memories
 │   ├── preload.ts           # narrow, typed renderer bridge
 │   ├── eventGuards.ts       # shape checks for task events sent to the renderer
@@ -32,7 +35,9 @@ Start as one pnpm application rather than a multi-package workspace. Keep clear 
 │   ├── quick/               # the quick panel window and its reduced task view
 │   ├── edits/               # checkpoints and undo for approved changes
 │   ├── screen/              # window capture, accessibility helper, overlay, step loop
-│   ├── setup/               # Codex setup check
+│   ├── setup/               # Codex and Claude Code setup checks
+│   ├── routines/            # routine schedule and the timer that runs them
+│   ├── notify/              # the one-line text of a task notification
 │   ├── providers/codex/     # Codex App Server adapter and environment
 │   └── providers/claude/    # Claude Code (stream-json) adapter, edit planning, sandboxed commands
 ├── src/renderer/
@@ -130,11 +135,11 @@ type AgentEvent =
   | { type: "error"; error: string };
 ```
 
-The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and the selected workspace as `cwd`, parses JSONL incrementally, and turns process failures or malformed events into error events. It does not forward raw stdout to the renderer. A Claude provider can implement the same interface later.
+The Phase 02 `CodexProvider` spawns `codex exec --json` with an argv array and the selected workspace as `cwd`, parses JSONL incrementally, and turns process failures or malformed events into error events. It does not forward raw stdout to the renderer. Phase 11 added a Claude Code provider behind the same interface.
 
 Phase 02 gives Codex a strict named permission profile: deny `:root`, allow `:minimal` platform paths and the selected `:workspace_roots` as read-only, and disable command network access. The task ignores user-level Codex config so an existing broad sandbox setting cannot replace Poko's policy; Codex authentication remains in the user's Codex home. Unsupported profile configuration fails closed, with no broad read-only fallback. The permission contract includes a future `write` mode, but the Phase 02 UI only submits read-only tasks until the in-app approval and write policy are implemented. Phase 03 persists task, conversation, Activity, workspace, and explicit memory records.
 
-`codex exec --json` is intentionally non-interactive and is not the approval transport. In Phase 04 the main process runs `CodexAppServerProvider`, a per-task `codex app-server --listen stdio://` child speaking JSONL JSON-RPC, so it can receive and answer one-shot command/file approval requests. Agent Core and the Poko event model are unchanged; approval requests become `approvalRequired` events. Requests that are malformed, outside the workspace, broaden network or exec policy, or use an unsupported method are declined or stop the task. Tasks still run in read-only mode; writes stay disabled until pause-before-action semantics and sandbox enforcement are verified on supported operating systems. See [the Phase 04 plan](phases/phase-04.md).
+`codex exec --json` is intentionally non-interactive and is not the approval transport. In Phase 04 the main process runs `CodexAppServerProvider`, a per-task `codex app-server --listen stdio://` child speaking JSONL JSON-RPC, so it can receive and answer one-shot command/file approval requests. Agent Core and the Poko event model are unchanged; approval requests become `approvalRequired` events. Requests that are malformed, outside the workspace, broaden network or exec policy, or use an unsupported method are declined or stop the task. Phase 04 kept tasks read-only; Phase 08 added approved file edits with checkpoints and undo, and Phase 12 added approved commands inside a sandbox on Claude Code. See [the Phase 04 plan](phases/phase-04.md).
 
 In Phase 05 the main process builds a `TaskContext` for each task before it starts: saved memories by importance, and the most recent completed exchanges from the task's conversation (`tasks.conversation_id`, `tasks.result`), capped by count and characters in `electron/agent/context.ts`. Agent Core formats it into the prompt between the project guidance and the user request. Memories are labeled as user-written facts that never override the safety rules. Assistant answers render as Markdown in the renderer, with raw HTML escaped, links that don't navigate, and images that don't load. They stream in from `output` deltas grouped by agent message item. Partial answers are never persisted. See [the Phase 05 plan](phases/phase-05.md).
 
@@ -148,7 +153,7 @@ Classify operations as:
 - **Write:** create or modify files, or install dependencies; apply the selected task mode and approval policy.
 - **Dangerous:** delete data, push, reset, deploy, or affect an external service; require explicit user approval for the concrete action.
 
-Phase 01 has no shell or provider execution. Phase 02 uses Codex's restricted read-only permission profile. Phase 04 adds the user approval UI and a write policy. Never claim that a confirmation dialog alone confines a process to the workspace.
+Phase 01 has no shell or provider execution. Phase 02 uses Codex's restricted read-only permission profile. Phase 04 adds the user approval UI, Phase 08 approved edits, and Phase 12 sandboxed commands. Never claim that a confirmation dialog alone confines a process to the workspace.
 
 ## Persistence model
 
@@ -165,21 +170,23 @@ The initial schema is:
 | `activities` | user-readable and technical timeline | `id`, `task_id`, `type`, `message`, `created_at` |
 | `memories` | explicit searchable personal/project facts | `id`, `type`, `content`, `importance`, `source`, `created_at`, `updated_at` |
 
-Add foreign keys and indexes with the first migration. Import the existing workspace path from `settings.json` into the settings row only when no database value exists; retain the old file during migration. Mark tasks left in `running` at an unclean shutdown as failed on next startup. Persist explicit memory records with parameterized literal text search; do not add automatic memory extraction or a vector database. SQLite content is local but unencrypted in v0.1, so keep API keys and tokens out of it. Close the database after workers stop during app shutdown.
+Later migrations added `tasks.conversation_id` and `tasks.result` (Phase 05), the `approvals` (Phase 04), `edits` (Phase 08), and `routines` (Phase 15) tables, and `workspace_path` on conversations and memories (Phase 16); `electron/database/schema.ts` is the current schema.
+
+Add foreign keys and indexes with the first migration. Import the existing workspace path from `settings.json` into the settings row only when no database value exists; retain the old file during migration. Mark tasks left in `running` at an unclean shutdown as failed on next startup. Persist explicit memory records with parameterized literal text search. A memory is saved only when the user writes it or says yes to a suggestion; there is no vector database. SQLite content is local but unencrypted in v0.1, so keep API keys and tokens out of it. Close the database after workers stop during app shutdown.
 
 ## Deferred extension points
 
-- `src/providers/claude`: future provider, no implementation in v0.1.
-- `src/tools/browser`: future Playwright integration, no browser automation in v0.1.
-- `electron/screen`: Phase 06 screen companion. Main-process window capture, a Swift accessibility helper, one-approved-step actions, and the overlay window. See [Phase 06](phases/phase-06.md).
-- `src/agent/scheduler`: future routines and scheduling, no scheduler in v0.1.
-- `skills/`: prompt guidance loaded by the Agent Core; begin with the coding skill when Codex integration lands.
+- `src/tools/browser`: Playwright integration, not planned. Browser tasks go through the screen helper instead.
+- Running routines while Poko is quit (a login item or launch agent).
+- `skills/`: prompt guidance loaded by the Agent Core; `skills/coding` is the only one today.
+
+The Claude Code provider (`electron/providers/claude`, Phase 11), the screen companion (`electron/screen`, Phase 06), and routines (`electron/routines`, Phase 15) were seams here and now exist.
 
 These are documented seams, not empty packages to scaffold in advance.
 
 ## Phase 01 implementation
 
-The app uses Electron Vite's main, preload, and renderer processes. Phase 03 imports a previous workspace path from the legacy JSON settings file if the SQLite setting is empty; new preference writes go directly to SQLite. The preload exposes persistence through narrow typed methods. Automatic memory extraction, browser automation, scheduling, and approval-gated writes remain out of scope until their planned phases.
+The app uses Electron Vite's main, preload, and renderer processes. Phase 03 imports a previous workspace path from the legacy JSON settings file if the SQLite setting is empty; new preference writes go directly to SQLite. The preload exposes persistence through narrow typed methods. Later phases added approval-gated writes (Phase 08), memory suggestions saved only on yes, and routines (Phase 15).
 
 ## Screen companion (Phase 06)
 
@@ -189,7 +196,7 @@ Phase 06 adds privileged main-process capabilities, all behind narrow IPC:
 - a transparent, click-through overlay `BrowserWindow` for the character
 - a global stop shortcut
 
-The renderer never captures, reads, or acts on other apps. Each action is approved individually, re-verified right before it runs, and limited to the picked app. During a screen task, Codex is meant to run with a permission profile that reads only an empty temp folder, and its command and file-change requests are declined. That profile must pass a real-run check in milestone 1 before screen tasks ship. Actions are limited to the web content of `http`/`https` pages in browsers. Browser automation (Playwright) remains out of scope.
+The renderer never captures, reads, or acts on other apps. Each action is approved individually, re-verified right before it runs, and limited to the picked app. During a screen task, Codex runs with a permission profile that reads only an empty temp folder, and its command and file-change requests are declined; Claude Code runs with no tools at all (Phase 11). Actions are limited to the web content of `http`/`https` pages in browsers. Browser automation (Playwright) remains out of scope.
 
 ## Routines (Phase 15)
 
@@ -203,3 +210,9 @@ Routines are the first work Poko starts on its own, so they get a narrower bound
   - a missed time runs only on its own day, or within 35 minutes across midnight.
 - **The timer lives in main:** `RoutineRunner` is checked every minute, at startup, and on wake or unlock, and runs one routine at a time. It runs only while Poko runs; a login item or launch agent is deferred.
 
+## Folders (Phase 16)
+
+A conversation and a 프로젝트 or 결정 memory belong to a folder (`workspace_path`, a resolved real path):
+- A conversation takes the folder of its first task with a real path; a follow-up from another selected folder is refused, and the user switches with `workspace:use-conversation-folder`, which sends no path from the renderer.
+- A task's context gets shared memories plus its own folder's; a screen task gets only shared ones.
+- Main decides a memory's folder: a suggestion's comes from the task that made it, a typed one from the selected folder. See [Phase 16](phases/phase-16.md).
