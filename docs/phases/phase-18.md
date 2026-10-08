@@ -58,3 +58,8 @@ Routines (Phase 15) run only while Poko runs. After a restart, or a day the user
 
 - Hiding the Dock icon while the window is closed.
 - Windows and Linux.
+
+## Status
+
+- **The milestone is implemented.** In a development build (checked in the app), 설정 → 시작 shows the switch disabled with "설치한 앱에서만 쓸 수 있어.", and the window opens as usual.
+- **Not yet checked:** a packaged build in /Applications. That means registering a real login item and logging out, which the user does on their Mac.

@@ -3,11 +3,13 @@ import { CLAUDE_MODELS } from "../providers/claude/ClaudeCodeProvider";
 import {
   type AppSettings,
   IPC_CHANNELS,
+  type LoginItemState,
   type ModelOption,
   type ReasoningEffort,
   type SettingsView,
 } from "../shared";
 import { ctx, isTrustedRenderer } from "./context";
+import { loginItemState, setLoginItem } from "./loginItem";
 import { applyQuickShortcut } from "./quick";
 
 const MODEL_CACHE_MS = 10 * 60 * 1000;
@@ -58,7 +60,14 @@ export function registerSettingsHandlers(): void {
       settings: ctx.database.getSettings(),
       version: app.getVersion(),
       quickShortcutOk: ctx.quickShortcutOk,
+      loginItem: loginItemState(),
     };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.settingsSetLoginItem, (event, raw: unknown): LoginItemState => {
+    if (!isTrustedRenderer(event)) throw new Error("Unknown renderer changed the login item.");
+    if (typeof raw !== "boolean") throw new TypeError("Invalid login item setting.");
+    return setLoginItem(raw);
   });
 
   ipcMain.handle(IPC_CHANNELS.settingsSet, (event, raw: unknown): AppSettings => {

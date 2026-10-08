@@ -36,6 +36,8 @@ export const IPC_CHANNELS = {
   screenResetNotice: "screen:reset-notice",
   settingsGet: "settings:get",
   settingsSet: "settings:set",
+  /** 로그인할 때 포코 열기: turns the system login item on or off. */
+  settingsSetLoginItem: "settings:set-login-item",
   modelsList: "models:list",
   quickAsk: "quick:ask",
   quickHide: "quick:hide",
@@ -379,6 +381,21 @@ export interface SettingsView {
   version: string;
   /** False when another app already owns the chosen shortcut. */
   quickShortcutOk: boolean;
+  loginItem: LoginItemState;
+}
+
+/** 로그인할 때 포코 열기, read from the system (Poko stores no copy). */
+export interface LoginItemState {
+  /** Only the installed macOS app, in the Applications folder, can open at login. */
+  available: boolean;
+  /** Why not: a development build (or not macOS), or an app outside the Applications folder. */
+  unavailable: "development" | "location" | null;
+  /** On, including while macOS waits for the user's approval. */
+  enabled: boolean;
+  /** macOS waits for the user to allow it in 시스템 설정 → 로그인 항목. */
+  needsApproval: boolean;
+  /** Turned on just now, but macOS didn't register it. */
+  failed?: boolean;
 }
 
 /** The word the user types to confirm 모든 데이터 삭제. */
