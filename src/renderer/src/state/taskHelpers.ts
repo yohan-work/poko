@@ -97,3 +97,12 @@ export function fromBootstrap(data: AppBootstrap): Partial<AppState> {
     activities: [...data.activities].reverse(),
   };
 }
+
+/**
+ * The question as the user typed it, or null when it can't be sent again as it was: a message
+ * with files (📎) or a screen task (🖥️, 🖱️), whose content or window isn't kept.
+ */
+export function questionText(content: string): string | null {
+  if (/^(🖥️|🖱️)/u.test(content) || /(^|\n)📎 /u.test(content)) return null;
+  return content.trim() || null;
+}

@@ -3,6 +3,7 @@ import type { QuickState } from "../../../../../electron/shared";
 import { Character } from "../character/Character";
 import { DictationButton } from "../chat/DictationButton";
 import { Markdown } from "../chat/Markdown";
+import { CopyButton } from "../chat/CopyButton";
 import { SpeakButton } from "../chat/SpeakButton";
 import { stopSpeaking } from "../../lib/speech";
 
@@ -202,6 +203,7 @@ export function QuickPanel() {
               {state.phase === "done" && state.taskId && (
                 <div className="message__actions">
                   <SpeakButton id={state.taskId} text={state.answer} />
+                  <CopyButton text={state.answer} />
                 </div>
               )}
             </div>

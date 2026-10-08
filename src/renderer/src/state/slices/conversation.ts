@@ -102,6 +102,28 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
   },
 
   folderGone: null,
+  retryable: null,
+  composerPrefill: null,
+
+  retryLast: async () => {
+    const retry = get().retryable;
+    if (!retry || get().isSending || retry.conversationId !== get().activeConversationId) return;
+    set({ retryable: null });
+    // Refused (busy, another folder): offered again, nothing was recorded. A start that
+    // failed offers it again by itself.
+    if ((await get().sendMessage(retry.question)) === "refused") set({ retryable: retry });
+  },
+
+  editLastQuestion: () => {
+    // The question 다시 시도 would send, so the two buttons always mean the same one.
+    const retry = get().retryable;
+    if (!retry || retry.conversationId !== get().activeConversationId) return;
+    set({
+      composerPrefill: { text: retry.question, nonce: (get().composerPrefill?.nonce ?? 0) + 1 },
+    });
+  },
+
+  takeComposerPrefill: () => set({ composerPrefill: null }),
 
   switchToConversationFolder: async () => {
     const id = get().activeConversationId;
