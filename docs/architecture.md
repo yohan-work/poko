@@ -159,27 +159,27 @@ The initial schema is:
 | Table | Responsibility | Initial fields |
 | --- | --- | --- |
 | `settings` | app preferences and workspace | `key`, `value`, `updated_at` |
-| `conversations` | conversation identity | `id`, `title`, `created_at`, `updated_at` |
+| `conversations` | conversation identity | `id`, `title`, `workspace_path`, `created_at`, `updated_at` |
 | `messages` | user and assistant messages | `id`, `conversation_id`, `role`, `content`, `created_at` |
 | `tasks` | provider work lifecycle | `id`, `title`, `prompt`, `provider`, `status`, `workspace`, `created_at`, `completed_at` |
 | `activities` | user-readable and technical timeline | `id`, `task_id`, `type`, `message`, `created_at` |
-| `memories` | explicit searchable personal/project facts | `id`, `type`, `content`, `importance`, `source`, `created_at`, `updated_at` |
+| `memories` | explicit searchable personal/project facts | `id`, `type`, `content`, `importance`, `source`, `workspace_path`, `created_at`, `updated_at` |
 
-Add foreign keys and indexes with the first migration. Import the existing workspace path from `settings.json` into the settings row only when no database value exists; retain the old file during migration. Mark tasks left in `running` at an unclean shutdown as failed on next startup. Persist explicit memory records with parameterized literal text search; do not add automatic memory extraction or a vector database. SQLite content is local but unencrypted in v0.1, so keep API keys and tokens out of it. Close the database after workers stop during app shutdown.
+Add foreign keys and indexes with the first migration. Import the existing workspace path from `settings.json` into the settings row only when no database value exists; retain the old file during migration. Mark tasks left in `running` at an unclean shutdown as failed on next startup. Persist explicit memory records with parameterized literal text search. A memory is saved only when the user writes it or says yes to a suggestion; there is no vector database. SQLite content is local but unencrypted in v0.1, so keep API keys and tokens out of it. Close the database after workers stop during app shutdown.
 
 ## Deferred extension points
 
-- `src/providers/claude`: future provider, no implementation in v0.1.
-- `src/tools/browser`: future Playwright integration, no browser automation in v0.1.
-- `electron/screen`: Phase 06 screen companion. Main-process window capture, a Swift accessibility helper, one-approved-step actions, and the overlay window. See [Phase 06](phases/phase-06.md).
-- `src/agent/scheduler`: future routines and scheduling, no scheduler in v0.1.
-- `skills/`: prompt guidance loaded by the Agent Core; begin with the coding skill when Codex integration lands.
+- `src/tools/browser`: Playwright integration, not planned. Browser tasks go through the screen helper instead.
+- Running routines while Poko is quit (a login item or launch agent).
+- `skills/`: prompt guidance loaded by the Agent Core; `skills/coding` is the only one today.
+
+The Claude Code provider (`electron/providers/claude`, Phase 11), the screen companion (`electron/screen`, Phase 06), and routines (`electron/routines`, Phase 15) were seams here and now exist.
 
 These are documented seams, not empty packages to scaffold in advance.
 
 ## Phase 01 implementation
 
-The app uses Electron Vite's main, preload, and renderer processes. Phase 03 imports a previous workspace path from the legacy JSON settings file if the SQLite setting is empty; new preference writes go directly to SQLite. The preload exposes persistence through narrow typed methods. Automatic memory extraction, browser automation, scheduling, and approval-gated writes remain out of scope until their planned phases.
+The app uses Electron Vite's main, preload, and renderer processes. Phase 03 imports a previous workspace path from the legacy JSON settings file if the SQLite setting is empty; new preference writes go directly to SQLite. The preload exposes persistence through narrow typed methods. Later phases added approval-gated writes (Phase 08), memory suggestions saved only on yes, and routines (Phase 15).
 
 ## Screen companion (Phase 06)
 
@@ -203,3 +203,9 @@ Routines are the first work Poko starts on its own, so they get a narrower bound
   - a missed time runs only on its own day, or within 35 minutes across midnight.
 - **The timer lives in main:** `RoutineRunner` is checked every minute, at startup, and on wake or unlock, and runs one routine at a time. It runs only while Poko runs; a login item or launch agent is deferred.
 
+## Folders (Phase 16)
+
+A conversation and a 프로젝트 or 결정 memory belong to a folder (`workspace_path`, a resolved real path):
+- A conversation takes the folder of its first task with a real path; a follow-up from another selected folder is refused, and the user switches with `workspace:use-conversation-folder`, which sends no path from the renderer.
+- A task's context gets shared memories plus its own folder's; a screen task gets only shared ones.
+- Main decides a memory's folder: a suggestion's comes from the task that made it, a typed one from the selected folder. See [Phase 16](phases/phase-16.md).

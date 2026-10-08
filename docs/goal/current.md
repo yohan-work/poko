@@ -1,8 +1,8 @@
 # 현재 목표
 
 - 상태: 진행 중
-- 마지막 갱신: 2026-10-02 Asia/Seoul
-- 현재 작업 단위: Phase 08 승인된 수정과 되돌리기 완료([phase-08](../phases/phase-08.md), #38–#40). CI가 모든 PR에서 검사를 돌린다(#37). Phase 09 설치형 앱 완료([phase-09](../phases/phase-09.md), #41–#43). 코드 구조 정리 완료(#45 main.ts 분리, #46 스토어 흐름 테스트). Phase 10 설정과 데이터 완료([계획](../phases/phase-10.md)): 설정 페이지, 기억 스위치, 보관 기간, 내보내기, 전체 삭제. Phase 11 Claude Code 엔진 완료([계획](../phases/phase-11.md)): 설정에서 엔진 선택, 같은 승인 카드·체크포인트·되돌리기. 화면 작업은 Codex 유지. 모델 선택(#54), Phase 12 승인 후 샌드박스 명령 실행(#58), Phase 13 어디서든 포코 부르기(#59 계획, #60 빠른 입력창, #61 메뉴바) 완료. 다음: 배포 마무리(아래 재개 지점).
+- 마지막 갱신: 2026-10-08 Asia/Seoul
+- 현재 작업 단위: Phase 00–16 완료(#1–#86). 진행 순서: 문서 정리 → `Database.ts` 영역별 분리 → 미검증 항목 확인 → Phase 17 질문 대기열.
 
 ## 목표와 성공 기준
 
@@ -11,8 +11,8 @@
 
 ## 범위와 확정된 결정
 
-- 포함: Phase 00–04 기반, Claude 스타일 UI 개편, Phase 05 대화 품질.
-- 제외: 자동 memory extraction, browser 자동화, scheduler, 자동 실행. 승인 기반 파일 쓰기는 workspace-write 샌드박스와 함께 Phase 07 이후에 진행한다.
+- 포함(완료): Phase 00–16. 승인 후 파일 수정과 되돌리기, 샌드박스 명령 실행(Claude Code), 화면 보기와 한 단계씩 승인하는 브라우저 작업, 승인 후 저장하는 기억 제안, 항상 읽기 전용인 루틴.
+- 제외: 승인 없는 기억 저장, Playwright 같은 브라우저 자동화, Poko가 꺼져 있을 때의 실행, 배포(보류).
 - 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. Electron main/preload/renderer는 Electron Vite를 사용하며 renderer에는 좁은 IPC bridge만 노출한다. README는 현재 동작과 계획 기능을 구분한다.
 - 결정: 사용자 승인으로 Phase 04 Codex transport를 `codex exec --json`에서 stdio JSON-RPC `codex app-server`로 전환한다. App Server는 experimental이므로 capability를 좁게 유지하고 검증 전 write 실행은 fail-closed로 둔다.
 
