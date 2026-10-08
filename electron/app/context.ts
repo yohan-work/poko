@@ -135,16 +135,30 @@ export async function startConversationTask(
   return started;
 }
 
+export const folderGoneMessage = (folder: string) =>
+  `이 대화의 ${basename(folder)} 폴더를 찾지 못했어. 새 대화에서 물어봐 줘.`;
+
+/**
+ * A conversation's folder, resolved now: `resolved` is null when it no longer exists, and the
+ * whole result is null when the conversation has no folder yet.
+ */
+export async function conversationFolder(
+  conversationId: string,
+): Promise<{ folder: string; resolved: string | null } | null> {
+  const folder = ctx.database?.getConversation(conversationId)?.workspacePath;
+  if (!folder) return null;
+  return { folder, resolved: await resolveWorkspaceDirectory(folder).catch(() => null) };
+}
+
 /**
  * Why a conversation can't continue in the selected folder `cwd` (resolved), or null when it
- * can: it has no folder yet, or it is this one.
+ * can: it has no folder yet, or it resolves to this one (a folder reached through a link too).
  */
 export async function folderMismatch(conversationId: string, cwd: string): Promise<string | null> {
-  const folder = ctx.database?.getConversation(conversationId)?.workspacePath;
-  if (!folder || folder === cwd) return null;
-  const name = basename(folder);
-  if (!(await resolveWorkspaceDirectory(folder).catch(() => null)))
-    return `이 대화의 ${name} 폴더를 찾지 못했어. 새 대화에서 물어봐 줘.`;
+  const found = await conversationFolder(conversationId);
+  if (!found || found.resolved === cwd) return null;
+  if (!found.resolved) return folderGoneMessage(found.folder);
+  const name = basename(found.folder);
   return `이 대화는 ${name} 폴더에서 나눈 대화야. ${name}로 바꾼 뒤 이어서 물어봐 줘.`;
 }
 

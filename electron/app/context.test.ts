@@ -1,5 +1,6 @@
-import { realpath } from "node:fs/promises";
+import { mkdtemp, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: {}, ipcMain: { handle: vi.fn() } }));
@@ -48,12 +49,16 @@ describe("folderMismatch", () => {
       same: { workspacePath: here },
       other: { workspacePath: "/" },
       gone: { workspacePath: "/no/such/folder/poko-test" },
+      // The same folder, stored as a link to it.
+      linked: { workspacePath: join(await mkdtemp(join(tmpdir(), "poko-link-")), "here") },
     };
+    await symlink(here, conversations.linked.workspacePath as string);
     ctx.database = { getConversation: (id: string) => conversations[id] ?? null } as never;
     expect(await folderMismatch("none", here)).toBeNull();
     expect(await folderMismatch("same", here)).toBeNull();
     expect(await folderMismatch("other", here)).toContain("폴더에서 나눈 대화야");
     expect(await folderMismatch("gone", here)).toContain("폴더를 찾지 못했어");
+    expect(await folderMismatch("linked", here)).toBeNull();
     ctx.database = null;
   });
 });

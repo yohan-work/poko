@@ -98,6 +98,8 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
     }
   },
 
+  folderGone: null,
+
   switchToConversationFolder: async () => {
     const id = get().activeConversationId;
     if (!id) return;
@@ -105,7 +107,11 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
       .switchToConversationFolder(id)
       .catch(() => ({ error: "폴더를 바꾸지 못했어. 다시 시도해 줘." }));
     if ("error" in response) {
-      set({ conversationError: response.error });
+      // A folder that is gone can't be switched to; the line then says so instead.
+      set({
+        conversationError: response.error,
+        ...("gone" in response && response.gone ? { folderGone: id } : {}),
+      });
       return;
     }
     set({ workspace: response.workspace, conversationError: null, workspaceError: null });
@@ -119,7 +125,9 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
 
     try {
       const workspace = await window.poko.workspace.select();
-      if (workspace) {
+      if (workspace && "error" in workspace) {
+        set({ characterState: "idle", workspaceError: workspace.error });
+      } else if (workspace) {
         set({ workspace, characterState: "success" });
         // Each folder keeps its own edit setting.
         void get().loadEdits();

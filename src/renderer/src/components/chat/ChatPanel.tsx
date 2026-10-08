@@ -347,9 +347,28 @@ function FolderBanner() {
   );
   const workspace = useAppStore((state) => state.workspace);
   const isSending = useAppStore((state) => state.isSending);
+  const gone = useAppStore((state) => state.folderGone === state.activeConversationId);
   const switchToConversationFolder = useAppStore((state) => state.switchToConversationFolder);
-  if (!folder || !workspace || folder === workspace.realPath) return null;
+  const newConversation = useAppStore((state) => state.newConversation);
+  // Shown also when no folder is selected: the switch picks it without the dialog.
+  if (!folder || folder === workspace?.realPath) return null;
   const name = folderName(folder);
+  if (gone)
+    return (
+      <div className="foreign-banner" role="status">
+        <span>
+          이 대화의 <strong>{name}</strong> 폴더를 찾지 못했어. 새 대화에서 물어봐 줘.
+        </span>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={isSending}
+          onClick={() => void newConversation()}
+        >
+          새 대화
+        </button>
+      </div>
+    );
   return (
     <div className="foreign-banner" role="status">
       <span>

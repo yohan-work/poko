@@ -29,6 +29,8 @@ function WorkspaceButton() {
   const workspaceError = useAppStore((state) => state.workspaceError);
   const selectWorkspace = useAppStore((state) => state.selectWorkspace);
   const edits = useAppStore((state) => state.edits);
+  // A task uses the folder it started in; the folder changes only between tasks.
+  const busy = useAppStore((state) => state.isSending || state.busyElsewhere);
 
   return (
     <div className="sidebar__footer">
@@ -36,9 +38,13 @@ function WorkspaceButton() {
         className="workspace-button"
         type="button"
         onClick={() => void selectWorkspace()}
-        disabled={isSelectingWorkspace}
+        disabled={isSelectingWorkspace || busy}
         data-state={workspaceError ? "error" : workspace ? "selected" : "empty"}
-        title={workspace?.path ?? "작업할 폴더 선택"}
+        title={
+          busy
+            ? "포코가 작업 중이라 끝난 뒤에 폴더를 바꿀 수 있어."
+            : (workspace?.path ?? "작업할 폴더 선택")
+        }
       >
         <span className="workspace-button__icon" aria-hidden="true">
           <Icon name="folder" />

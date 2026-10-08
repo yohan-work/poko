@@ -176,6 +176,8 @@ export interface ConversationSlice {
   workspaceError: string | null;
   initializeWorkspace: () => Promise<void>;
   selectWorkspace: () => Promise<void>;
+  /** A conversation whose folder was found missing, so its line offers a new conversation. */
+  folderGone: string | null;
   /** Selects the folder the shown conversation works in (its 폴더로 바꾸기 button). */
   switchToConversationFolder: () => Promise<void>;
   /**
