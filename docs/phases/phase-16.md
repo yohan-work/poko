@@ -84,4 +84,10 @@ Today a conversation has no folder: a follow-up runs in whatever folder is selec
 - **Milestone 1 (conversations) is done.** Checked in the real app by upgrading a test profile made with the previous build:
   - the conversation got its folder from the backfill;
   - with another folder selected, it showed the line, refused a follow-up with the same message, switched with one click, and then answered from the right project.
+- **Milestone 2 (memories) is done.**
+  - 프로젝트 and 결정 memories are saved in a folder: a suggestion's in the folder of the task that made it, and a typed one in the selected folder (refused without one).
+  - Tasks get shared memories plus their own folder's, and screen tasks get only shared ones.
+  - One duplicate rule (`isSameMemory`) serves saving and the suggestion filter.
+  - The 기억 page shows "· {folder} 폴더" or "· 모든 폴더", and can filter to what the selected folder uses.
+  - **Real app:** with a project memory in projA and another in projB, a question in projB answered with projB's, and the page's filter showed only shared and projB memories.
 

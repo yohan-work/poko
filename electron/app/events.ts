@@ -1,4 +1,11 @@
-import { IPC_CHANNELS, type ApprovalRequest, type TaskEventPayload } from "../shared";
+import {
+  type ApprovalRequest,
+  FOLDER_MEMORY_TYPES,
+  IPC_CHANNELS,
+  isSameMemory,
+  type TaskEventPayload,
+} from "../shared";
+import { isFolderPath } from "../database/Database";
 import { replaceCitations } from "../screen/overlayScene";
 import { removeAttachments } from "../attachments/attachments";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
@@ -27,12 +34,16 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
   }
   // A suggestion matching a saved memory isn't worth asking about again.
   if (payload.event.type === "completed" && payload.event.memory && ctx.database) {
-    const wanted = payload.event.memory.content.trim().toLowerCase();
+    const { memory: suggested } = payload.event;
     let known = false;
     try {
-      known = ctx.database
-        .listMemories()
-        .some((memory) => memory.content.trim().toLowerCase() === wanted);
+      const folder = ctx.database.getTaskWorkspace(payload.taskId);
+      const wanted = {
+        ...suggested,
+        workspacePath:
+          FOLDER_MEMORY_TYPES.includes(suggested.type) && isFolderPath(folder) ? folder : null,
+      };
+      known = ctx.database.listMemories().some((memory) => isSameMemory(memory, wanted));
     } catch (error) {
       // Only the duplicate check is lost; the task still finishes normally.
       console.error("Could not check saved memories.", error);

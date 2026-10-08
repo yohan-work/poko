@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { PersistedMemory } from "../../../../../electron/shared";
-import type { MemoryInput } from "../../../../../electron/shared";
+import { FOLDER_MEMORY_TYPES, type MemoryInput } from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
 import { relativeTime } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
@@ -89,6 +89,14 @@ export function MemoryPanel() {
   const deleteMemory = useAppStore((state) => state.deleteMemory);
   const [query, setQuery] = useState("");
   const [isAdding, setAdding] = useState(false);
+  const workspace = useAppStore((state) => state.workspace);
+  // "이 폴더": the memories tasks in the selected folder get (shared ones and its own).
+  const [onlyHere, setOnlyHere] = useState(false);
+  const shown = onlyHere
+    ? memories.filter(
+        (memory) => !memory.workspacePath || memory.workspacePath === workspace?.realPath,
+      )
+    : memories;
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadMemories(query), query ? 180 : 0);
@@ -100,7 +108,7 @@ export function MemoryPanel() {
       <PageHeader
         id="memory-title"
         title="기억"
-        description="직접 저장한 내용만 기억해. 이 컴퓨터에 보관되고, 요청할 때 Codex에 함께 전달돼서 답변에 반영돼."
+        description="직접 저장하거나 '기억하기'로 고른 내용만 기억해. 이 컴퓨터에 보관되고, 요청할 때 엔진에 함께 전달돼. 프로젝트와 결정 기억은 저장한 폴더의 작업에만 전달돼."
         action={
           !isAdding && (
             <button className="primary-button" type="button" onClick={() => setAdding(true)}>
@@ -118,13 +126,34 @@ export function MemoryPanel() {
         </p>
       )}
 
-      {memories.length === 0 ? (
+      {workspace?.realPath && (
+        <fieldset className="segmented memory-scope">
+          <legend className="sr-only">보여 줄 기억</legend>
+          {(
+            [
+              [false, "모두"],
+              [true, `${workspace.name} 폴더에 쓰이는 것`],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={onlyHere === value}
+              className={`segmented__item${onlyHere === value ? " is-active" : ""}`}
+              onClick={() => setOnlyHere(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </fieldset>
+      )}
+      {shown.length === 0 ? (
         <EmptyState>
           {query ? "검색과 맞는 기억이 없어." : "아직 저장된 기억이 없어. 새 기억을 추가해 볼까?"}
         </EmptyState>
       ) : (
         <ul className="card-grid" aria-label="저장된 기억">
-          {memories.map((memory) => (
+          {shown.map((memory) => (
             <MemoryCard
               key={memory.id}
               memory={memory}
@@ -158,6 +187,16 @@ function MemoryCard({ memory, onDelete }: { memory: PersistedMemory; onDelete: (
     <li className="memory-card">
       <span className="memory-card__type">
         {memoryTypes.find((item) => item.value === memory.type)?.label}
+        {memory.workspacePath ? (
+          <span className="memory-card__folder" title={memory.workspacePath}>
+            {" · "}
+            {memory.workspacePath.split("/").filter(Boolean).at(-1)} 폴더
+          </span>
+        ) : FOLDER_MEMORY_TYPES.includes(memory.type) ? (
+          <span className="memory-card__folder" title="폴더가 정해지기 전에 저장된 기억이야.">
+            {" · "}모든 폴더
+          </span>
+        ) : null}
       </span>
       <div>
         <p ref={contentRef} className={`memory-card__content${expanded ? " is-expanded" : ""}`}>

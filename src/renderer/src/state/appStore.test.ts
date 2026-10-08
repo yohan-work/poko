@@ -215,10 +215,21 @@ describe("memory suggestions", () => {
       result: "좋아요.",
       memory: { type: "preference", content: "답은 짧게" },
     });
-    expect(store.getState().memorySuggestion).toEqual({ type: "preference", content: "답은 짧게" });
+    // It keeps the task that suggested it, so a folder memory lands in that task's folder.
+    expect(store.getState().memorySuggestion).toEqual({
+      type: "preference",
+      content: "답은 짧게",
+      taskId: "t1",
+    });
     await store.getState().answerMemorySuggestion(false);
     expect(saved).toEqual([]);
     expect(store.getState().memorySuggestion).toBeNull();
+
+    store.setState({ memorySuggestion: { type: "project", content: "pnpm을 써", taskId: "t1" } });
+    await store.getState().answerMemorySuggestion(true);
+    expect(saved).toEqual([
+      { type: "project", content: "pnpm을 써", importance: 3, fromTaskId: "t1" },
+    ]);
   });
 });
 
@@ -367,6 +378,7 @@ describe("deleting all data", () => {
           id: "k",
           type: "fact",
           content: "기억",
+          workspacePath: null,
           importance: 3,
           source: "user",
           createdAt: "x",

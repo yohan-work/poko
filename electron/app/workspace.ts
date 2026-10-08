@@ -1,5 +1,7 @@
 import { dialog, ipcMain } from "electron";
-import { IPC_CHANNELS, type MemoryInput } from "../shared";
+import { resolveWorkspaceDirectory } from "../agent/workspace";
+import { isFolderPath } from "../database/Database";
+import { FOLDER_MEMORY_TYPES, IPC_CHANNELS, type MemoryInput } from "../shared";
 import {
   anyTaskBusy,
   bootstrapData,
@@ -9,6 +11,24 @@ import {
   isTrustedRenderer,
   workspaceInfo,
 } from "./context";
+
+/**
+ * The folder a memory is saved in: null for shared types. A suggestion's memory belongs to the
+ * folder of the task that suggested it (shared for a screen task); one typed on the 기억 page
+ * belongs to the selected folder, and is refused rather than quietly shared without one.
+ */
+export async function memoryFolder(
+  type: MemoryInput["type"],
+  fromTaskId: unknown,
+): Promise<string | null | { error: string }> {
+  if (!FOLDER_MEMORY_TYPES.includes(type) || !ctx.database) return null;
+  if (typeof fromTaskId === "string" && fromTaskId.length <= 100) {
+    const folder = ctx.database.getTaskWorkspace(fromTaskId);
+    return isFolderPath(folder) ? folder : null;
+  }
+  const selected = await resolveWorkspaceDirectory(ctx.database.getWorkspace()).catch(() => null);
+  return selected ?? { error: "프로젝트나 결정 기억은 폴더에 속해. 먼저 작업할 폴더를 선택해 줘." };
+}
 
 const FOLDER_BUSY = "포코가 작업 중이라 지금은 폴더를 바꿀 수 없어. 끝난 뒤에 다시 해 줘.";
 
@@ -81,7 +101,7 @@ export function registerWorkspaceHandlers(): void {
       ? ctx.database.searchMemories(rawQuery.trim())
       : ctx.database.listMemories();
   });
-  ipcMain.handle(IPC_CHANNELS.memorySave, (event, rawInput: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.memorySave, async (event, rawInput: unknown) => {
     if (!isTrustedRenderer(event) || !ctx.database)
       throw new Error("Unknown renderer requested memory save.");
     if (typeof rawInput !== "object" || rawInput === null) throw new TypeError("Invalid memory.");
@@ -97,11 +117,13 @@ export function registerWorkspaceHandlers(): void {
       (input.importance ?? 0) > 5
     )
       throw new TypeError("Invalid memory.");
-    return ctx.database.saveMemory({
-      type: input.type as MemoryInput["type"],
-      content: input.content,
-      importance: input.importance as number,
-    });
+    const type = input.type as MemoryInput["type"];
+    const scope = await memoryFolder(type, input.fromTaskId);
+    if (typeof scope === "object" && scope !== null) return scope;
+    return ctx.database.saveMemory(
+      { type, content: input.content, importance: input.importance as number },
+      scope,
+    );
   });
   ipcMain.handle(IPC_CHANNELS.memoryDelete, (event, rawId: unknown) => {
     if (!isTrustedRenderer(event) || !ctx.database)

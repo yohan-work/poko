@@ -270,6 +270,8 @@ export interface PersistedMemory {
   id: string;
   type: "preference" | "project" | "person" | "decision" | "fact" | "routine";
   content: string;
+  /** The folder a 프로젝트 or 결정 memory belongs to; null: every folder. */
+  workspacePath: string | null;
   importance: number;
   source: string;
   createdAt: string;
@@ -288,6 +290,26 @@ export interface MemoryInput {
   type: PersistedMemory["type"];
   content: string;
   importance: number;
+  /** Saved from this task's suggestion: a folder memory belongs to the task's folder. */
+  fromTaskId?: string;
+}
+
+/** Memory types that belong to the folder they were saved in; the rest go to every task. */
+export const FOLDER_MEMORY_TYPES: readonly PersistedMemory["type"][] = ["project", "decision"];
+
+/**
+ * Whether a saved memory already says this, where it would apply: same type and text, and
+ * shared or in the same folder.
+ */
+export function isSameMemory(
+  memory: Pick<PersistedMemory, "type" | "content" | "workspacePath">,
+  wanted: { type: PersistedMemory["type"]; content: string; workspacePath: string | null },
+): boolean {
+  return (
+    memory.type === wanted.type &&
+    memory.content.trim().toLowerCase() === wanted.content.trim().toLowerCase() &&
+    (memory.workspacePath === null || memory.workspacePath === wanted.workspacePath)
+  );
 }
 
 /** How long undo data for approved changes is kept, in days. */

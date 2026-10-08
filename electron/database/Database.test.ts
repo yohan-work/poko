@@ -302,6 +302,44 @@ describe("PokoDatabase", () => {
     database.close();
   });
 
+  it("gives a task only shared memories and its own folder's", async () => {
+    const database = await openDatabase();
+    database.saveMemory({ type: "preference", content: "답은 짧게", importance: 3 });
+    database.saveMemory({ type: "project", content: "A는 pnpm을 써", importance: 3 }, "/w/a");
+    database.saveMemory({ type: "project", content: "B는 npm을 써", importance: 3 }, "/w/b");
+    const contents = (taskId: string) =>
+      database
+        .getTaskContext(taskId)
+        .memories.map((memory) => memory.content)
+        .sort();
+    expect(contents(database.createTask("질문", "/w/a"))).toEqual(["A는 pnpm을 써", "답은 짧게"]);
+    expect(contents(database.createTask("질문", "/w/b"))).toEqual(["B는 npm을 써", "답은 짧게"]);
+    // A screen task has no folder: shared memories only.
+    expect(contents(database.createTask("화면", "screen:Safari"))).toEqual(["답은 짧게"]);
+    database.close();
+  });
+
+  it("treats a memory as a duplicate when it is shared or in the same folder", async () => {
+    const database = await openDatabase();
+    const shared = database.saveMemory({ type: "project", content: "pnpm을 써", importance: 3 });
+    // Already true everywhere: not saved again for one folder.
+    expect(
+      database.saveMemory({ type: "project", content: "pnpm을 써", importance: 3 }, "/w/a").id,
+    ).toBe(shared.id);
+    const inA = database.saveMemory(
+      { type: "decision", content: "main에 바로", importance: 3 },
+      "/w/a",
+    );
+    // Folder B can still learn what folder A knows.
+    const inB = database.saveMemory(
+      { type: "decision", content: "main에 바로", importance: 3 },
+      "/w/b",
+    );
+    expect(inB.id).not.toBe(inA.id);
+    expect(database.listMemories()).toHaveLength(3);
+    database.close();
+  });
+
   it("keeps the same memory once", async () => {
     const database = await openDatabase();
     const first = database.saveMemory({ type: "fact", content: "답은 짧게", importance: 3 });

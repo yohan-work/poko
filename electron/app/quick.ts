@@ -7,6 +7,7 @@ import {
 } from "../shared";
 import { ctx, handleTaskStart, isQuickPanel, startConversationTask } from "./context";
 import { startScreenLook } from "./screen";
+import { memoryFolder } from "./workspace";
 
 let registered: string | null = null;
 /**
@@ -167,7 +168,7 @@ export function registerQuickHandlers(): void {
   });
 
   // The panel can only say yes or no; the memory itself is the one main kept from the answer.
-  ipcMain.handle(IPC_CHANNELS.quickRemember, (event, keep: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.quickRemember, async (event, keep: unknown) => {
     if (!isQuickPanel(event) || !ctx.quickPanel) throw new Error("Unknown sender answered.");
     const memory = ctx.quickPanel.pendingMemory;
     // Already answered (a second click): nothing to change.
@@ -178,7 +179,9 @@ export function registerQuickHandlers(): void {
     }
     try {
       if (!ctx.database) throw new Error("Local storage is unavailable.");
-      ctx.database.saveMemory({ type: memory.type, content: memory.content, importance: 3 });
+      const scope = await memoryFolder(memory.type, ctx.quickPanel.taskId);
+      if (typeof scope === "object" && scope !== null) throw new Error(scope.error);
+      ctx.database.saveMemory({ type: memory.type, content: memory.content, importance: 3 }, scope);
     } catch (error) {
       console.error("Could not save a suggested memory.", error);
       ctx.quickPanel.settleMemory("failed");

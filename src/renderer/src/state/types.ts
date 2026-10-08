@@ -111,7 +111,8 @@ export interface EditsSlice {
 /** Saved memories and the memory the last answer suggested. */
 export interface MemorySlice {
   /** A memory the last answer suggested, waiting for the user's yes or no. */
-  memorySuggestion: MemorySuggestion | null;
+  /** With the task that suggested it, so a folder memory is saved in that task's folder. */
+  memorySuggestion: (MemorySuggestion & { taskId: string }) | null;
   /** Saves the suggested memory (yes) or drops it (no). */
   answerMemorySuggestion: (keep: boolean) => Promise<void>;
   memorySuggestionError: string | null;
