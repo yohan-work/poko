@@ -54,6 +54,7 @@ Screenshots use sample data.
 - [x] Conversations and project memories belong to their folder, so projects never mix (Phase 16)
 - [x] Retry or change a failed question, copy an answer, and keyboard shortcuts (⌘N, ⌘K, ⌘., ⌘,)
 - [x] Follow up in the quick panel without opening the app
+- [x] Edit a saved memory in place
 
 ## What Poko is aiming for
 

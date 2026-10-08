@@ -2250,6 +2250,7 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+.memory-card__edit,
 .memory-card__delete {
   width: 28px;
   height: 28px;
@@ -2257,7 +2258,9 @@ button:disabled {
   transition: opacity 120ms ease;
 }
 
+.memory-card:hover .memory-card__edit,
 .memory-card:hover .memory-card__delete,
+.memory-card__edit:focus-visible,
 .memory-card__delete:focus-visible {
   opacity: 1;
 }
@@ -3052,4 +3055,14 @@ html.is-quick body {
 .retry-row .icon {
   width: 14px;
   height: 14px;
+}
+
+.memory-card__editor {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.memory-card__edit {
+  margin-left: auto;
 }

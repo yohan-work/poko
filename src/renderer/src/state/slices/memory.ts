@@ -59,6 +59,15 @@ export const memorySlice: Slice<MemorySlice> = (set, get) => ({
     return true;
   },
 
+  updateMemory: async (id, content) => {
+    const response = await window.poko.memory
+      .update(id, content)
+      .catch(() => ({ error: "기억을 고치지 못했어. 다시 시도해 줘." }));
+    if ("error" in response) return response.error;
+    await get().loadMemories(get().memoryQuery);
+    return null;
+  },
+
   deleteMemory: async (id) => {
     try {
       await window.poko.memory.delete(id);

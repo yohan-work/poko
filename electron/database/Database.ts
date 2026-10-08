@@ -940,6 +940,29 @@ export class PokoDatabase {
     return record;
   }
 
+  /**
+   * Changes what a memory says; its type and folder stay. Refused (null) when the memory is
+   * gone or another memory where it applies already says the same.
+   */
+  updateMemory(id: string, content: string): MemoryRecord | "duplicate" | null {
+    const all = this.listMemories();
+    const memory = all.find((item) => item.id === id);
+    if (!memory) return null;
+    const wanted = { type: memory.type, content, workspacePath: memory.workspacePath };
+    // Both ways: a shared memory may not repeat a folder memory either (both would reach it).
+    const repeats = (item: MemoryRecord) =>
+      isSameMemory(item, wanted) ||
+      (memory.workspacePath === null && isSameMemory({ ...item, workspacePath: null }, wanted));
+    if (all.some((item) => item.id !== id && repeats(item))) return "duplicate";
+    const updatedAt = now();
+    this.db
+      .update(memories)
+      .set({ content: content.trim(), updatedAt })
+      .where(eq(memories.id, id))
+      .run();
+    return { ...memory, content: content.trim(), updatedAt };
+  }
+
   deleteMemory(id: string): boolean {
     return this.db.delete(memories).where(eq(memories.id, id)).run().changes > 0;
   }
