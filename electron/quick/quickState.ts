@@ -12,6 +12,7 @@ export const IDLE_STATE: QuickState = {
   selection: null,
   opened: 0,
   memory: null,
+  followUp: false,
 };
 
 /**

@@ -13,6 +13,10 @@ export class QuickPanel {
   private window: BrowserWindow | null = null;
   private ready: Promise<void> | null = null;
   private state: QuickState = IDLE_STATE;
+  /** The opening in which the shown conversation was asked: follow-ups stay in one opening. */
+  private askedIn: number | null = null;
+  /** A 기억해 줘 still being saved; 새로 묻기 waits for it. */
+  savingMemory = false;
   /** The last height that fits the panel's content (see resize). */
   private height = HEIGHT;
   private readonly itemId = { current: null as string | null, raw: "" };
@@ -85,6 +89,7 @@ export class QuickPanel {
 
   /** A new question started a task. */
   begin(question: string, taskId: string, conversationId: string): void {
+    this.askedIn = this.state.opened;
     this.itemId.current = null;
     this.itemId.raw = "";
     this.state = {
@@ -106,6 +111,7 @@ export class QuickPanel {
    */
   refuse(question: string, message: string, conversationId: string | null = null): void {
     const { screen, screenHint, selection, opened } = this.state;
+    if (conversationId) this.askedIn = opened;
     this.state = {
       ...IDLE_STATE,
       phase: "error",
@@ -125,13 +131,19 @@ export class QuickPanel {
    * it has finished (never one still running or waiting for approval).
    */
   get followUpConversation(): string | null {
-    const { phase, conversationId } = this.state;
-    return phase === "done" || phase === "error" ? conversationId : null;
+    const { phase, conversationId, taskId, opened } = this.state;
+    // Only within the opening it was asked in: reopening the panel later starts fresh.
+    if (!conversationId || this.askedIn !== opened) return null;
+    // A finished answer, or a refused question (no task) that keeps its conversation; not a
+    // task that was cancelled or failed after the main window took it over.
+    return phase === "done" || (phase === "error" && taskId === null) ? conversationId : null;
   }
 
   /** 새로 묻기: the next question starts a new conversation. */
   startFresh(): void {
-    if (this.state.phase === "running" || this.state.phase === "approval") return;
+    if (this.state.phase === "running" || this.state.phase === "approval" || this.savingMemory)
+      return;
+    this.askedIn = null;
     const { screen, screenHint, selection, opened } = this.state;
     this.state = { ...IDLE_STATE, screen, screenHint, selection, opened };
     this.send();
@@ -180,7 +192,10 @@ export class QuickPanel {
   private send(): void {
     const window = this.window;
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
-    window.webContents.send(IPC_CHANNELS.quickState, this.state);
+    window.webContents.send(IPC_CHANNELS.quickState, {
+      ...this.state,
+      followUp: this.followUpConversation !== null,
+    });
   }
 
   private async ensureWindow(): Promise<BrowserWindow> {

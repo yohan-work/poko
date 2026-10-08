@@ -19,6 +19,7 @@ const IDLE: QuickState = {
   selection: null,
   opened: 0,
   memory: null,
+  followUp: false,
 };
 
 const characterFor = {
@@ -91,9 +92,9 @@ export function QuickPanel() {
   }, [state.phase]);
 
   const busy = state.phase === "running" || state.phase === "approval";
-  // After an answer, the next question continues its conversation until 새로 묻기.
-  const followingUp =
-    (state.phase === "done" || state.phase === "error") && Boolean(state.conversationId);
+  // After an answer, the next question continues its conversation until 새로 묻기 (main
+  // decides when it can); a question with the screen always starts fresh.
+  const followingUp = state.followUp && !withScreen;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -199,9 +200,11 @@ export function QuickPanel() {
           {state.screenHint && <span className="quick__hint">{state.screenHint}</span>}
         </div>
       )}
-      {followingUp && (
+      {state.followUp && !busy && (
         <div className="quick__screen">
-          <span className="quick__hint">이 대화에 이어서 물어.</span>
+          <span className="quick__hint">
+            {withScreen ? "화면과 함께 묻는 건 새 대화로 시작해." : "이 대화에 이어서 물어."}
+          </span>
           <button
             type="button"
             className="quick__screen-chip"

@@ -420,6 +420,8 @@ export interface QuickState {
   opened: number;
   /** A memory the panel's answer suggested; main keeps it and saves it only on yes. */
   memory: MemorySuggestion | null;
+  /** The next question continues `conversationId` (main decides; see QuickPanel). */
+  followUp: boolean;
 }
 
 /** The running task, for a main window that opens while it runs. */

@@ -24,7 +24,7 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
    - Enter asks, and the answer streams below as markdown, with the character's state as usual;
    - **앱에서 이어서** opens the main window on that conversation;
    - Esc hides the panel. Hiding never cancels a task, and opening the panel again shows its progress;
-   - each quick question starts a **new conversation** in the selected workspace, with the current engine, model, and edit setting.
+   - a quick question starts a **new conversation** in the selected workspace, with the current engine, model, and edit setting. A follow-up asked right after its answer continues it (see "Following up in the panel" below).
 4. **Approvals stay in the main window.** If the task needs one, the panel says "확인이 필요해. 앱에서 확인해 줘." with a button that opens the main window on the card. There is one place to approve, so the panel can never approve on its own.
 5. **Busy or not ready:** if a task is already running, the panel says so and offers 앱에서 보기. If no workspace is selected or setup isn't ready, the panel says what is missing and opens the app.
 6. **Closing the main window** on macOS hides it instead of destroying it. Tasks keep running, and the menu bar icon and shortcut keep working. **종료** (or ⌘Q) quits as before, still waiting for tasks to cancel.
@@ -130,7 +130,6 @@ Summon Poko without switching apps: a global shortcut or the menu bar icon opens
 ## Explicitly deferred
 
 - Custom shortcut recording.
-- Continuing an existing conversation from the panel.
 - Approving inside the panel.
 
 ## Status
@@ -204,6 +203,7 @@ Verified in the built app:
 ## Follow-up: following up in the panel
 
 - **After an answer:** the panel says "이 대화에 이어서 물어." and the input becomes "이어서 물어봐". The next question continues that conversation, with its history as context. **새로 묻기** starts a new one.
+- **Only right after the answer:** within the same opening of the panel, and only if no newer turn was added in the main window. A question with the screen starts a new conversation, since a screen look carries no history.
 - **Who decides the conversation:** main does. `quick:ask` only says `followUp`, and main uses the conversation whose finished answer the panel shows (`followUpConversation`), never one named by the panel, and never a task still running or waiting.
-- **When it is refused:** a refused follow-up keeps its conversation for the next try. A follow-up in a conversation from another folder is refused by the Phase 16 folder check, like any message.
+- **When it is refused:** a refused follow-up keeps its conversation for the next try, unless the conversation (or its folder) is gone. While it starts, that conversation can't be deleted. A follow-up in a conversation from another folder is refused by the Phase 16 folder check, like any message.
 

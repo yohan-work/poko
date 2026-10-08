@@ -38,6 +38,7 @@ function fakePanel() {
       refuse: (_question: string, message: string, conversationId?: string | null) =>
         void calls.push(`refuse:${message}${conversationId ? `@${conversationId}` : ""}`),
       followUpConversation: null as string | null,
+      taskId: null as string | null,
     },
   };
 }
@@ -159,10 +160,34 @@ describe("quick:ask", () => {
       expect.any(Function),
       [],
     );
-    // A refused follow-up keeps its conversation for the next try.
+    // A refused follow-up keeps its conversation for the next try…
     startConversationTask.mockResolvedValueOnce({ error: "다른 폴더야." });
     await ask({ question: "또", withScreen: false, followUp: true });
     expect(calls.at(-1)).toBe("refuse:다른 폴더야.@c1");
+    // …unless the conversation (or its folder) is gone.
+    startConversationTask.mockResolvedValueOnce({ error: "폴더를 찾지 못했어.", gone: true });
+    await ask({ question: "또", withScreen: false, followUp: true });
+    expect(calls.at(-1)).toBe("refuse:폴더를 찾지 못했어.");
+
+    // Not a conversation the main window has gone on with since the panel's answer.
+    panel.taskId = "t-panel";
+    ctx.database = { latestTaskId: () => "t-newer" } as never;
+    await ask({ question: "이어서", withScreen: false, followUp: true });
+    expect(startConversationTask).toHaveBeenLastCalledWith(
+      "이어서",
+      null,
+      expect.any(Function),
+      [],
+    );
+    ctx.database = { latestTaskId: () => "t-panel" } as never;
+    await ask({ question: "이어서", withScreen: false, followUp: true });
+    expect(startConversationTask).toHaveBeenLastCalledWith(
+      "이어서",
+      "c1",
+      expect.any(Function),
+      [],
+    );
+    ctx.database = null;
   });
 
   it("refuses senders other than the panel", async () => {

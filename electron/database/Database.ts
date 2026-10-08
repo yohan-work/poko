@@ -380,6 +380,19 @@ export class PokoDatabase {
   }
 
   /** The workspace (real path) a task ran in, or null. */
+  /** The newest task in a conversation, or null. */
+  latestTaskId(conversationId: string): string | null {
+    return (
+      this.db
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(eq(tasks.conversationId, conversationId))
+        .orderBy(desc(tasks.createdAt), desc(sql`${tasks}.rowid`))
+        .limit(1)
+        .get()?.id ?? null
+    );
+  }
+
   hasTask(taskId: string): boolean {
     return Boolean(this.db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get());
   }
