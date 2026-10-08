@@ -42,10 +42,23 @@ let nextTicket = 0;
 let draining = false;
 /** The task that ended last, whose approved changes settle before the next task starts. */
 let lastEnded: string | null = null;
+/** The conversation the last question from the queue went to, even if it failed to start. */
+let lastStartedConversation: string | null = null;
 
 /** Whether any question waits or is about to; while so, Poko counts as busy. */
 export function hasWaiting(): boolean {
   return waiting.length + reserved > 0;
+}
+
+/**
+ * Conversations the window may open while Poko is busy because of the queue: those questions
+ * wait in, and the one the last question went to (it may have failed or ended already).
+ */
+export function queueConversations(): Set<string> {
+  const ids = new Set<string>();
+  for (const item of waiting) if (item.conversationId) ids.add(item.conversationId);
+  if (lastStartedConversation) ids.add(lastStartedConversation);
+  return ids;
 }
 
 export function waitingQuestions(): QueuedQuestion[] {
@@ -207,6 +220,7 @@ async function startWaiting(next: Waiting): Promise<boolean> {
   // Quitting: it stays queued, and the next start shows it as not asked.
   if (ctx.queueFrozen || !ctx.database || !ctx.agentCore) return true;
   const conversationId = ctx.database.startQueuedTask(next.taskId);
+  lastStartedConversation = conversationId;
   const conversation = conversationId ? ctx.database.getConversation(conversationId) : null;
   if (!conversation) {
     dropAttachments(next.taskId);
@@ -267,4 +281,5 @@ export function resetQueueForTests(): void {
   nextTicket = 0;
   draining = false;
   lastEnded = null;
+  lastStartedConversation = null;
 }

@@ -738,11 +738,18 @@ describe("asking while Poko is busy (Phase 17)", () => {
     expect(store.getState()).toMatchObject({ activeTaskId: "t2", isSending: true });
   });
 
-  it("keeps the window on the conversation while questions wait", async () => {
+  it("keeps the window where questions wait, but lets it come back to them", async () => {
     world.changeQueue([{ taskId: "w", conversationId: "a", text: "물어볼 것" }]);
     await store.getState().openConversation("b");
     expect(store.getState().activeConversationId).toBe("a");
     expect(world.calls.some((call) => call.method === "conversations.open")).toBe(false);
+
+    // Watching a task elsewhere (a routine), the window may return to the waiting question.
+    store.setState({ activeConversationId: "r" });
+    const back = store.getState().openConversation("a");
+    world.replyToOpen({ messages: [] });
+    await back;
+    expect(store.getState().activeConversationId).toBe("a");
   });
 
   it("refuses screen tasks while questions wait", async () => {

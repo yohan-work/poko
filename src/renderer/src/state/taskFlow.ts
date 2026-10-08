@@ -250,8 +250,10 @@ export async function switchConversation(id: string | null): Promise<void> {
     set({ activeView: "conversation", conversationError: null });
     return;
   }
-  // Questions still waiting keep the window where they will run.
-  if (state.isSending || state.waitingQuestions.length > 0) {
+  // Questions still waiting keep the window where they will run (their own conversations
+  // stay open to it).
+  const waitsThere = state.waitingQuestions.some((item) => item.conversationId === id);
+  if (state.isSending || (state.waitingQuestions.length > 0 && !waitsThere)) {
     set({
       conversationError: "포코가 작업 중이라 다른 대화로 옮길 수 없어. 끝난 뒤에 다시 골라 줘.",
     });

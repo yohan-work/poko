@@ -337,26 +337,26 @@ function MemorySuggestionCard() {
 
 /** Under a failed or stopped answer: send the same question again, or change it first. */
 /**
- * Questions sent while Poko was busy that will run in this conversation, and those that will
- * become new conversations (shown everywhere, so they can always be cancelled).
+ * Questions sent while Poko was busy, oldest first. All of them show wherever the window is,
+ * so each can be cancelled; one that runs elsewhere names where.
  */
 function WaitingRows() {
   const activeConversationId = useAppStore((state) => state.activeConversationId);
-  const all = useAppStore((state) => state.waitingQuestions);
+  const waiting = useAppStore((state) => state.waitingQuestions);
+  const conversations = useAppStore((state) => state.conversations);
   const cancel = useAppStore((state) => state.cancelWaitingQuestion);
-  const waiting = all.filter(
-    (item) => item.conversationId === activeConversationId || item.conversationId === null,
-  );
+  const where = (conversationId: string | null): string => {
+    if (conversationId === activeConversationId) return "대기 중";
+    if (conversationId === null) return "대기 중 · 새 대화로";
+    const title = conversations.find((item) => item.id === conversationId)?.title;
+    return title ? `대기 중 · ${title}` : "대기 중 · 다른 대화";
+  };
   if (waiting.length === 0) return null;
   return (
     <>
       {waiting.map((item) => (
         <li className="message message--user message--waiting" key={item.taskId}>
-          <span className="waiting-chip">
-            {item.conversationId === null && activeConversationId !== null
-              ? "대기 중 · 새 대화로"
-              : "대기 중"}
-          </span>
+          <span className="waiting-chip">{where(item.conversationId)}</span>
           <p className="waiting-text">{item.text}</p>
           <button
             className="secondary-button waiting-cancel"

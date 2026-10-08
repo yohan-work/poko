@@ -106,3 +106,8 @@ Poko still runs **one task at a time**. A question sent while it is busy waits i
     - a follow-up sent while the first answer was being written showed as 대기 중 with 취소;
     - it started on its own after the first answer, and it used that answer as context ("한 문장으로 줄여 줘" shortened it);
     - 취소 removed a waiting question and put its text back into the empty box.
+  - **Review changes to the plan:**
+    - every waiting question is listed wherever the window is ("대기 중 · {대화 제목}" for one that runs elsewhere), so it can always be cancelled;
+    - while questions wait, the window may still open their conversations and the one the last question went to;
+    - the renderer sends one question at a time;
+    - undo waits while questions wait.
