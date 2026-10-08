@@ -22,6 +22,10 @@ export type QueuedStart = { queued: QueuedQuestion };
 export const QUEUE_FULL = "기다리는 질문이 너무 많아. 하나가 끝난 뒤에 보내 줘.";
 
 interface Waiting extends QueuedQuestion {
+  /** Its place in line, taken when its slot was reserved. */
+  ticket: number;
+  /** Being started: listed until it has started, and no longer cancellable. */
+  starting?: boolean;
   /** What the user typed, sent to the engine with the attached text. */
   message: string;
   /** The resolved folder, checked again when it starts. */
@@ -34,6 +38,7 @@ interface Waiting extends QueuedQuestion {
 const waiting: Waiting[] = [];
 /** Places held by questions still being checked before they join the queue. */
 let reserved = 0;
+let nextTicket = 0;
 let draining = false;
 /** The task that ended last, whose approved changes settle before the next task starts. */
 let lastEnded: string | null = null;
@@ -51,10 +56,11 @@ export function waitingQuestions(): QueuedQuestion[] {
  * Holds a place in the queue. Synchronous, so two starts at once can't both pass the limit.
  * Every place held is given back with `releaseSlot`, whether or not the question joined.
  */
-export function reserveSlot(): boolean {
-  if (waiting.length + reserved >= QUEUE_LIMIT) return false;
+export function reserveSlot(): number | null {
+  if (waiting.length + reserved >= QUEUE_LIMIT) return null;
   reserved += 1;
-  return true;
+  nextTicket += 1;
+  return nextTicket;
 }
 
 export function releaseSlot(): void {
@@ -68,6 +74,8 @@ export async function enqueueQuestion(input: {
   conversationId: string | null;
   folder: string;
   attachments: CheckedAttachment[];
+  /** From reserveSlot: questions join in the order they were sent, whatever their awaits took. */
+  ticket?: number;
 }): Promise<QueuedStart | { error: string }> {
   if (!ctx.database) throw new Error("Local storage is unavailable.");
   let taskId: string;
@@ -103,7 +111,19 @@ export async function enqueueQuestion(input: {
     conversationId: input.conversationId,
     text: input.shown,
   };
-  waiting.push({ ...question, message: input.message, folder: input.folder, images, textFile });
+  if (input.ticket === undefined) nextTicket += 1;
+  const ticket = input.ticket ?? nextTicket;
+  const item: Waiting = {
+    ...question,
+    ticket,
+    message: input.message,
+    folder: input.folder,
+    images,
+    textFile,
+  };
+  const later = waiting.findIndex((other) => other.ticket > ticket && !other.starting);
+  if (later < 0) waiting.push(item);
+  else waiting.splice(later, 0, item);
   sendQueue();
   return { queued: question };
 }
@@ -111,7 +131,7 @@ export async function enqueueQuestion(input: {
 /** 취소: takes a waiting question out. False when it isn't waiting (it may have just started). */
 export function cancelQueued(taskId: string): boolean {
   const index = waiting.findIndex((item) => item.taskId === taskId);
-  if (index < 0) return false;
+  if (index < 0 || waiting[index].starting) return false;
   waiting.splice(index, 1);
   // Recorded directly, not as a task event: nothing ran, so nothing ends (no notification).
   ctx.database?.recordTaskEvent(taskId, "cancelled", "보내기 전에 취소했어.");
@@ -157,10 +177,14 @@ export async function startNext(): Promise<void> {
         console.error("Could not settle edits before the next question.", error),
       );
     while (waiting.length > 0 && !ctx.queueFrozen) {
-      const next = waiting.shift() as Waiting;
-      // The window hears the list change after `taskStarted`, so it still knows where the
-      // question waited when it takes it over.
+      // Listed until it has started, so the window still knows where it waited when
+      // `taskStarted` arrives; no longer cancellable meanwhile.
+      const next = waiting[0];
+      next.starting = true;
       const started = await startWaiting(next);
+      const index = waiting.indexOf(next);
+      // Quitting leaves it queued in the database; the list just forgets it.
+      if (index >= 0) waiting.splice(index, 1);
       sendQueue();
       if (started) break;
     }
@@ -240,6 +264,7 @@ function sendQueue(): void {
 export function resetQueueForTests(): void {
   waiting.length = 0;
   reserved = 0;
+  nextTicket = 0;
   draining = false;
   lastEnded = null;
 }

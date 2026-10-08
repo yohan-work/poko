@@ -110,13 +110,12 @@ export async function startConversationTask(
   // A waiting question counts too, so a new one never runs ahead of it.
   const busy = () =>
     ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1 || hasWaiting();
-  let queued = false;
+  let ticket: number | null = null;
   // Holds a place in the queue right away (no await between the check and the hold).
   const wait = (): { error: string } | null => {
     if (!options.allowQueue) return { error: BUSY_MESSAGE };
-    if (!reserveSlot()) return { error: QUEUE_FULL };
-    queued = true;
-    return null;
+    ticket = reserveSlot();
+    return ticket === null ? { error: QUEUE_FULL } : null;
   };
   if (busy()) {
     const refused = wait();
@@ -125,7 +124,7 @@ export async function startConversationTask(
   try {
     const cwd = await resolveWorkspaceDirectory(ctx.database.getWorkspace());
     // Another task may have started while the folder was being checked.
-    if (!queued && busy()) {
+    if (ticket === null && busy()) {
       const refused = wait();
       if (refused) return refused;
     }
@@ -136,11 +135,18 @@ export async function startConversationTask(
     // The conversation shows which files were attached; their content goes only to the engine.
     const line = attachmentLine(attachments);
     const shown = line ? (message ? `${message}\n\n${line}` : line) : message;
-    if (queued)
-      return await enqueueQuestion({ shown, message, conversationId, folder: cwd, attachments });
+    if (ticket !== null)
+      return await enqueueQuestion({
+        shown,
+        message,
+        conversationId,
+        folder: cwd,
+        attachments,
+        ticket,
+      });
     return await startNow(message, shown, cwd, conversationId, attachments, onRecorded);
   } finally {
-    if (queued) releaseSlot();
+    if (ticket !== null) releaseSlot();
   }
 }
 
@@ -281,12 +287,28 @@ export function handleTaskStart(
 }
 
 /** Settles a task's pending edits and tells the renderer when its conversation's edits changed. */
-export async function settleEdits(taskId: string): Promise<void> {
-  if (!ctx.editManager || !ctx.database) return;
-  if (await ctx.editManager.settle(taskId)) {
-    const conversation = ctx.database.getTaskConversation(taskId);
-    if (conversation) notifyEditsChanged(conversation.id);
-  }
+/** Settles in progress per task, so two calls never process the same pending edits at once. */
+const settling = new Map<string, Promise<void>>();
+
+export function settleEdits(taskId: string): Promise<void> {
+  // Each call runs after the one before it for the same task (the task's end and the next
+  // waiting question both settle it).
+  const previous = settling.get(taskId) ?? Promise.resolve();
+  const run = previous
+    .catch(() => undefined)
+    .then(async () => {
+      if (!ctx.editManager || !ctx.database) return;
+      if (await ctx.editManager.settle(taskId)) {
+        const conversation = ctx.database.getTaskConversation(taskId);
+        if (conversation) notifyEditsChanged(conversation.id);
+      }
+    });
+  settling.set(taskId, run);
+  const forget = (): void => {
+    if (settling.get(taskId) === run) settling.delete(taskId);
+  };
+  run.then(forget, forget);
+  return run;
 }
 
 export function notifyEditsChanged(conversationId: string): void {

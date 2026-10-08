@@ -336,18 +336,27 @@ function MemorySuggestionCard() {
 }
 
 /** Under a failed or stopped answer: send the same question again, or change it first. */
-/** Questions sent while Poko was busy, waiting in this conversation (or this new one). */
+/**
+ * Questions sent while Poko was busy that will run in this conversation, and those that will
+ * become new conversations (shown everywhere, so they can always be cancelled).
+ */
 function WaitingRows() {
   const activeConversationId = useAppStore((state) => state.activeConversationId);
   const all = useAppStore((state) => state.waitingQuestions);
   const cancel = useAppStore((state) => state.cancelWaitingQuestion);
-  const waiting = all.filter((item) => item.conversationId === activeConversationId);
+  const waiting = all.filter(
+    (item) => item.conversationId === activeConversationId || item.conversationId === null,
+  );
   if (waiting.length === 0) return null;
   return (
     <>
       {waiting.map((item) => (
         <li className="message message--user message--waiting" key={item.taskId}>
-          <span className="waiting-chip">대기 중</span>
+          <span className="waiting-chip">
+            {item.conversationId === null && activeConversationId !== null
+              ? "대기 중 · 새 대화로"
+              : "대기 중"}
+          </span>
           <p className="waiting-text">{item.text}</p>
           <button
             className="secondary-button waiting-cancel"

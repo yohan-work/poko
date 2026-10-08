@@ -195,6 +195,32 @@ describe("asking while Poko is busy", () => {
     expect(delivered[0].event.error).toContain("폴더를 찾지 못했어");
   });
 
+  it("lines questions up in the order they were sent, however long their checks took", async () => {
+    const enqueue = (text: string, ticket: number) =>
+      enqueueQuestion({
+        shown: text,
+        message: text,
+        conversationId: "a",
+        folder: here,
+        attachments: [],
+        ticket,
+      });
+    await enqueue("나중에 보낸 것", 2);
+    await enqueue("먼저 보낸 것", 1);
+    becomeFree();
+    await startNext();
+    expect(engine.started.map((input) => input.prompt)).toEqual(["먼저 보낸 것"]);
+  });
+
+  it("lists a question until it has started, and doesn't let it be cancelled meanwhile", async () => {
+    await ask("질문");
+    becomeFree();
+    const starting = startNext();
+    expect(cancelQueued("w1")).toBe(false);
+    await starting;
+    expect(hasWaiting()).toBe(false);
+  });
+
   it("cancels a waiting question without ending anything, and not one that started", async () => {
     await ask("질문");
     expect(cancelQueued("w1")).toBe(true);

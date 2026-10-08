@@ -1,7 +1,13 @@
 import { ipcMain } from "electron";
 import { IPC_CHANNELS } from "../shared";
 import { resolveWorkspaceDirectory } from "../agent/workspace";
-import { ctx, isTrustedRenderer, notifyEditsChanged, readConversationId } from "./context";
+import {
+  anyTaskBusy,
+  ctx,
+  isTrustedRenderer,
+  notifyEditsChanged,
+  readConversationId,
+} from "./context";
 
 /** The edit switch, approved changes, and undo. */
 export function registerEditsHandlers(): void {
@@ -47,9 +53,8 @@ export function registerEditsHandlers(): void {
     if (!isTrustedRenderer(event) || !ctx.database || !ctx.agentCore || !ctx.editManager)
       throw new Error("Unknown renderer asked to undo.");
     if (typeof raw !== "string" || raw.length > 100) throw new TypeError("Invalid edit id.");
-    // Codex may be changing the same files right now.
-    if (ctx.agentCore.hasActiveTasks || ctx.screenRun)
-      return { error: "포코가 작업 중이라 끝난 뒤에 되돌릴 수 있어." };
+    // Codex may be changing the same files right now, or a waiting question may start.
+    if (anyTaskBusy()) return { error: "포코가 작업 중이라 끝난 뒤에 되돌릴 수 있어." };
     const edit = ctx.database.getEdit(raw);
     const failure = await ctx.editManager.undo(raw);
     if (failure) return { error: failure };
