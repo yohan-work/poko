@@ -31,6 +31,7 @@ import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
 import { registerSetupHandlers } from "./app/setup";
 import { registerTaskHandlers } from "./app/tasks";
 import { registerWorkspaceHandlers } from "./app/workspace";
+import { kickQueue } from "./app/queue";
 
 /** Set when the app is quitting, so closing the main window really closes it. */
 let quitting = false;
@@ -96,6 +97,8 @@ async function createWindow(): Promise<void> {
     if (!devServerUrl || !url.startsWith(devServerUrl)) event.preventDefault();
   });
   ctx.mainWindow.on("closed", () => {
+    // Stopping tasks must not start the waiting questions.
+    ctx.queueFrozen = true;
     ctx.agentCore?.cancelAll();
     ctx.screenRun?.agent.stop();
     ctx.screenOverlay?.destroy();
@@ -186,6 +189,8 @@ app
       deliverTaskEvent,
       codingSkill,
     );
+    // A question sent while Poko was busy starts once the running task has fully ended.
+    ctx.agentCore.onIdle(kickQueue);
     ctx.quickPanel = new QuickPanel(
       join(__dirname, "../preload/preload.js"),
       process.env.ELECTRON_RENDERER_URL,
@@ -222,6 +227,8 @@ app.on("window-all-closed", () => {
 let quitAfterTasks = false;
 app.on("before-quit", (event) => {
   quitting = true;
+  // Waiting questions stay waiting; the next start shows them as not asked.
+  ctx.queueFrozen = true;
   globalShortcut.unregisterAll();
   if (ctx.screenRun) {
     // Let the stopped task record that it was cancelled before the ctx.database closes.

@@ -62,6 +62,12 @@ export const IPC_CHANNELS = {
   taskActive: "task:active",
   /** main → main window: a task started elsewhere (the quick panel). */
   taskStarted: "task:started",
+  /** The questions waiting for their turn (see QueuedQuestion). */
+  taskQueued: "task:queued",
+  /** 취소 on a waiting question. */
+  taskCancelQueued: "task:cancel-queued",
+  /** main → main window: the waiting questions changed. */
+  taskQueueChanged: "task:queue-changed",
   /** main → main window: show this conversation (and adopt its running task). */
   appFocusConversation: "app:focus-conversation",
   dataExport: "data:export",
@@ -206,7 +212,17 @@ export interface TaskEventPayload {
   event: AgentEvent;
 }
 
-export type TaskStartResponse = ScreenLookResponse;
+/** A question sent while Poko was busy, waiting for its turn (Phase 17). */
+export interface QueuedQuestion {
+  taskId: string;
+  /** null: it becomes a new conversation when it starts. */
+  conversationId: string | null;
+  /** The question as the conversation will show it. */
+  text: string;
+}
+
+/** A started task, a refusal, or a question that waits for its turn. */
+export type TaskStartResponse = ScreenLookResponse | { queued: QueuedQuestion };
 
 /** An approved change shown in its conversation, with undo while it is still possible. */
 export interface EditNote {

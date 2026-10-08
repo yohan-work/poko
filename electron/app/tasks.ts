@@ -18,6 +18,7 @@ import {
   startingConversations,
 } from "./context";
 import { markRoutineStopped, routineTitleFor } from "./routines";
+import { cancelQueued, hasWaiting, queueConversations, waitingQuestions } from "./queue";
 
 /** Approval answers in progress, so a double click can't checkpoint or answer twice. */
 const answering = new Set<string>();
@@ -47,7 +48,22 @@ export function registerTaskHandlers(): void {
       throw new TypeError("The request is too long.");
     }
 
-    return startConversationTask(rawMessage.trim(), conversationId, undefined, attachments);
+    // Only the main window queues a question while Poko is busy (Phase 17).
+    return startConversationTask(rawMessage.trim(), conversationId, undefined, attachments, {
+      allowQueue: true,
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.taskQueued, (event) => {
+    if (!isTrustedRenderer(event)) throw new Error("Unknown renderer requested the queue.");
+    return waitingQuestions();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.taskCancelQueued, (event, rawTaskId: unknown) => {
+    if (!isTrustedRenderer(event)) throw new Error("Unknown renderer cancelled a question.");
+    if (typeof rawTaskId !== "string" || rawTaskId.length > 100)
+      throw new TypeError("A valid task id is required.");
+    return cancelQueued(rawTaskId);
   });
 
   ipcMain.handle(IPC_CHANNELS.conversationOpen, (event, raw: unknown) => {
@@ -58,7 +74,11 @@ export function registerTaskHandlers(): void {
     // that conversation may be opened while it runs (the window adopts the task there).
     const running = ctx.agentCore.activeTaskIds[0];
     const runningConversation = running ? ctx.database.getTaskConversation(running)?.id : null;
-    if ((ctx.agentCore.hasActiveTasks && id !== runningConversation) || ctx.screenRun)
+    // Waiting questions and starts keep Poko busy too, so the window stays where they belong.
+    // A question's own conversation stays open to it: where it waits, or where it just went.
+    const busy = ctx.agentCore.hasActiveTasks || hasWaiting() || ctx.startingTasks > 0;
+    const allowed = id !== null && (id === runningConversation || queueConversations().has(id));
+    if ((busy && !allowed) || ctx.screenRun)
       return { error: "포코가 작업 중이라 다른 대화로 옮길 수 없어. 끝난 뒤에 다시 골라 줘." };
     if (id !== null && !ctx.database.getConversation(id)) return { error: CONVERSATION_GONE };
     ctx.database.setActiveConversation(id);

@@ -16,6 +16,7 @@ import type {
   PendingApprovalEvent,
   PersistedConversation,
   PersistedMemory,
+  QueuedQuestion,
   ScreenStatus,
   ScreenWindow,
   WorkspaceInfo,
@@ -168,6 +169,10 @@ export interface ConversationSlice {
   pendingApprovals: PendingApproval[];
   /** A task started elsewhere (the quick panel) is running, so this window can't start one. */
   busyElsewhere: boolean;
+  /** Questions sent while Poko was busy, oldest first, as main keeps them (Phase 17). */
+  waitingQuestions: QueuedQuestion[];
+  /** 취소 on a waiting question; its text comes back into an empty message box. */
+  cancelWaitingQuestion: (taskId: string) => Promise<void>;
   /** The routine run keeping Poko busy, which 멈추고 지금 묻기 can stop. */
   busyRoutine: { taskId: string; title: string } | null;
   yieldRoutine: () => Promise<void>;
@@ -190,21 +195,25 @@ export interface ConversationSlice {
   retryLast: () => Promise<void>;
   /** Puts the last question back into the message box to change it. */
   editLastQuestion: () => void;
-  /** Text for the message box to take once; the box clears it when it takes it. */
-  composerPrefill: { text: string; nonce: number } | null;
+  /**
+   * Text for the message box to take once; the box clears it when it takes it. `ifEmpty`: only
+   * when the box is empty, so nothing the user is typing is replaced.
+   */
+  composerPrefill: { text: string; nonce: number; ifEmpty?: boolean } | null;
   takeComposerPrefill: () => void;
   /** A conversation whose folder was found missing, so its line offers a new conversation. */
   folderGone: string | null;
   /** Selects the folder the shown conversation works in (its 폴더로 바꾸기 button). */
   switchToConversationFolder: () => Promise<void>;
   /**
-   * "refused" means nothing was recorded (no folder, busy, a file main rejected), so the
-   * message box may put the message back; "failed" may have been recorded and must not be.
+   * "refused" means nothing was recorded (no folder, a full queue, a file main rejected), so
+   * the message box may put the message back; "failed" may have been recorded and must not be.
+   * "queued": Poko was busy, and the question waits for its turn.
    */
   sendMessage: (
     message: string,
     attachments?: ChatAttachment[],
-  ) => Promise<"started" | "refused" | "failed">;
+  ) => Promise<"started" | "queued" | "refused" | "failed">;
   cancelTask: () => Promise<void>;
   respondToApproval: (choice: ApprovalChoice) => Promise<void>;
   setActiveView: (view: AppView) => void;

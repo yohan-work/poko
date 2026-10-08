@@ -651,3 +651,67 @@ describe("PokoDatabase", () => {
     database.close();
   });
 });
+
+describe("waiting questions (Phase 17)", () => {
+  it("adds a waiting question to its conversation only when it starts, so messages keep their order", async () => {
+    const database = await openDatabase();
+    const first = database.createTask("첫 질문", "/tmp/project");
+    const conversationId = database.getTaskConversation(first)?.id as string;
+    const second = database.queueTask("이어서 질문", "/tmp/project", conversationId);
+    expect(database.hasRunningTask(conversationId)).toBe(true);
+    expect(database.getConversationMessages(conversationId)).toHaveLength(1);
+    database.recordTaskEvent(first, "completed", "마쳤어.", "첫 답");
+
+    expect(database.startQueuedTask(second)).toBe(conversationId);
+    expect(
+      database.getConversationMessages(conversationId).map((message) => message.content),
+    ).toEqual(["첫 질문", "첫 답", "이어서 질문"]);
+    // The earlier answer is the follow-up's context, read when it starts.
+    expect(database.getTaskContext(second).history).toEqual([
+      { request: "첫 질문", answer: "첫 답" },
+    ]);
+    // Only a waiting task starts, and only once.
+    expect(database.startQueuedTask(second)).toBeNull();
+    database.close();
+  });
+
+  it("creates a waiting new conversation when it starts, titled from the question", async () => {
+    const database = await openDatabase();
+    const taskId = database.queueTask("새 대화 질문", "/tmp/project", null);
+    expect(database.listConversations()).toEqual([]);
+    const conversationId = database.startQueuedTask(taskId) as string;
+    expect(database.getConversation(conversationId)).toMatchObject({
+      title: "새 대화 질문",
+      workspacePath: "/tmp/project",
+    });
+    expect(() => database.queueTask("질문", "/tmp/project", "gone")).toThrow(ConversationGoneError);
+    database.close();
+  });
+
+  it("shows questions still waiting at quit as not asked, in their conversation", async () => {
+    const database = await openDatabase();
+    const first = database.createTask("첫 질문", "/tmp/project");
+    const conversationId = database.getTaskConversation(first)?.id as string;
+    database.recordTaskEvent(first, "completed", "마쳤어.", "첫 답");
+    const followUp = database.queueTask("이어서 질문", "/tmp/project", conversationId);
+    const fresh = database.queueTask("새 질문", "/tmp/project", null);
+    database.close();
+
+    const reopened = await openDatabase();
+    expect(
+      reopened.getConversationMessages(conversationId).map((message) => message.content),
+    ).toEqual(["첫 질문", "첫 답", "이어서 질문", "포코가 꺼져서 묻지 못했어."]);
+    const freshConversation = reopened.getTaskConversation(fresh)?.id as string;
+    expect(
+      reopened.getConversationMessages(freshConversation).map((message) => message.content),
+    ).toEqual(["새 질문", "포코가 꺼져서 묻지 못했어."]);
+    const statuses = reopened.getBootstrapData().tasks.map((task) => [task.id, task.status]);
+    expect(statuses).toEqual(
+      expect.arrayContaining([
+        [followUp, "failed"],
+        [fresh, "failed"],
+      ]),
+    );
+    reopened.close();
+  });
+});

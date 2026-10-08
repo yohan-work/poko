@@ -1,7 +1,7 @@
 import type { ApprovalOutcome } from "../../../../../electron/shared";
 import { cleanAttachmentName } from "../../../../../electron/shared";
 import { adoptTask, foreignTasks, runTask, switchConversation, trackForeign } from "../taskFlow";
-import { addActivity, fromBootstrap } from "../taskHelpers";
+import { addActivity, fromBootstrap, questionText } from "../taskHelpers";
 import type { ConversationSlice, Slice } from "../types";
 
 const YIELD_FAILED = "루틴을 멈추지 못했어. 잠시 뒤 다시 시도해 줘.";
@@ -21,6 +21,26 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
   streaming: null,
   pendingApprovals: [],
   busyElsewhere: false,
+  waitingQuestions: [],
+  cancelWaitingQuestion: async (taskId) => {
+    const question = get().waitingQuestions.find((item) => item.taskId === taskId);
+    const cancelled = await window.poko.tasks.cancelQueued(taskId).catch(() => null);
+    if (cancelled === null) {
+      set({ conversationError: "질문을 취소하지 못했어. 잠시 뒤 다시 시도해 줘." });
+      return;
+    }
+    // Not waiting any more: it already started, and its answer shows as usual.
+    if (!cancelled) return;
+    set((state) => ({
+      waitingQuestions: state.waitingQuestions.filter((item) => item.taskId !== taskId),
+    }));
+    // Files can't come back, so only a question without them returns to the box.
+    const text = question ? questionText(question.text) : null;
+    if (text)
+      set({
+        composerPrefill: { text, nonce: (get().composerPrefill?.nonce ?? 0) + 1, ifEmpty: true },
+      });
+  },
   busyRoutine: null,
   yieldRoutine: async () => {
     const routine = get().busyRoutine;
@@ -203,7 +223,7 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
   sendMessage: async (rawMessage, attachments = []) => {
     const message = rawMessage.trim();
     const current = get();
-    if ((!message && attachments.length === 0) || current.isSending) return "refused";
+    if (!message && attachments.length === 0) return "refused";
     // Shown the way main records it, so the conversation reads the same after a reload.
     const line = attachments.length
       ? `📎 ${attachments.map((item) => cleanAttachmentName(item.name)).join(", ")}`
@@ -211,12 +231,13 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
     const content = line ? (message ? `${message}\n\n${line}` : line) : message;
     if (!current.workspace) {
       set({
-        characterState: "error",
+        // A running task's character stays as it is.
+        ...(current.isSending ? {} : { characterState: "error" as const }),
         errorMessage: "먼저 작업할 폴더를 선택해 줘.",
       });
       return "refused";
     }
-    // Not asked (switching, busy) or a reply with an error: main recorded nothing.
+    // Not asked (switching) or a reply with an error: main recorded nothing.
     let asked = false;
     let refused = false;
     const started = await runTask(
@@ -236,7 +257,8 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
       },
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
     );
-    return started ? "started" : refused || !asked ? "refused" : "failed";
+    if (started) return started;
+    return refused || !asked ? "refused" : "failed";
   },
 
   cancelTask: async () => {

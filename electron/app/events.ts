@@ -6,6 +6,7 @@ import { notifyTaskEvent } from "./notify";
 import { recordRoutineEnd } from "./routines";
 import { pointAt, screenTasks } from "./screen";
 import { suggestionFolder } from "./workspace";
+import { noteTaskEnded } from "./queue";
 
 /** Records a task event and sends it on, for Codex tasks and screen tasks alike. */
 export function deliverTaskEvent(incoming: TaskEventPayload): void {
@@ -50,6 +51,8 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
   if (finished) {
     recordRoutineEnd(payload.taskId, event.type, event.type === "error" ? event.error : undefined);
     void settleEdits(payload.taskId);
+    // The next waiting question starts once Poko is idle, after these edits settle.
+    noteTaskEnded(payload.taskId);
     // Attached images are needed only while the task runs.
     const attached = attachmentDirs.get(payload.taskId);
     attachmentDirs.delete(payload.taskId);

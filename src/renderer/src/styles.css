@@ -3045,6 +3045,40 @@ html.is-quick body {
   justify-self: start;
 }
 
+.message--waiting {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  background: transparent;
+  border: 1px dashed var(--color-border-strong);
+  color: var(--color-text-soft);
+}
+
+.waiting-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.waiting-chip {
+  font-size: 0.75rem;
+  color: var(--color-text-faint);
+}
+
+.waiting-cancel {
+  padding: 2px 10px;
+  font-size: 0.8125rem;
+}
+
+.message-list--waiting {
+  width: 100%;
+  padding: 0 0 12px;
+  gap: 8px;
+}
+
+.message-list--waiting:empty {
+  display: none;
+}
+
 .retry-row {
   display: flex;
   margin-left: 40px;

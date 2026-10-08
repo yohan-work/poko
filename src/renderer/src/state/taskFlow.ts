@@ -1,5 +1,9 @@
 import type { StoreApi } from "zustand";
-import type { PersistedConversation, TaskEventPayload } from "../../../../electron/shared";
+import type {
+  QueuedQuestion,
+  TaskEventPayload,
+  TaskStartResponse,
+} from "../../../../electron/shared";
 import { applyDeltas, createDeltaBuffer } from "../lib/streaming";
 import {
   activityText,
@@ -28,12 +32,23 @@ let startingSend: TaskEventPayload[] | null = null;
 /** A task being taken over: its events are held until its conversation is on screen. */
 let adopting: { taskId: string; held: TaskEventPayload[] } | null = null;
 
+/**
+ * A task that started (from the queue) in the conversation on screen while this window's own
+ * send was waiting for its reply; taken over once that reply is handled.
+ */
+let pendingAdoption: { taskId: string; conversationId: string; waitedHere: boolean } | null = null;
+
 /** The only task-event listener: each event goes to the shown task or to foreign handling. */
 function routeTaskEvent(payload: TaskEventPayload): void {
   if (startingSend) {
     startingSend.push(payload);
     return;
   }
+  deliverEvent(payload);
+}
+
+/** Routes one event now, past the hold of a send waiting for its reply. */
+function deliverEvent(payload: TaskEventPayload): void {
   if (adopting && payload.taskId === adopting.taskId) {
     adopting.held.push(payload);
     return;
@@ -235,7 +250,10 @@ export async function switchConversation(id: string | null): Promise<void> {
     set({ activeView: "conversation", conversationError: null });
     return;
   }
-  if (state.isSending) {
+  // Questions still waiting keep the window where they will run (their own conversations
+  // stay open to it).
+  const waitsThere = state.waitingQuestions.some((item) => item.conversationId === id);
+  if (state.isSending || (state.waitingQuestions.length > 0 && !waitsThere)) {
     set({
       conversationError: "포코가 작업 중이라 다른 대화로 옮길 수 없어. 끝난 뒤에 다시 골라 줘.",
     });
@@ -281,30 +299,37 @@ let switching = false;
 
 /**
  * Shows the user's message, starts a task, and follows its events until it ends. `start`
- * returns the new task id, or an `error` to show instead. Resolves true when the task started.
+ * returns the new task id, a waiting question (Poko is busy), or an `error` to show instead.
+ * While Poko is busy the window's running task stays as it is: the question shows in the
+ * waiting list until its turn (Phase 17). Resolves to how it went; false when nothing started.
  */
 export async function runTask(
   content: string,
-  start: () => Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }>,
+  start: () => Promise<TaskStartResponse>,
   failure: string,
-): Promise<boolean> {
+): Promise<"started" | "queued" | false> {
   const set = store.setState;
   if (switching || adopting) return false;
-  if (store.getState().busyElsewhere) {
-    set({ conversationError: "포코가 다른 작업 중이야. 끝난 뒤에 다시 보내 줘." });
+  // One send at a time: the hold below belongs to it until its reply comes.
+  if (startingSend) {
+    set({ errorMessage: "앞 질문을 보내는 중이야. 잠시 뒤 다시 보내 줘." });
     return false;
   }
+  const before = store.getState();
+  const busy = before.isSending || before.busyElsewhere;
   const userMessage = createMessage("user", content);
-  set((state) => ({
-    activeView: "conversation",
-    characterState: "thinking",
-    errorMessage: null,
-    conversationError: null,
-    retryable: null,
-    isSending: true,
-    progressMessage: "포코가 요청을 살펴보고 있어.",
-    messages: [...state.messages, userMessage],
-  }));
+  const showSending = (): void =>
+    set((state) => ({
+      activeView: "conversation",
+      characterState: "thinking",
+      errorMessage: null,
+      conversationError: null,
+      retryable: null,
+      isSending: true,
+      progressMessage: "포코가 요청을 살펴보고 있어.",
+      messages: [...state.messages, userMessage],
+    }));
+  if (!busy) showSending();
 
   // Until the start reply names the task, every event is held (see routeTaskEvent), then each
   // goes where it belongs: this task's to the window, any other to foreign handling.
@@ -313,9 +338,15 @@ export async function runTask(
     const held = startingSend ?? [];
     startingSend = null;
     for (const payload of held) routeTaskEvent(payload);
+    adoptPending();
   };
 
   const fail = (error: string) => {
+    // While another task runs, only the message box says why; its conversation stays as is.
+    if (busy) {
+      set({ errorMessage: error });
+      return;
+    }
     // A start that failed can be tried again, as with an answer that failed.
     const question = questionText(content);
     set((state) => ({
@@ -336,7 +367,35 @@ export async function runTask(
       release();
       return false;
     }
+    if ("queued" in response) {
+      const { queued } = response;
+      set((state) => ({
+        // Main was busy after all (a task started elsewhere just now): the message waits.
+        ...(busy
+          ? {}
+          : {
+              messages: state.messages.filter((item) => item.id !== userMessage.id),
+              isSending: false,
+              characterState: "idle" as const,
+              progressMessage: null,
+            }),
+        errorMessage: null,
+        waitingQuestions: state.waitingQuestions.some((item) => item.taskId === queued.taskId)
+          ? state.waitingQuestions
+          : [...state.waitingQuestions, queued],
+      }));
+      release();
+      return "queued";
+    }
     const startedTaskId = response.taskId;
+    // Started right away although this window thought Poko was busy (it just became free):
+    // the earlier task's held end goes to it first, before this task takes the window.
+    if (busy) {
+      const held = startingSend ?? [];
+      startingSend = held.filter((payload) => payload.taskId === startedTaskId);
+      for (const payload of held) if (payload.taskId !== startedTaskId) deliverEvent(payload);
+      showSending();
+    }
     const createdAt = new Date().toISOString();
     const { conversation } = response;
     set((state) => ({
@@ -353,12 +412,35 @@ export async function runTask(
       ].slice(0, 50),
     }));
     release();
-    return true;
+    return "started";
   } catch {
     fail(failure);
     release();
     return false;
   }
+}
+
+/** Takes over a started task whose conversation is the one on screen. */
+function adoptIfShown(candidate: {
+  taskId: string;
+  conversationId: string;
+  waitedHere: boolean;
+}): void {
+  const state = store.getState();
+  if (
+    state.activeView === "conversation" &&
+    (state.activeConversationId === candidate.conversationId ||
+      (candidate.waitedHere && state.activeConversationId === null)) &&
+    !state.isSending
+  )
+    void adoptTask(candidate.taskId, candidate.conversationId);
+}
+
+/** The take-over that waited for this window's own send (see pendingAdoption). */
+function adoptPending(): void {
+  const candidate = pendingAdoption;
+  pendingAdoption = null;
+  if (candidate) adoptIfShown(candidate);
 }
 
 /** Progress text while Codex is writing the answer itself. */
@@ -496,7 +578,24 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
   store = created;
   const poko = typeof window === "undefined" ? undefined : window.poko;
   poko?.tasks?.onEvent?.(routeTaskEvent);
+  const setWaiting = (queue: QueuedQuestion[]): void => {
+    store.setState({ waitingQuestions: queue });
+  };
+  poko?.tasks?.onQueueChanged?.(setWaiting);
+  void poko?.tasks
+    ?.queued?.()
+    .then(setWaiting)
+    .catch(() => undefined);
   poko?.tasks?.onStarted?.((notice) => {
+    // A question this window left waiting on the new-conversation screen becomes that
+    // conversation when it starts there.
+    const before = store.getState();
+    const waitedHere = before.waitingQuestions.some(
+      (item) =>
+        item.taskId === notice.taskId &&
+        item.conversationId === null &&
+        before.activeConversationId === null,
+    );
     trackForeign(notice.taskId, notice.conversation.id);
     if (notice.routineTitle)
       store.setState({ busyRoutine: { taskId: notice.taskId, title: notice.routineTitle } });
@@ -510,15 +609,18 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
         { id: notice.taskId, title: notice.title, status: "running" as const, createdAt },
         ...state.tasks.filter((task) => task.id !== notice.taskId),
       ].slice(0, 50),
+      waitingQuestions: state.waitingQuestions.filter((item) => item.taskId !== notice.taskId),
     }));
-    // A run in the conversation on screen (a routine's) is taken over, so it shows live.
-    const state = store.getState();
-    if (
-      state.activeView === "conversation" &&
-      state.activeConversationId === notice.conversation.id &&
-      !state.isSending
-    )
-      void adoptTask(notice.taskId, notice.conversation.id);
+    // A run in the conversation on screen (a routine's, or a question that waited there) is
+    // taken over, so it shows live. While this window's own send waits for its reply, that
+    // happens once the reply is handled.
+    const candidate = {
+      taskId: notice.taskId,
+      conversationId: notice.conversation.id,
+      waitedHere,
+    };
+    if (startingSend) pendingAdoption = candidate;
+    else adoptIfShown(candidate);
   });
   poko?.app?.onFocusConversation?.((id) => void focusConversation(id));
 }

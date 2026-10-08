@@ -3,26 +3,26 @@ import { isAgentEvent, isTaskEventPayload } from "./eventGuards";
 import {
   type ActiveTaskInfo,
   type AppBootstrap,
-  type QuickState,
-  type TaskStartedNotice,
-  type AppSettings,
-  type ChatAttachment,
-  type ConversationMatch,
-  type EngineId,
-  type ModelOption,
-  type ClaudeSetup,
-  type DataExportResult,
-  type DeleteAllResponse,
-  type CodexSetup,
-  type EditNote,
-  type EditsState,
   type ApprovalChoice,
   type ApprovalOutcome,
+  type AppSettings,
+  type ChatAttachment,
+  type ClaudeSetup,
+  type CodexSetup,
+  type ConversationMatch,
+  type DataExportResult,
+  type DeleteAllResponse,
+  type EditNote,
+  type EditsState,
+  type EngineId,
   IPC_CHANNELS,
   type MemoryInput,
+  type ModelOption,
   type OverlayScene,
   type PersistedMemory,
   type PersistedMessage,
+  type QueuedQuestion,
+  type QuickState,
   type Routine,
   type RoutineInput,
   type ScreenLookResponse,
@@ -30,6 +30,7 @@ import {
   type ScreenWindow,
   type SettingsView,
   type TaskEventPayload,
+  type TaskStartedNotice,
   type TaskStartResponse,
   type WorkspaceInfo,
 } from "./shared";
@@ -93,6 +94,18 @@ const pokoApi = {
     },
     /** The running task and its waiting approval cards, or null. */
     active: (): Promise<ActiveTaskInfo | null> => ipcRenderer.invoke(IPC_CHANNELS.taskActive),
+    /** The questions waiting for their turn. */
+    queued: (): Promise<QueuedQuestion[]> => ipcRenderer.invoke(IPC_CHANNELS.taskQueued),
+    /** 취소 on a waiting question; false when it already started. */
+    cancelQueued: (taskId: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.taskCancelQueued, taskId),
+    onQueueChanged: (listener: (queue: QueuedQuestion[]) => void) => {
+      const handler = (_event: IpcRendererEvent, queue: QueuedQuestion[]) => listener(queue);
+      ipcRenderer.on(IPC_CHANNELS.taskQueueChanged, handler);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.taskQueueChanged, handler);
+      };
+    },
     /** A task started outside this window (the quick panel). */
     onStarted: (listener: (notice: TaskStartedNotice) => void) => {
       const handler = (_event: IpcRendererEvent, notice: TaskStartedNotice) => listener(notice);

@@ -35,6 +35,7 @@ const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "e
 export class AgentCore {
   private readonly activeTasks = new Map<string, AbortController>();
   private idleWaiters = new Set<() => void>();
+  private idleListeners = new Set<() => void>();
 
   constructor(
     private readonly provider: AgentProvider,
@@ -127,6 +128,15 @@ export class AgentCore {
     return this.activeTasks.size > 0;
   }
 
+  /**
+   * Called each time the last active task has fully ended, after its terminal event. A task
+   * may start from here (a terminal event arrives while the task still counts as active).
+   */
+  onIdle(listener: () => void): () => void {
+    this.idleListeners.add(listener);
+    return () => this.idleListeners.delete(listener);
+  }
+
   whenIdle(): Promise<void> {
     if (!this.hasActiveTasks) return Promise.resolve();
     return new Promise((resolve) => this.idleWaiters.add(resolve));
@@ -188,6 +198,7 @@ export class AgentCore {
       if (!this.hasActiveTasks) {
         for (const resolve of this.idleWaiters) resolve();
         this.idleWaiters.clear();
+        for (const listener of this.idleListeners) listener();
       }
     }
   }

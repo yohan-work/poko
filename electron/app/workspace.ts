@@ -49,7 +49,8 @@ export function suggestionFolder(
   return isFolderPath(folder) ? folder : null;
 }
 
-const FOLDER_BUSY = "포코가 작업 중이라 지금은 폴더를 바꿀 수 없어. 끝난 뒤에 다시 해 줘.";
+const FOLDER_BUSY =
+  "포코가 작업 중이거나 기다리는 질문이 있어서 지금은 폴더를 바꿀 수 없어. 끝난 뒤에 다시 해 줘.";
 
 /** Workspace, app data, and memories. */
 export function registerWorkspaceHandlers(): void {

@@ -85,14 +85,21 @@ export function fromBootstrap(data: AppBootstrap): Partial<AppState> {
     conversations: data.conversations,
     activeConversationId: data.conversationId,
     messages: data.messages,
-    tasks: data.tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      // Startup recovery already closed interrupted tasks; anything else is treated as running.
-      status: task.status === "queued" ? "running" : task.status,
-      createdAt: task.createdAt,
-      completedAt: task.completedAt ?? undefined,
-    })),
+    // A waiting question shows in its conversation's waiting list, and joins the tasks when it
+    // starts (startup turns any left from before into failed ones).
+    tasks: data.tasks.flatMap((task) =>
+      task.status === "queued"
+        ? []
+        : [
+            {
+              id: task.id,
+              title: task.title,
+              status: task.status,
+              createdAt: task.createdAt,
+              completedAt: task.completedAt ?? undefined,
+            },
+          ],
+    ),
     // Storage returns newest first; the store appends new entries, so keep it oldest first.
     activities: [...data.activities].reverse(),
   };

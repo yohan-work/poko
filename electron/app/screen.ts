@@ -16,6 +16,7 @@ import {
   showMainWindow,
 } from "./context";
 import { deliverTaskEvent } from "./events";
+import { hasWaiting, kickQueue } from "./queue";
 
 /** The only global shortcut: it stops a screen task at once. */
 export const STOP_SHORTCUT = "CommandOrControl+Shift+Escape";
@@ -98,9 +99,12 @@ export async function startScreenLook(
 ): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
   if (!ctx.database || !ctx.agentCore || !ctx.screenService)
     throw new Error("Local storage is unavailable.");
-  // This start is counted in startingTasks, so another start makes it more than one.
+  // This start is counted in startingTasks, so another start makes it more than one. A screen
+  // task needs the screen as it is now, so it never waits behind questions either.
   const busy = () =>
-    Boolean(ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1);
+    Boolean(
+      ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1 || hasWaiting(),
+    );
   // The engine is read once: its notice is checked, and the task is pinned to it, so a switch
   // during the capture can't send the screenshot somewhere the user hasn't agreed to.
   const engine = ctx.database.getSettings().engine;
@@ -240,14 +244,14 @@ export function registerScreenHandlers(): void {
     // That engine takes each step, like a 화면 보기 task; chosen before anything is recorded.
     const provider = engine === "claude" ? ctx.claudeProvider : ctx.screenProvider;
     if (!provider) return { error: "작업을 시작하지 못했어. 잠시 뒤 다시 시도해 줘." };
-    if (ctx.agentCore.hasActiveTasks || ctx.screenRun)
+    if (ctx.agentCore.hasActiveTasks || ctx.screenRun || hasWaiting())
       return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
     const windowId = request.windowId as number;
     const goal = request.goal.trim();
     const window = (await ctx.screenService.listWindows()).find((item) => item.id === windowId);
     if (!window) return { error: screenErrors.window_not_found };
     if (!window.canAct) return { error: "이 앱에서는 보기만 할 수 있어. 브라우저 창을 골라 줘." };
-    if (ctx.agentCore.hasActiveTasks || ctx.screenRun)
+    if (ctx.agentCore.hasActiveTasks || ctx.screenRun || hasWaiting())
       return { error: "포코가 이미 다른 작업을 하고 있어. 잠시만 기다려 줘." };
 
     const started = recordTaskStart(
@@ -283,6 +287,7 @@ export function registerScreenHandlers(): void {
     const done = agent.run(windowId, goal).finally(() => {
       globalShortcut.unregister(STOP_SHORTCUT);
       if (ctx.screenRun?.agent === agent) ctx.screenRun = null;
+      kickQueue();
     });
     ctx.screenRun = { taskId, agent, done };
     return started;
