@@ -57,9 +57,8 @@ export function registerWorkspaceHandlers(): void {
     if (!found.resolved) return { error: folderGoneMessage(found.folder), gone: true };
     // Checked again: a task may have started while the folder was being resolved.
     if (anyTaskBusy() || ctx.deletingData) return { error: FOLDER_BUSY };
-    // The resolved path, so it compares equal with the conversation's folder from now on.
-    ctx.database.setWorkspace(found.resolved);
-    return { workspace: await workspaceInfo(found.resolved) };
+    ctx.database.setWorkspace(found.folder);
+    return { workspace: await workspaceInfo(found.folder) };
   });
 
   ipcMain.handle(IPC_CHANNELS.appBootstrap, async (event) => {

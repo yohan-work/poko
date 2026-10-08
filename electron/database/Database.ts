@@ -1107,8 +1107,9 @@ export class PokoDatabase {
     if (!routine) throw new Error("The routine no longer exists.");
     const existing = routine.conversationId ? this.getConversation(routine.conversationId) : null;
     if (existing) {
-      // The routine's folder is the conversation's, even if a follow-up elsewhere set another.
-      if (existing.workspacePath !== folder)
+      // Only a missing folder is filled: relabeling would turn one project's answers into
+      // another's context. (Routine conversations from before Phase 16 were backfilled.)
+      if (!existing.workspacePath)
         this.db
           .update(conversations)
           .set({ workspacePath: folder })

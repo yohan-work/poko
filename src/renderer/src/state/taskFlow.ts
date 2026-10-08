@@ -251,6 +251,8 @@ export async function switchConversation(id: string | null): Promise<void> {
       editNotes: [],
       memorySuggestion: null,
       memorySuggestionError: null,
+      // Checked again when it is next used, so a folder that came back works.
+      folderGone: null,
       messages: response.messages,
       streaming: null,
       errorMessage: null,

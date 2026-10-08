@@ -86,7 +86,8 @@ export interface ScreenStatus {
 /** A started task, with the conversation it belongs to (new or existing). */
 export type ScreenLookResponse =
   | { taskId: string; conversation: PersistedConversation }
-  | { error: string };
+  /** `gone`: refused because the conversation's folder no longer exists. */
+  | { error: string; gone?: boolean };
 
 export interface ScreenWindow {
   id: number;

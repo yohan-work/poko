@@ -87,7 +87,9 @@ export async function startConversationTask(
   /** Runs after the task is recorded and before it starts, so its first event finds it known. */
   onRecorded?: (started: { taskId: string; conversation: PersistedConversation }) => void,
   attachments: CheckedAttachment[] = [],
-): Promise<{ taskId: string; conversation: PersistedConversation } | { error: string }> {
+): Promise<
+  { taskId: string; conversation: PersistedConversation } | { error: string; gone?: boolean }
+> {
   if (!ctx.agentCore || !ctx.database) throw new Error("Local storage is unavailable.");
   // This start is already counted in startingTasks, so another start makes it more than one.
   const busy = () => ctx.agentCore?.hasActiveTasks || ctx.screenRun || ctx.startingTasks > 1;
@@ -98,7 +100,7 @@ export async function startConversationTask(
   // A conversation continues only in its own folder, so one project's answers never
   // become another project's context.
   const refused = conversationId ? await folderMismatch(conversationId, cwd) : null;
-  if (refused) return { error: refused };
+  if (refused) return { error: refused.message, ...(refused.gone ? { gone: true } : {}) };
   // The conversation shows which files were attached; their content goes only to the engine.
   const line = attachmentLine(attachments);
   const shown = line ? (message ? `${message}\n\n${line}` : line) : message;
@@ -154,12 +156,18 @@ export async function conversationFolder(
  * Why a conversation can't continue in the selected folder `cwd` (resolved), or null when it
  * can: it has no folder yet, or it resolves to this one (a folder reached through a link too).
  */
-export async function folderMismatch(conversationId: string, cwd: string): Promise<string | null> {
+export async function folderMismatch(
+  conversationId: string,
+  cwd: string,
+): Promise<{ message: string; gone: boolean } | null> {
   const found = await conversationFolder(conversationId);
   if (!found || found.resolved === cwd) return null;
-  if (!found.resolved) return folderGoneMessage(found.folder);
+  if (!found.resolved) return { message: folderGoneMessage(found.folder), gone: true };
   const name = basename(found.folder);
-  return `이 대화는 ${name} 폴더에서 나눈 대화야. ${name}로 바꾼 뒤 이어서 물어봐 줘.`;
+  return {
+    message: `이 대화는 ${name} 폴더에서 나눈 대화야. ${name}로 바꾼 뒤 이어서 물어봐 줘.`,
+    gone: false,
+  };
 }
 
 /** Whether any task is running or starting, so nothing it uses may be deleted. */

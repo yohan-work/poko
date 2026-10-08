@@ -1,6 +1,6 @@
-import { mkdtemp, realpath, symlink } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: {}, ipcMain: { handle: vi.fn() } }));
@@ -56,10 +56,17 @@ describe("folderMismatch", () => {
     ctx.database = { getConversation: (id: string) => conversations[id] ?? null } as never;
     expect(await folderMismatch("none", here)).toBeNull();
     expect(await folderMismatch("same", here)).toBeNull();
-    expect(await folderMismatch("other", here)).toContain("폴더에서 나눈 대화야");
-    expect(await folderMismatch("gone", here)).toContain("폴더를 찾지 못했어");
+    expect(await folderMismatch("other", here)).toEqual({
+      message: expect.stringContaining("폴더에서 나눈 대화야"),
+      gone: false,
+    });
+    expect(await folderMismatch("gone", here)).toEqual({
+      message: expect.stringContaining("폴더를 찾지 못했어"),
+      gone: true,
+    });
     expect(await folderMismatch("linked", here)).toBeNull();
     ctx.database = null;
+    await rm(dirname(conversations.linked.workspacePath as string), { recursive: true });
   });
 });
 

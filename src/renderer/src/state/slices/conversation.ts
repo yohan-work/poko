@@ -114,7 +114,12 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
       });
       return;
     }
-    set({ workspace: response.workspace, conversationError: null, workspaceError: null });
+    set({
+      workspace: response.workspace,
+      conversationError: null,
+      workspaceError: null,
+      folderGone: null,
+    });
     // Each folder keeps its own edit setting.
     void get().loadEdits();
   },
@@ -126,7 +131,12 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
     try {
       const workspace = await window.poko.workspace.select();
       if (workspace && "error" in workspace) {
+        // Busy is passing: the note clears itself instead of staying as an error.
         set({ characterState: "idle", workspaceError: workspace.error });
+        const shown = workspace.error;
+        window.setTimeout(() => {
+          if (get().workspaceError === shown) set({ workspaceError: null });
+        }, 4000);
       } else if (workspace) {
         set({ workspace, characterState: "success" });
         // Each folder keeps its own edit setting.
@@ -177,7 +187,11 @@ export const conversationSlice: Slice<ConversationSlice> = (set, get) => ({
           get().activeConversationId,
           attachments,
         );
-        if ("error" in response) refused = true;
+        if ("error" in response) {
+          refused = true;
+          // The folder is gone: the line offers a new conversation instead of a switch.
+          if (response.gone) set({ folderGone: get().activeConversationId });
+        }
         return response;
       },
       "작업을 시작하지 못했어. 폴더와 Codex 설정을 확인해 줘.",
