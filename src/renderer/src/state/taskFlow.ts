@@ -3,6 +3,7 @@ import type {
   QueuedQuestion,
   TaskEventPayload,
   TaskStartResponse,
+  TaskUsage,
 } from "../../../../electron/shared";
 import { applyDeltas, createDeltaBuffer } from "../lib/streaming";
 import {
@@ -574,6 +575,9 @@ function applyTaskEvent(payload: TaskEventPayload): void {
  * Connects the task flow to the store and, where there is a preload (not in Node tests),
  * subscribes once for the app's lifetime to main's task events and notices.
  */
+/** Usage that arrived before its task was listed (Phase 21). */
+const pendingUsage = new Map<string, TaskUsage>();
+
 export function connectTaskFlow(created: StoreApi<AppState>): void {
   store = created;
   const poko = typeof window === "undefined" ? undefined : window.poko;
@@ -586,12 +590,28 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
     ?.queued?.()
     .then(setWaiting)
     .catch(() => undefined);
-  // A task's usage arrives once main recorded it (and grows over a screen task's steps).
-  poko?.usage?.onTaskUsage?.(({ taskId, usage }) =>
-    store.setState((state) => ({
-      tasks: state.tasks.map((task) => (task.id === taskId ? { ...task, usage } : task)),
-    })),
-  );
+  // A task's usage arrives once main recorded it (and grows over a screen task's steps). A
+  // task not listed yet (its start reply still on the way) gets it when it is.
+  poko?.usage?.onTaskUsage?.(({ taskId, usage }) => {
+    if (store.getState().tasks.some((task) => task.id === taskId))
+      store.setState((state) => ({
+        tasks: state.tasks.map((task) => (task.id === taskId ? { ...task, usage } : task)),
+      }));
+    else pendingUsage.set(taskId, usage);
+  });
+  // Listed tasks pick up usage that came first.
+  store.subscribe((state) => {
+    if (pendingUsage.size === 0) return;
+    const ready = state.tasks.filter((task) => pendingUsage.has(task.id));
+    if (ready.length === 0) return;
+    const found = new Map(ready.map((task) => [task.id, pendingUsage.get(task.id)]));
+    for (const id of found.keys()) pendingUsage.delete(id);
+    store.setState({
+      tasks: state.tasks.map((task) =>
+        found.has(task.id) ? { ...task, usage: found.get(task.id) } : task,
+      ),
+    });
+  });
   poko?.tasks?.onStarted?.((notice) => {
     // A question this window left waiting on the new-conversation screen becomes that
     // conversation when it starts there.

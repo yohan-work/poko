@@ -461,13 +461,30 @@ function UsageSection() {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    window.poko.usage
-      .summary()
-      .then(setSummary)
-      .catch(() => setFailed(true));
+    const load = () =>
+      void window.poko.usage
+        .summary()
+        .then((next) => {
+          setSummary(next);
+          setFailed(false);
+        })
+        .catch(() => setFailed(true));
+    load();
+    // A task finishing while 설정 is open updates the totals and limits too.
+    let timer: number | undefined;
+    const stop = window.poko.usage.onTaskUsage(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(load, 500);
+    });
+    return () => {
+      window.clearTimeout(timer);
+      stop();
+    };
   }, []);
+  const hasLimits = (engine: "codex" | "claude") =>
+    Object.keys(summary?.limits[engine]?.windows ?? {}).length > 0;
   const engines = (["codex", "claude"] as const).filter(
-    (engine) => summary?.month[engine] || summary?.limits[engine],
+    (engine) => summary?.month[engine] || hasLimits(engine),
   );
   return (
     <Section id="settings-usage" title="사용량">
@@ -481,7 +498,7 @@ function UsageSection() {
       ) : (
         engines.map((engine) => {
           const month = summary.month[engine];
-          const limits = summary.limits[engine];
+          const limits = hasLimits(engine) ? summary.limits[engine] : undefined;
           return (
             <Row
               key={engine}
@@ -494,8 +511,8 @@ function UsageSection() {
                   {month?.costUsd !== undefined &&
                     " (구독 요금제는 이 금액으로 청구되지 않아. API로 썼다면 드는 비용이야.)"}
                   {limits &&
-                    Object.values(limits.windows).map((window) => (
-                      <span key={window.label} className="settings-usage__limit">
+                    Object.entries(limits.windows).map(([key, window]) => (
+                      <span key={key} className="settings-usage__limit">
                         {limitLine(window)}
                       </span>
                     ))}
