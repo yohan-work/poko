@@ -119,6 +119,24 @@ describe("ClaudeCodeProvider", () => {
     expect(args[args.indexOf("--tools") + 1]).toBe("Read,Grep,Glob");
   });
 
+  it("keeps a session only for a conversation task (Phase 20)", () => {
+    expect(claudeArgs(READ_TOOLS)).toContain("--no-session-persistence");
+    const fresh = claudeArgs(READ_TOOLS, undefined, undefined, undefined, {
+      id: "s1",
+      resume: false,
+    });
+    expect(fresh[fresh.indexOf("--session-id") + 1]).toBe("s1");
+    expect(fresh).not.toContain("--no-session-persistence");
+    const resumed = claudeArgs(READ_TOOLS, undefined, undefined, undefined, {
+      id: "s1",
+      resume: true,
+    });
+    expect(resumed[resumed.indexOf("--resume") + 1]).toBe("s1");
+    // The same limits apply to a continued session as to a new one.
+    expect(resumed).toEqual(expect.arrayContaining(["--safe-mode", "--strict-mcp-config"]));
+    expect(resumed[resumed.indexOf("--tools") + 1]).toBe("Read,Grep,Glob");
+  });
+
   it("sends the prompt and maps the stream to events", async () => {
     const { collect, fake, spawned } = run((message, claude) => {
       if (message.type !== "user") return;

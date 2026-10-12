@@ -99,7 +99,10 @@ function EngineSection() {
         </fieldset>
       </Row>
       <Row label="Codex" detail={codexStatus(codexSetup)} />
-      <Row label="Claude Code" detail={claudeStatus(claudeSetup)}>
+      <Row
+        label="Claude Code"
+        detail={`${claudeStatus(claudeSetup)} 대화를 이어 기억하려고 Claude Code에 대화 기록을 남겨서, 터미널의 claude --resume 목록에도 보여. 포코에서 대화를 지우면 그 기록도 지워져.`}
+      >
         <button
           className="secondary-button"
           type="button"

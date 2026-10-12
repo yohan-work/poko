@@ -105,4 +105,15 @@ A long conversation keeps everything said earlier in it, not only the last few e
 - **Known limits:**
   - **a thread started just as it is cancelled, or as Poko is force-quit,** may stay in `~/.codex/sessions`. Codex writes it before Poko learns its id, so Poko can't delete it;
   - **session bookkeeping never blocks an answer:** planning and recording failures are logged, and the question is answered fresh.
+- **Milestone 2 (Claude Code) is done.**
+  - A conversation task runs with `--session-id` (new) or `--resume` (continued) instead of `--no-session-persistence`, with the same flags and tools as before. `system/init` must report that session id.
+  - Screen tasks and routine runs keep `--no-session-persistence`.
+  - **Checked with Claude Code 2.1.296 first:**
+    - `--resume` keeps the session id;
+    - an unknown id prints "No conversation found with session ID";
+    - transcripts live at `<config>/projects/<cwd with non-alphanumerics as "-">/<id>.jsonl`.
+  - **Writes after the answer:** Claude Code keeps writing the transcript after the answer, until it exits. So the provider gives it up to 5 seconds to exit on its own, then reports again (`closed`), and the transcript's size and time are noted only then. The first real run showed why: noting them at the answer made every next question look like the session had been continued elsewhere, so each one started over.
+  - **Real check (test profile):** the same eight questions, and question 8 answered "초록 펭귄" from one stored session. Deleting the conversation removed the transcript.
+  - **설정 → 엔진** notes that these sessions also show in `claude --resume`.
+  - **A session that fails before it gets going** (no report) is marked so it isn't retried as is.
 

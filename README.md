@@ -55,6 +55,7 @@ Screenshots use sample data.
 - [x] Retry or change a failed question, copy an answer, and keyboard shortcuts (⌘N, ⌘K, ⌘., ⌘,)
 - [x] Follow up in the quick panel without opening the app
 - [x] Edit a saved memory in place
+- [x] Long conversations remember their start: each continues its own Codex thread or Claude Code session (Phase 20)
 
 ## What Poko is aiming for
 

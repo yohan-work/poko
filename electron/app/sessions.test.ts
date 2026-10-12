@@ -27,6 +27,7 @@ function world(
       missed: options.missed ?? 0,
     }),
     getTaskConversation: () => ({ id: "c1" }),
+    getTaskWorkspace: () => "/w/project",
   } as never;
   ctx.screenProvider = {
     deleteThreads: async (ids: string[]) => void deleted.push(ids),
@@ -61,8 +62,9 @@ describe("engine sessions", () => {
     expect(planSession("c1", "t2")).toEqual({ engine: "codex", catchUp: [] });
     world(session(), { missed: 2 });
     expect(planSession("c1", "t3")).toEqual({ engine: "codex", catchUp: [] });
+    // A session from the other engine is never continued.
     world(session(), { engine: "claude" });
-    expect(planSession("c1", "t4")).toBeUndefined();
+    expect(planSession("c1", "t4")).toEqual({ engine: "claude", catchUp: [] });
   });
 
   it("keeps a fresh session, marks it after a failure, and deletes the one it replaced", () => {
@@ -102,5 +104,36 @@ describe("engine sessions", () => {
     expect(() => finishSession("t2", "completed")).not.toThrow();
     ctx.database = null;
     ctx.screenProvider = null;
+  });
+
+  it("continues a Claude Code session only while its transcript is as Poko left it", async () => {
+    const { mkdtemp, mkdir, writeFile, appendFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const config = await mkdtemp(join(tmpdir(), "poko-claude-"));
+    ctx.claudeSetup = { runtime: () => ({ environment: { CLAUDE_CONFIG_DIR: config } }) } as never;
+    const folder = join(config, "projects", "-w-project");
+    await mkdir(folder, { recursive: true });
+    const id = "11111111-2222-3333-4444-555555555555";
+    await writeFile(join(folder, `${id}.jsonl`), "turn\n");
+    const { state } = world(null, { engine: "claude" });
+    planSession("c1", "t1");
+    recordSessionReport("t1", { id, resumed: false, kept: true, forgetPrevious: false });
+    finishSession("t1", "completed");
+    expect(state.stored).toMatchObject({ engine: "claude", id, cwd: "/w/project" });
+    expect(planSession("c1", "t2")).toMatchObject({ resumeId: id });
+    // Continued in a terminal since: Poko starts fresh rather than take in that history.
+    await appendFile(join(folder, `${id}.jsonl`), "outside turn\n");
+    expect(planSession("c1", "t3")).toEqual({ engine: "claude", catchUp: [] });
+    ctx.claudeSetup = null;
+    ctx.database = null;
+  });
+
+  it("doesn't retry a stored session that a task failed in before it got going", () => {
+    const { state } = world(session());
+    planSession("c1", "t1");
+    finishSession("t1", "error");
+    expect(state.stored).toEqual(session({ dirty: true }));
+    ctx.database = null;
   });
 });
