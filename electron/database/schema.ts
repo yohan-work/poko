@@ -48,6 +48,8 @@ export const tasks = sqliteTable(
     }),
     /** Poko's final answer, set only when the task completes. */
     result: text("result"),
+    /** TaskUsage as JSON (Phase 21): what the task used, added up over its engine runs. */
+    usage: text("usage"),
     createdAt: text("created_at").notNull(),
     completedAt: text("completed_at"),
   },

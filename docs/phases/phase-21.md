@@ -64,3 +64,16 @@ Show how much each answer used, and how close the user is to their plan's limits
 
 - Warnings or pausing routines near a limit (to decide after seeing real numbers).
 - Per-conversation totals and charts.
+
+## Status
+
+- **Milestone 1 (recording) is done.** Real check (test profile, one question on each engine):
+  - **Codex:** 60,685 input tokens (40,064 cached) and 109 output tokens. Limits: 5시간 한도 20% and 1주 한도 4%, with reset times;
+  - **Claude Code:** 21,840 input tokens (20,250 cached, 1,524 cache writes), 248 output tokens, and about $0.049 at API prices. Limits: 5시간 한도 "allowed", with its reset time;
+  - `task:usage` reached the window for both, and `usage:summary` returned the month and the limits.
+  - **Found while building:** on `--resume`, Claude Code's `total_cost_usd` is the session's running total (checked: a $0.005 run reported $0.217). Poko keeps the session's total with it and records each run's difference.
+  - **Codex:** only token notices naming the task's own turn count, and the limits read is sent once the turn is running.
+  - **Known limits:**
+    - a Claude Code run that ends without its `result` (killed after a cancel, a crash) reports no usage, since the engine never said;
+    - a task that crash recovery closes gets that restart's time as `completedAt`, so its usage can land in the next month.
+

@@ -10,6 +10,8 @@ import {
   type AgentTask,
   type ApprovalChoice,
   isUnavailableModelError,
+  type TaskUsage,
+  type UsageLimitWindow,
 } from "../../shared";
 import { type PlannedEdit, planEdit } from "./claudeEdits";
 import {
@@ -97,6 +99,49 @@ interface ProviderOptions {
  * user or project rule can allow a tool or change the permission mode; `--safe-mode` turns off
  * hooks, plugins, skills, MCP servers, and CLAUDE.md. Every permission prompt comes to Poko.
  */
+const tokens = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+
+/** A run's usage from its `result`: input counts cached reads and cache writes too. */
+export function claudeUsage(raw: Record<string, unknown>): TaskUsage | null {
+  if (!isRecord(raw.usage)) return null;
+  const usage = raw.usage;
+  const cached = tokens(usage.cache_read_input_tokens);
+  const written = tokens(usage.cache_creation_input_tokens);
+  return {
+    engine: "claude",
+    inputTokens: tokens(usage.input_tokens) + cached + written,
+    cachedInputTokens: cached,
+    cacheWriteTokens: written,
+    outputTokens: tokens(usage.output_tokens),
+    ...(typeof raw.total_cost_usd === "number" ? { costUsd: raw.total_cost_usd } : {}),
+  };
+}
+
+const CLAUDE_LIMIT_LABELS: Record<string, string> = {
+  five_hour: "5시간 한도",
+  seven_day: "7일 한도",
+  seven_day_opus: "7일 Opus 한도",
+};
+
+/** A `rate_limit_event` as one window, by its type (reset times arrive as Unix seconds). */
+export function claudeLimitWindows(
+  info: Record<string, unknown>,
+): Record<string, UsageLimitWindow> | null {
+  const key = typeof info.rateLimitType === "string" ? info.rateLimitType : null;
+  if (!key) return null;
+  return {
+    [key]: {
+      label: CLAUDE_LIMIT_LABELS[key] ?? key,
+      ...(typeof info.status === "string" ? { status: info.status } : {}),
+      ...(typeof info.utilization === "number" ? { usedPercent: info.utilization * 100 } : {}),
+      ...(typeof info.resetsAt === "number"
+        ? { resetsAt: new Date(info.resetsAt * 1000).toISOString() }
+        : {}),
+    },
+  };
+}
+
 export function claudeArgs(
   tools: readonly string[],
   model?: string,
@@ -678,8 +723,20 @@ export class ClaudeCodeProvider implements AgentProvider {
           continue;
         }
 
+        if (type === "rate_limit_event" && isRecord(raw.rate_limit_info)) {
+          const windows = claudeLimitWindows(raw.rate_limit_info);
+          if (windows) options.onLimits?.("claude", windows);
+          continue;
+        }
+
         if (type === "result") {
           terminal = true;
+          const used = claudeUsage(raw);
+          // A kept session's cost is its running total: main turns it into this run's share.
+          if (used && sessionId) {
+            const { costUsd, ...tokensOnly } = used;
+            options.onUsage?.(tokensOnly, costUsd !== undefined ? { sessionCostUsd: costUsd } : {});
+          } else if (used) options.onUsage?.(used);
           if (aborted) yield { type: "cancelled" };
           else if (session.approvalTimedOut)
             yield { type: "error", error: "확인을 오래 기다려서 작업을 멈췄어. 다시 요청해 줘." };

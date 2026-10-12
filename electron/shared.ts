@@ -52,6 +52,9 @@ export const IPC_CHANNELS = {
   quickRemember: "quick:remember",
   /** Selects the folder a conversation works in (main knows the path; the renderer never sends one). */
   workspaceUseConversationFolder: "workspace:use-conversation-folder",
+  /** main → renderer: a task's usage, once recorded. */
+  taskUsage: "task:usage",
+  usageSummary: "usage:summary",
   routinesList: "routines:list",
   routinesSave: "routines:save",
   routinesDelete: "routines:delete",
@@ -177,6 +180,8 @@ export interface EngineSession {
   dirty: boolean;
   /** Claude Code: the resolved folder its transcript is kept under. */
   cwd?: string;
+  /** Claude Code: the session's API-equivalent cost so far, to count each run's share (Phase 21). */
+  costUsd?: number;
 }
 
 /** How a task uses an engine session: continue `resumeId`, or start one to keep. */
@@ -184,6 +189,42 @@ export interface TaskSession {
   resumeId?: string;
   /** The prompt for a resumed session (no history); `prompt` is used when starting fresh. */
   resumePrompt?: string;
+}
+
+/**
+ * What a task used (Phase 21), the same way for both engines: `inputTokens` is all input,
+ * cached reads and cache writes included; those two are also kept on their own. `costUsd` is
+ * Claude Code's API price for the turn, not what a subscription is charged.
+ */
+export interface TaskUsage {
+  engine: EngineId;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  costUsd?: number;
+}
+
+/** One plan-limit window an engine reported (Phase 21). */
+export interface UsageLimitWindow {
+  label: string;
+  usedPercent?: number;
+  /** Claude Code's word for it, such as "allowed". */
+  status?: string;
+  /** ISO time. */
+  resetsAt?: string;
+}
+
+export interface UsageLimits {
+  /** By key: Codex `primary`/`secondary`, Claude Code's rate-limit type. */
+  windows: Record<string, UsageLimitWindow>;
+  seenAt: string;
+}
+
+/** 설정 → 사용량: this local month's totals per engine, and the latest limits. */
+export interface UsageSummary {
+  month: Partial<Record<EngineId, Omit<TaskUsage, "engine"> & { tasks: number }>>;
+  limits: Partial<Record<EngineId, UsageLimits>>;
 }
 
 export type AgentEvent =
@@ -313,6 +354,8 @@ export interface PersistedTask {
   status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   createdAt: string;
   completedAt: string | null;
+  /** What it used (Phase 21), once recorded. */
+  usage?: TaskUsage | null;
 }
 export interface PersistedActivity {
   id: string;

@@ -15,6 +15,8 @@ import {
   isReasoningEffort,
   isUnavailableModelError,
   type ModelOption,
+  type TaskUsage,
+  type UsageLimitWindow,
 } from "../../shared";
 import type { AgentProvider, RunOptions } from "../../agent/AgentProvider";
 import { signalProcess } from "./CodexProvider";
@@ -38,6 +40,79 @@ const APPROVAL_METHODS = new Set([
 ]);
 
 class ProviderFailure extends Error {}
+
+const LIMITS_READ_MS = 3000;
+
+const count = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+
+/**
+ * A Codex turn's tokens from its `thread/tokenUsage/updated` notices: `total` covers the whole
+ * thread (earlier turns of a resumed conversation too) and `last` the latest request, so the
+ * turn is the last total minus the thread's total before the turn (the first total minus its
+ * last).
+ */
+function turnUsage() {
+  let before: Record<string, unknown> | null = null;
+  let latest: Record<string, unknown> | null = null;
+  let turnId: string | undefined;
+  return {
+    /** The turn whose notices count; a notice naming another turn is left out. */
+    forTurn(id: string | undefined): void {
+      turnId = id;
+    },
+    note(raw: unknown, noticeTurn?: string): void {
+      if (turnId && noticeTurn && noticeTurn !== turnId) return;
+      if (!isRecord(raw) || !isRecord(raw.total) || !isRecord(raw.last)) return;
+      if (!before) {
+        const { total, last } = raw;
+        before = Object.fromEntries(
+          Object.keys(total).map((key) => [key, count(total[key]) - count(last[key])]),
+        );
+      }
+      latest = raw.total;
+    },
+    result(): TaskUsage | null {
+      if (!before || !latest) return null;
+      const used = (key: string): number =>
+        Math.max(0, count(latest?.[key]) - count(before?.[key]));
+      return {
+        engine: "codex",
+        inputTokens: used("inputTokens"),
+        cachedInputTokens: used("cachedInputTokens"),
+        cacheWriteTokens: used("cacheWriteInputTokens"),
+        outputTokens: used("outputTokens"),
+      };
+    },
+  };
+}
+
+/** Codex's plan windows, by key, with reset times as ISO (Codex sends Unix seconds). */
+function codexLimitWindows(raw: unknown): Record<string, UsageLimitWindow> | null {
+  if (!isRecord(raw)) return null;
+  const windows: Record<string, UsageLimitWindow> = {};
+  for (const key of ["primary", "secondary"] as const) {
+    const window = raw[key];
+    if (!isRecord(window) || typeof window.usedPercent !== "number") continue;
+    const minutes =
+      typeof window.windowDurationMins === "number" ? window.windowDurationMins : null;
+    windows[key] = {
+      label: minutes ? limitLabel(minutes) : key === "primary" ? "짧은 한도" : "긴 한도",
+      usedPercent: window.usedPercent,
+      ...(typeof window.resetsAt === "number"
+        ? { resetsAt: new Date(window.resetsAt * 1000).toISOString() }
+        : {}),
+    };
+  }
+  return Object.keys(windows).length ? windows : null;
+}
+
+function limitLabel(minutes: number): string {
+  if (minutes % (60 * 24 * 7) === 0) return `${minutes / (60 * 24 * 7)}주 한도`;
+  if (minutes % (60 * 24) === 0) return `${minutes / (60 * 24)}일 한도`;
+  if (minutes % 60 === 0) return `${minutes / 60}시간 한도`;
+  return `${minutes}분 한도`;
+}
 
 /**
  * Whether a resumed thread is the one asked for, with Poko's settings in effect (a thread
@@ -501,6 +576,7 @@ export class CodexAppServerProvider implements AgentProvider {
     this.sessions.set(input.id, session);
     let timeout: NodeJS.Timeout | undefined;
     let aborted = false;
+    const usage = turnUsage();
     let finalMessage = "";
     let terminal = false;
     // A picked model the account can't use fails the turn; the user is told how to fix it.
@@ -623,6 +699,23 @@ export class CodexAppServerProvider implements AgentProvider {
       );
       if (!isRecord(turnResult) || !isRecord(turnResult.turn))
         throw new Error("Codex App Server did not start a turn.");
+      // Only this turn's token notices count (a resumed thread may report its earlier state).
+      usage.forTurn(readString(turnResult.turn.id));
+      // Plan limits, asked once the turn is running: a short wait that never holds the answer.
+      let limitsTimer: NodeJS.Timeout | undefined;
+      void Promise.race([
+        connection.request("account/rateLimits/read", {}),
+        new Promise((_, reject) => {
+          limitsTimer = setTimeout(() => reject(new Error("slow")), LIMITS_READ_MS);
+          limitsTimer.unref?.();
+        }),
+      ])
+        .then((result) => {
+          const windows = isRecord(result) ? codexLimitWindows(result.rateLimits) : null;
+          if (windows) options.onLimits?.("codex", windows);
+        })
+        .catch(() => undefined)
+        .finally(() => clearTimeout(limitsTimer));
 
       for await (const message of connection.messages) {
         if (options.signal?.aborted || aborted) break;
@@ -671,6 +764,11 @@ export class CodexAppServerProvider implements AgentProvider {
             };
           }
           break;
+        } else if (message.method === "thread/tokenUsage/updated") {
+          usage.note(message.params.tokenUsage, readString(message.params.turnId));
+        } else if (message.method === "account/rateLimits/updated") {
+          const windows = codexLimitWindows(message.params.rateLimits);
+          if (windows) options.onLimits?.("codex", windows);
         } else if (message.method === "error") {
           // Transient failures (e.g. a dropped model stream) are retried by Codex itself.
           if (message.params.willRetry === true) continue;
@@ -703,6 +801,9 @@ export class CodexAppServerProvider implements AgentProvider {
       session.pending.clear();
       this.sessions.delete(input.id);
       terminate();
+      // What the turn used, cancelled or failed turns included.
+      const used = usage.result();
+      if (used) options.onUsage?.(used);
     }
   }
 

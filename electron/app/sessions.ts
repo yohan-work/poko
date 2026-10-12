@@ -4,6 +4,7 @@ import type { TaskContext } from "../agent/context";
 import type { EngineId, EngineSession } from "../shared";
 import { deleteClaudeSession } from "../providers/claude/claudeSessions";
 import { ctx } from "./context";
+import { takeSessionCost } from "./usage";
 
 /**
  * Engine sessions per conversation (Phase 20): which one a task continues, and what is kept
@@ -79,6 +80,12 @@ export function forgetPlan(taskId: string): void {
   reports.delete(taskId);
 }
 
+/** The stored session this task continued, if it continued one. */
+export function resumedSessionOf(taskId: string): string | undefined {
+  const report = reports.get(taskId);
+  return report?.resumed ? report.id : undefined;
+}
+
 export function recordSessionReport(taskId: string, report: SessionReport): void {
   if (planned.has(taskId)) reports.set(taskId, report);
 }
@@ -129,14 +136,16 @@ function finish(taskId: string, type: string): void {
   if (!report.kept) return;
   const stored = database.getEngineSession(conversation.id);
   const cwd = database.getTaskWorkspace(taskId);
+  const sessionCost = takeSessionCost(taskId);
   const session: EngineSession = {
     engine: plan.engine,
     id: report.id,
     lastTaskId: taskId,
     memoryHashes: plan.memoryHashes,
     dirty: type !== "completed",
-    // Claude Code: the folder its transcript is kept under.
+    // Claude Code: the folder its transcript is kept under, and its cost so far.
     ...(plan.engine === "claude" && cwd ? { cwd } : {}),
+    ...(plan.engine === "claude" && sessionCost !== undefined ? { costUsd: sessionCost } : {}),
   };
   database.setEngineSession(conversation.id, session);
   if (stored && stored.id !== report.id) deleteEngineSessions([stored]);
