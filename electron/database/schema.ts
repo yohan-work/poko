@@ -11,6 +11,8 @@ export const conversations = sqliteTable("conversations", {
   title: text("title").notNull(),
   /** The resolved folder the conversation works in; null until a task in a real folder. */
   workspacePath: text("workspace_path"),
+  /** EngineSession as JSON: the engine session this conversation continues (Phase 20). */
+  engineSession: text("engine_session"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

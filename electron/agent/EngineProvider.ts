@@ -1,5 +1,5 @@
 import type { AgentEvent, AgentTask, ApprovalChoice, EngineId, ReasoningEffort } from "../shared";
-import type { AgentProvider } from "./AgentProvider";
+import type { AgentProvider, RunOptions } from "./AgentProvider";
 
 /**
  * Runs each task with the engine chosen when it starts; a change applies to the next task.
@@ -16,7 +16,7 @@ export class EngineProvider implements AgentProvider {
     private readonly effort: (engine: EngineId) => ReasoningEffort | null = () => null,
   ) {}
 
-  async *runTask(input: AgentTask, options?: { signal?: AbortSignal }): AsyncIterable<AgentEvent> {
+  async *runTask(input: AgentTask, options?: RunOptions): AsyncIterable<AgentEvent> {
     // Screen tasks run on the chosen engine with its default model and effort.
     const screen = input.profile === "screen";
     // A task can carry the engine it was checked for; it never moves to another one.

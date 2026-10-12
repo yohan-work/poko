@@ -89,3 +89,16 @@ A long conversation keeps everything said earlier in it, not only the last few e
 - Poko's own summaries of long conversations.
 - Showing token use (the next step, which uses `thread/tokenUsage/updated` and Claude Code's result usage).
 - Moving a conversation's session to another engine.
+
+## Status
+
+- **Milestone 1 (Codex) is done.**
+  - Real check with Codex 0.161.0 in a test profile:
+    - question 1 told a code name, questions 2–7 were filler (pushing it out of the old five-exchange window), and question 8 asked for it back. The answer was "파란 고래";
+    - all eight turns ran in one stored thread;
+    - deleting the conversation removed the thread's rollout file from `~/.codex/sessions`, and the run left no other thread files.
+  - **Where the code is:**
+    - `electron/app/sessions.ts` decides and records;
+    - `CodexAppServerProvider` resumes, checks the settings, falls back, and deletes threads;
+    - Agent Core builds the resume prompt.
+

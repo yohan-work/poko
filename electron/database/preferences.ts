@@ -10,7 +10,7 @@ import {
   type QuickShortcut,
   type ReasoningEffort,
 } from "../shared";
-import { type Db, deleteSetting, readSetting, writeSetting } from "./common";
+import { type Db, deleteSetting, readSetting, writeSetting, bumpMemoryVersion } from "./common";
 import { settings } from "./schema";
 
 export function getWorkspace(db: Db): string | null {
@@ -59,8 +59,11 @@ export function setSettings(db: Db, input: Partial<AppSettings>): AppSettings {
   if (input.engine === "codex" || input.engine === "claude") updates.push(["engine", input.engine]);
   if ((QUICK_SHORTCUTS as readonly unknown[]).includes(input.quickShortcut))
     updates.push(["quickShortcut", input.quickShortcut as string]);
-  if (typeof input.memoriesInContext === "boolean")
+  if (typeof input.memoriesInContext === "boolean") {
     updates.push(["memoriesInContext", String(input.memoriesInContext)]);
+    // Turned off: sessions that were told the memories aren't continued.
+    if (!input.memoriesInContext && getSettings(db).memoriesInContext) bumpMemoryVersion(db);
+  }
   if (typeof input.taskNotifications === "boolean")
     updates.push(["taskNotifications", String(input.taskNotifications)]);
   if ((CHECKPOINT_DAY_CHOICES as readonly unknown[]).includes(input.checkpointDays))

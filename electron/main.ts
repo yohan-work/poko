@@ -25,6 +25,7 @@ import {
   registerRoutineYield,
   startRoutineScheduler,
 } from "./app/routines";
+import { recordSessionReport } from "./app/sessions";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
 import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
@@ -208,6 +209,7 @@ app
       ),
       deliverTaskEvent,
       codingSkill,
+      recordSessionReport,
     );
     // A question sent while Poko was busy starts once the running task has fully ended.
     ctx.agentCore.onIdle(kickQueue);

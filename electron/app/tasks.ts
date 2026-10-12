@@ -17,6 +17,7 @@ import {
   startConversationTask,
   startingConversations,
 } from "./context";
+import { deleteEngineSessions } from "./sessions";
 import { markRoutineStopped, routineTitleFor } from "./routines";
 import { cancelQueued, hasWaiting, queueConversations, waitingQuestions } from "./queue";
 
@@ -132,7 +133,11 @@ export function registerTaskHandlers(): void {
     if (ctx.database.hasRunningTask(id) || (startingConversations.get(id) ?? 0) > 0)
       return { error: "포코가 이 대화에서 작업 중이라 지금은 지울 수 없어." };
     await ctx.editManager?.forgetConversation(id);
-    return ctx.database.deleteConversation(id) ? { ok: true } : { error: CONVERSATION_GONE };
+    // Its engine session goes too (Phase 20), once the conversation is really deleted.
+    const session = ctx.database.getEngineSession(id);
+    if (!ctx.database.deleteConversation(id)) return { error: CONVERSATION_GONE };
+    if (session) deleteEngineSessions([session]);
+    return { ok: true };
   });
 
   ipcMain.handle(IPC_CHANNELS.taskCancel, (event, rawTaskId: unknown) => {

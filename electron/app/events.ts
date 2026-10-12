@@ -4,6 +4,7 @@ import { removeAttachments } from "../attachments/attachments";
 import { attachmentDirs, ctx, pendingApprovalEvents, settleEdits } from "./context";
 import { notifyTaskEvent } from "./notify";
 import { recordRoutineEnd } from "./routines";
+import { finishSession } from "./sessions";
 import { pointAt, screenTasks } from "./screen";
 import { suggestionFolder } from "./workspace";
 import { noteTaskEnded } from "./queue";
@@ -50,6 +51,7 @@ export function deliverTaskEvent(incoming: TaskEventPayload): void {
   // When a task finishes, its last approved change is on disk (or never happened).
   if (finished) {
     recordRoutineEnd(payload.taskId, event.type, event.type === "error" ? event.error : undefined);
+    finishSession(payload.taskId, event.type);
     void settleEdits(payload.taskId);
     // The next waiting question starts once Poko is idle, after these edits settle.
     noteTaskEnded(payload.taskId);

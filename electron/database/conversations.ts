@@ -1,5 +1,5 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
-import type { ConversationMatch } from "../shared";
+import type { ConversationMatch, EngineSession } from "../shared";
 import { type Db, deleteSetting, readSetting, writeSetting } from "./common";
 import { conversations, messages, settings } from "./schema";
 
@@ -151,4 +151,53 @@ export function searchConversations(db: Db, query: string, limit = 50): Conversa
       .get();
     return { ...conversation, snippet: hit ? snippetAround(hit.content, needle) : null };
   });
+}
+
+function readSession(raw: string | null | undefined): EngineSession | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as EngineSession;
+    return typeof value?.id === "string" &&
+      (value.engine === "codex" || value.engine === "claude") &&
+      typeof value.lastTaskId === "string" &&
+      typeof value.memoryVersion === "number"
+      ? { ...value, dirty: value.dirty === true }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The engine session this conversation continues, if any. */
+export function getEngineSession(db: Db, conversationId: string): EngineSession | null {
+  return readSession(
+    db
+      .select({ value: conversations.engineSession })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .get()?.value,
+  );
+}
+
+export function setEngineSession(
+  db: Db,
+  conversationId: string,
+  session: EngineSession | null,
+): void {
+  db.update(conversations)
+    .set({ engineSession: session ? JSON.stringify(session) : null })
+    .where(eq(conversations.id, conversationId))
+    .run();
+}
+
+/** Every stored engine session, so deleting all data can delete them in the engines too. */
+export function listEngineSessions(db: Db): EngineSession[] {
+  return db
+    .select({ value: conversations.engineSession })
+    .from(conversations)
+    .all()
+    .flatMap((row) => {
+      const session = readSession(row.value);
+      return session ? [session] : [];
+    });
 }

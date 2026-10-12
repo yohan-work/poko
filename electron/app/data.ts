@@ -8,6 +8,7 @@ import {
   IPC_CHANNELS,
 } from "../shared";
 import { anyTaskBusy, bootstrapData, ctx, isTrustedRenderer } from "./context";
+import { deleteEngineSessions } from "./sessions";
 
 /** 모두 내보내기, 데이터 폴더 열기, and 모든 데이터 삭제. */
 export function registerDataHandlers(): void {
@@ -52,8 +53,10 @@ export function registerDataHandlers(): void {
         return { error: "포코가 작업 중이라 지금은 지울 수 없어. 작업이 끝난 뒤 다시 시도해 줘." };
       ctx.deletingData = true;
       try {
+        const sessions = ctx.database.listEngineSessions();
         try {
           ctx.database.deleteAllHistory();
+          deleteEngineSessions(sessions);
         } catch (error) {
           console.error("Could not delete all data.", error);
           return { error: "데이터를 모두 지우지 못했어. 다시 시도해 줘." };

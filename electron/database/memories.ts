@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq, sql } from "drizzle-orm";
 import { isSameMemory } from "../shared";
-import { type Db, now } from "./common";
+import { type Db, now, bumpMemoryVersion } from "./common";
 import { memories } from "./schema";
 
 export type MemoryType = "preference" | "project" | "person" | "decision" | "fact" | "routine";
@@ -80,9 +80,12 @@ export function updateMemory(
   if (all.some((item) => item.id !== id && repeats(item))) return "duplicate";
   const updatedAt = now();
   db.update(memories).set({ content: content.trim(), updatedAt }).where(eq(memories.id, id)).run();
+  bumpMemoryVersion(db);
   return { ...memory, content: content.trim(), updatedAt };
 }
 
 export function deleteMemory(db: Db, id: string): boolean {
-  return db.delete(memories).where(eq(memories.id, id)).run().changes > 0;
+  const deleted = db.delete(memories).where(eq(memories.id, id)).run().changes > 0;
+  if (deleted) bumpMemoryVersion(db);
+  return deleted;
 }

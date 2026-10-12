@@ -32,3 +32,15 @@ export function writeSetting(db: Db, key: string, value: string): void {
 export function deleteSetting(db: Db, key: string): void {
   db.delete(settings).where(eq(settings.key, key)).run();
 }
+
+/**
+ * Counts changes that make earlier prompts wrong about memories (a memory deleted or changed,
+ * or memories turned off), so an engine session that saw the old ones isn't continued.
+ */
+export function memoryVersion(db: Db): number {
+  return Number(readSetting(db, "memoryVersion") ?? "0") || 0;
+}
+
+export function bumpMemoryVersion(db: Db): void {
+  writeSetting(db, "memoryVersion", String(memoryVersion(db) + 1));
+}
