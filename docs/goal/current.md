@@ -1,72 +1,75 @@
 # 현재 목표
 
 - 상태: 진행 중
-- 마지막 갱신: 2026-10-08 Asia/Seoul
-- 현재 작업 단위: Phase 00–17 완료. 문서 정리(#87), `Database.ts` 영역별 분리(#88), Phase 17 질문 대기열(#89 계획, #90 메인 창, 빠른 입력창). 남은 일: 사용자 Mac에서 미검증 항목 확인(아래 6번), 빠른 입력창 대기열 실제 확인.
+- 마지막 갱신: 2026-10-12 Asia/Seoul
+- 현재 작업 단위: Phase 00–18 완료(#93까지 머지). 다음은 문서 정리(이 문서) → Phase 19 개인 설치판 → Phase 20 긴 대화 맥락 → 사용량 보기(2026-10-12 사용자와 합의).
 
 ## 목표와 성공 기준
 
-- 목표: Poko v0.1을 단계별 PR → 리뷰 → 머지 흐름으로 구현해 로컬 AI desktop agent를 제공한다.
-- 성공 기준: Phase 00–16이 머지됐다. 이후 단계도 계획 문서 → 마일스톤별 PR → 실제 앱 확인 순서로 완성한다.
+- 목표: Poko를 단계별 PR → 리뷰 → 머지 흐름으로 만들어, 사용자의 Mac에서 매일 쓰는 개인용 로컬 AI desktop agent로 완성한다.
+- 성공 기준: 각 단계가 계획 문서 → 마일스톤별 PR → 실제 앱 확인 순서로 머지된다. 개발 빌드로 확인할 수 없는 것은 사용자 Mac의 설치판에서 확인한다.
 
-## 범위와 확정된 결정
+## 확정된 결정
 
-- 포함(완료): Phase 00–16. 승인 후 파일 수정과 되돌리기, 샌드박스 명령 실행(Claude Code), 화면 보기와 한 단계씩 승인하는 브라우저 작업, 승인 후 저장하는 기억 제안, 항상 읽기 전용인 루틴.
-- 제외: 승인 없는 기억 저장, Playwright 같은 브라우저 자동화, Poko가 꺼져 있을 때의 실행, 배포(보류).
-- 결정: pnpm 단일 애플리케이션에서 시작하고 필요할 때만 패키지를 분리한다. Electron main/preload/renderer는 Electron Vite를 사용하며 renderer에는 좁은 IPC bridge만 노출한다. README는 현재 동작과 계획 기능을 구분한다.
-- 결정: 사용자 승인으로 Phase 04 Codex transport를 `codex exec --json`에서 stdio JSON-RPC `codex app-server`로 전환한다. App Server는 experimental이므로 capability를 좁게 유지하고 검증 전 write 실행은 fail-closed로 둔다.
+- **배포는 보류**(2026-10-06): 개인용으로 계속 개발한다. 다시 꺼낼 때는 서명·공증 여부와 업데이트 채널을 먼저 정하고, GitHub Releases 기반 자동 업데이트(electron-updater 등)를 계획한다.
+- **작업 흐름**(2026-10-01, 이후 반복 확인): 작업이 끝나면 push → PR → 리뷰 → 지적 반영 → CI 통과 후 squash merge까지 사용자 확인 없이 진행한다. main에 직접 push, 배포, 파괴적 작업은 따로 승인을 받는다.
+- **구조**: pnpm 단일 애플리케이션, Electron main/preload/renderer(Electron Vite). renderer에는 좁은 IPC만 노출하고, 권한이 필요한 일은 main과 Agent Core가 한다.
+- **README**: 현재 동작과 계획 기능을 구분해서 적는다.
+- **엔진**: Codex는 stdio JSON-RPC `codex app-server`(experimental이라 capability를 좁게 유지), Claude Code는 stream-json. 엔진 출력은 정규화된 `AgentEvent`로만 다룬다.
+- **명령 실행**: 승인된 명령은 Claude Code(macOS 샌드박스)에서만 실행한다. Codex의 명령 승인은 거절한다(Codex가 샌드박스 안 실행을 지원할 때까지).
+- **제외**: 승인 없는 기억 저장, Playwright 같은 브라우저 자동화, 동시에 두 작업 실행(질문은 대기열로 순서대로 처리), 포코가 꺼져 있을 때의 실행(루틴은 포코가 실행 중일 때만 돈다. Phase 18은 로그인할 때 포코를 여는 것뿐이다).
 
-## 현재 상태
+## 완료된 단계
 
-- 완료: Phase 00 PR #1 및 Phase 01 PR #2가 각각 리뷰 후 squash merge됐다. Phase 01 merge commit은 `ed8b8fab`이다.
-- 완료: MIT 라이선스, Phase 01 구현, 공개 README와 GitHub description/topics가 반영됐다.
-- 완료: typecheck, lint, test (2개), build, format check 통과.
-- 확인됨: Electron main process는 BrowserWindow의 `visible=true`와 renderer load completion을 기록했다.
-- 미검증: Orca가 Electron 창을 열거하지 못해 실제 화면 상호작용/폴더 선택을 확인하지 못했다.
-- 완료: 창 표시 옵션을 명시한 PR #3이 `29f8b97`로 squash merge됐다.
-- 완료: Phase 02 CodexProvider, JSONL normalization, Agent Core, workspace validation, task IPC와 in-memory UI 구현.
-- 검증: Phase 02 `pnpm check` (typecheck, lint, 13 tests, production build), `pnpm format:check`, continuity validator 통과.
-- 완료: PR #5 Phase 02가 `b8591aa`로 squash merge됐다. Codex 기본 read-only의 넓은 읽기 범위는 제한형 named permission profile로 보완했다.
-- 미검증: 개발 컨테이너가 OS sandbox를 차단해 Codex 제한 profile의 실제 enforcement와 GUI interaction은 확인하지 못했다. real Codex model request는 데이터 전송/비용 때문에 실행하지 않았다.
-- 완료: Phase 03 PR #7은 squash merge commit `ddd0cf3`로 원격 `main`에 반영됐다. 로컬 `main`은 사전 존재하던 divergence로 이전 커밋에 남아 있다.
-- 검증: Phase 03 `pnpm check` (typecheck, lint, 16 tests, build), `pnpm format:check`, `git diff --check`, continuity validator 통과.
-- 미검증: GUI restart와 packaged-app migration asset 검증은 packaging/GUI 환경이 없어 진행하지 않았다.
-- 완료: Phase 04 plan PR #8은 squash merge commit `140979e`로 원격 `main`에 반영됐다.
-- 완료: Phase 04 PR #10은 리뷰(4건 수정: process group 종료, `willRetry`, symlink 경계, 복수 승인 대기열) 후 squash merge commit `1526608`로 원격 `main`에 반영됐다.
-- 검증: `pnpm check`(typecheck, lint, 37 tests, build), `pnpm format:check`, `git diff --check` 통과.
-- 미검증: GUI 상호작용, OS별 sandbox enforcement. write mode는 비활성이다. (실제 Codex 요청은 아래 PR #22 항목에서 확인됨)
-- 완료: UI 개편 PR #12(사이드바·대화 화면), #13(검정 구 + 코랄 위성 캐릭터), #14(작업·기억·활동 탭)가 리뷰 후 squash merge됐다. 최신 `main`은 `76948f6`이다.
-- 결정: 작업 완료 후 PR → 리뷰 → 지적 반영 → squash merge까지 사용자 확인 없이 진행한다(사용자 지시, 2026-10-01).
-- 결정: 다음 순서는 Phase 06 화면 동반자(사용자의 'wow point' 요청) → Phase 07 여러 대화 → 이후 workspace-write 샌드박스 기반 쓰기 모드. 계획은 [phase-06](../phases/phase-06.md).
-- 완료: Phase 05 대화 품질. PR #15(계획), #17(기억·대화 맥락, `tasks.conversation_id`/`result` migration), #19(Markdown), #20(스트리밍)이 리뷰 후 squash merge됐다. 최신 `main`은 `4c24790`이다.
-- 검증: `pnpm check`(typecheck, lint, 60 tests, build), `pnpm format:check`, `git diff --check` 통과. 화면은 stub preload로 렌더링해 확인했다.
-- 완료: PR #22로 실제 Codex 검증에서 찾은 승인 버그(실행 정책 제안 때문에 모든 승인 자동 거절)를 고쳤다. 승인된 셸 명령은 샌드박스 밖에서 실행되므로 v0.1에서는 명령 승인을 거절하고 파일 변경 승인만 유지한다(사용자 결정). v0.1은 실질적으로 읽기 전용이다. `main`은 `78bc860`.
-- 확인됨: 실제 Codex(0.159.3)로 기억 반영, 후속 질문, 스트리밍, 명령 승인 거절을 확인했다.
-- 확인됨: Codex App Server는 `localImage` 입력을 지원해 기존 구독으로 화면 이해가 가능하다.
-- 운영 메모: 같은 작업 폴더를 다른 세션도 사용한다. 브랜치 전환이 섞이지 않도록 별도 git worktree에서 작업한다.
+| 단계 | 내용 | 계획 |
+|---|---|---|
+| 00–04 | 기반, Codex 연결, 저장, 승인 카드 | [phase-00](../phases/phase-00.md)–[04](../phases/phase-04.md) |
+| 05 | 대화 품질: 기억·맥락, Markdown, 스트리밍, 기억 제안(#69) | [phase-05](../phases/phase-05.md) |
+| 06 | 화면 동반자: 화면 보기, 단계별 승인 브라우저 작업 | [phase-06](../phases/phase-06.md) |
+| 07–08 | 여러 대화, 승인된 수정과 되돌리기 | [phase-07](../phases/phase-07.md), [08](../phases/phase-08.md) |
+| 09–10 | 설치형 앱, 설정과 데이터 | [phase-09](../phases/phase-09.md), [10](../phases/phase-10.md) |
+| 11–12 | Claude Code 엔진, 모델·추론 강도, 샌드박스 명령 | [phase-11](../phases/phase-11.md), [12](../phases/phase-12.md) |
+| 13 | 어디서든 부르기: ⌥Space 빠른 입력창, 메뉴바, 알림, 받아쓰기, 선택한 글, 읽어 주기, 이어 묻기 | [phase-13](../phases/phase-13.md) |
+| 14 | 파일·이미지 첨부 | [phase-14](../phases/phase-14.md) |
+| 15 | 루틴(항상 읽기 전용, 당일 놓친 실행 1회, 루틴별 대화, 멈추고 지금 묻기) | [phase-15](../phases/phase-15.md) |
+| 16 | 대화·프로젝트 기억의 폴더 귀속 | [phase-16](../phases/phase-16.md) |
+| 17 | 질문 대기열(메인 창 #90, 빠른 입력창 #91) | [phase-17](../phases/phase-17.md) |
+| 18 | 로그인할 때 포코 열기(설치한 앱에서만) | [phase-18](../phases/phase-18.md) |
 
-## 마지막 체크포인트
+그 밖에: 대화 검색, 다시 시도·답변 복사·단축키(#82), 기억 편집(#85), 상태 저장소 분리(#71), 데이터베이스 영역별 분리(#88).
 
-- 2026-10-08: Phase 16과 후속 다듬기 완료(#86까지 머지). 검토 후 정리 → 미검증 확인 → Phase 17 질문 대기열 순서로 진행하기로 했다.
+## 확인된 것
+
+- 실제 Codex로 기억 반영, 후속 질문, 스트리밍, 명령 승인 거절을 확인했다. Codex App Server는 `localImage` 입력을 지원한다.
+- 각 PR의 실제 앱 확인은 해당 PR 설명에 있다(테스트용 프로필, 직접 띄운 데모 창만 사용).
+
+## 미검증 (사용자 Mac의 설치판에서 확인 필요)
+
+- 설치판에서 화면 보기 권한(화면 기록·손쉬운 사용)과, 업데이트 후에도 권한이 유지되는지(Phase 19);
+- 로그인할 때 포코 열기(Phase 18): 실제 로그인 항목 등록과 로그아웃 후 동작;
+- 마이크 버튼으로 받아쓰기가 실제로 뜨는지;
+- 메인 창을 닫은 뒤 Dock 클릭으로 다시 여는 동작;
+- 빠른 입력창 작업의 승인 카드를 메인 창으로 넘기는 흐름 전체(실제 수정 카드);
+- 라이트 메뉴바에서 메뉴바 아이콘 색;
+- 루틴 대화에서 다른 폴더가 선택됐을 때 이어서 묻기 거절;
+- 루틴이 Mac 잠자기에서 깨어난 뒤 당일 놓친 실행을 한 번 실행하는지;
+- 빠른 입력창 질문 대기열(Phase 17)의 실제 사용 흐름;
+- 설치판에서 데이터베이스 migration이 실행되는지(앱 재시작 포함);
+- Codex 제한 권한 profile과 샌드박스가 OS에서 실제로 적용되는지.
+
+## 다음 계획 (2026-10-12 합의)
+
+1. **Phase 19 개인 설치판**: 이 Mac 전용 고정 서명(로컬 인증서)으로 빌드해 `/Applications`에 설치·업데이트하는 명령. 지금의 ad-hoc 서명은 빌드마다 서명이 바뀌어 macOS 권한이 초기화될 수 있다. 배포가 아니다. 설치 후 위 미검증 목록을 확인한다.
+2. **Phase 20 긴 대화 맥락**: 대화마다 엔진 세션을 이어 쓰기(Codex `thread/resume`, Claude `--resume`, 지원 여부 먼저 확인), 안 되면 지금 방식으로 대체. 지금 방식([phase-05](../phases/phase-05.md)): 최근 완료된 주고받기 5개, 전체 약 8,000자·한쪽 2,000자 제한, 실패·취소된 작업은 제외.
+3. **사용량 보기**: 작업별 토큰·비용, 월 합계.
+4. 소소한 개선(실사용 후 판단): 대화 하나 Markdown 내보내기, 루틴 결과가 변화 없으면 알림 생략.
 
 ## 재개 지점
 
-1. 원격 `main`에서 시작한다. 공유 작업 폴더의 브랜치는 바꾸지 말고 git worktree(scratchpad)에서 작업한다.
+1. 원격 `main`에서 시작한다. 같은 작업 폴더를 다른 세션도 쓰므로 그 폴더의 브랜치는 바꾸지 말고 git worktree(scratchpad)에서 작업한다. worktree의 `node_modules` 링크는 `$(git rev-parse --git-common-dir)/info/exclude`에 `/node_modules`로 제외한다.
 2. 모든 PR은 리뷰 → 지적 반영 → CI 통과 확인 후 squash merge한다.
    - 검사는 파이프 없이 종료 코드로 확인한다.
-   - 커밋 전에 새 파일이 git에 포함됐는지 확인한다(`.gitignore`가 `data/`를 무시한다).
+   - PR 전에 `git diff --stat origin/main`에 의도한 파일만 있는지 본다.
+   - 커밋 전에 새 파일이 git에 포함됐는지 확인한다(`.gitignore`가 `data/`를 무시해서 `git diff --stat`에도 안 보인다).
    - 리뷰 에이전트에게 worktree를 만들거나 지우지 말라고 명시한다.
-3. 완료:
-   - Phase 06–13: 화면 동반자, 여러 대화, 승인된 수정과 되돌리기, 설치형 앱, 설정과 데이터, Claude Code 엔진, 모델 선택, 승인 후 샌드박스 명령 실행(Claude Code·macOS), 어디서든 포코 부르기(⌥Space 빠른 입력창, 메뉴바).
-4. **배포는 보류** (2026-10-06 사용자 결정: 개인용으로 계속 개발). 아래는 나중에 다시 꺼낼 때를 위한 메모.
-   - GitHub Releases 기반 자동 업데이트(electron-updater 등). 서명·공증 여부와 업데이트 채널을 먼저 계획한다.
-   - 패키징된 앱에서 화면 보기 권한(화면 기록·손쉬운 사용)이 실제로 동작하는지 사용자 환경에서 확인한다.
-5. 완료: 빠른 입력창 "화면과 함께 묻기"(#62), 파일·이미지 끌어다 놓기([phase-14](../phases/phase-14.md)), 추론 강도 선택, Claude Code로 화면 보기·대신 해 줘, 작업 완료 알림, 대화 검색, 기억 제안(승인 후 저장), 음성으로 묻기(macOS 받아쓰기), 상태 저장소 정리(#71), 선택한 글로 묻기, 답변 읽어 주기. 반복 작업(루틴, [phase-15](../phases/phase-15.md): 항상 읽기 전용·당일 놓친 실행 1회·루틴별 대화). 대화·프로젝트 기억의 폴더 귀속([phase-16](../phases/phase-16.md)). 다시 시도·답변 복사·단축키, 빠른 입력창 이어 묻기, 기억 편집, 루틴 실행 중 "멈추고 지금 묻기". 기능 검토 후보는 모두 끝났다. Phase 17 질문 대기열 완료([phase-17](../phases/phase-17.md): 메인 창 #90, 빠른 입력창; 동시 실행은 계속 보류). 다음은 사용자와 다시 정한다. 그 밖의 후보:
-   - Codex 명령 실행(Codex가 승인된 명령을 샌드박스 안에서 실행할 수 있게 되면).
-6. 미검증:
-   - 메인 창을 닫은 뒤 Dock 클릭으로 다시 여는 동작;
-   - 빠른 입력창 작업의 승인 카드를 메인 창으로 넘기는 흐름 전체(실제 수정 카드);
-   - 라이트 메뉴바에서 메뉴바 아이콘 색;
-   - 마이크 버튼으로 받아쓰기가 실제로 뜨는지(사용자 Mac에서 확인 필요);
-   - 루틴 대화에서 다른 폴더가 선택됐을 때 이어서 묻기 거절(폴더 선택 대화상자 때문에 자동 확인 불가);
-   - 루틴이 Mac 잠자기에서 깨어난 뒤 당일 놓친 실행을 한 번 실행하는지.
+3. 실제 앱 확인은 별도 `--user-data-dir` 테스트 프로필과 직접 띄운 창으로만 한다. 사용자의 창이나 클립보드는 건드리지 않는다.
