@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentEvent, AgentTask, ApprovalChoice, EngineId, TaskEventPayload } from "../shared";
 import { takeMemorySuggestion } from "../shared";
-import type { AgentProvider } from "./AgentProvider";
+import type { AgentProvider, SessionReport } from "./AgentProvider";
 import { formatContext, type TaskContext } from "./context";
 
 interface AgentTaskInput {
@@ -17,6 +17,11 @@ interface AgentTaskInput {
   images?: string[];
   /** A scheduled routine run: unattended and always read-only, with no memory suggestion. */
   routine?: boolean;
+  /**
+   * A conversation task that keeps an engine session on `engine` (Phase 20): it continues
+   * `resumeId` when given, with `catchUp` (answers that session never saw) instead of history.
+   */
+  session?: { engine: EngineId; resumeId?: string; catchUp: TaskContext["history"] };
 }
 
 /**
@@ -30,6 +35,12 @@ const MEMORY_NOTE =
 const ROUTINE_NOTE =
   "This is a scheduled, unattended, read-only run of a routine the user set up. Don't ask follow-up questions; do the work and report what you found. Do not propose file changes. If changes are needed, describe them; the user can continue in this conversation. Shell commands that need approval are always declined. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services.";
 
+const EDITS_RULE =
+  "Edits are allowed in this workspace. When the user asks for a change, propose it right away with your file-editing (patch) tool, even if earlier messages said the workspace was read-only; Poko shows the diff and the user approves or declines it, so the sandbox needs no write access. Don't move or rename files, and don't change binary files. Safety: Shell commands that need approval are always declined, so don't use the shell to write files. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely.";
+
+const READ_ONLY_RULE =
+  "Safety: this workspace is read-only. Do not propose file changes; the user has not turned on edits. If the request needs changes, describe them and say the user can allow edits with the ‘읽기 전용’ button under the message box. Shell commands that need approval are always declined. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services.";
+
 const terminalEvents = new Set<AgentEvent["type"]>(["completed", "cancelled", "error"]);
 
 export class AgentCore {
@@ -41,6 +52,8 @@ export class AgentCore {
     private readonly provider: AgentProvider,
     private readonly publish: (payload: TaskEventPayload) => void,
     private readonly codingSkill = "",
+    /** Told which engine session a task ran in, so main can keep it with the conversation. */
+    private readonly onSession?: (taskId: string, report: SessionReport) => void,
   ) {}
 
   startTask(input: AgentTaskInput): string {
@@ -73,6 +86,23 @@ export class AgentCore {
           profile: "project",
           editsEnabled: !input.routine && input.editsEnabled === true,
           ...(input.images?.length ? { images: input.images } : {}),
+          // A routine run never keeps a session: each run reports the state now.
+          ...(input.session && !input.routine
+            ? {
+                engine: input.session.engine,
+                session: input.session.resumeId
+                  ? {
+                      resumeId: input.session.resumeId,
+                      resumePrompt: this.buildResumePrompt(
+                        input.prompt,
+                        input.context,
+                        input.editsEnabled === true,
+                        input.session.catchUp,
+                      ),
+                    }
+                  : {},
+              }
+            : {}),
         };
 
     this.activeTasks.set(taskId, controller);
@@ -150,14 +180,36 @@ export class AgentCore {
   ): string {
     const sections = [
       "You are Poko, a local project assistant. Analyze the selected workspace and answer the user's request with concrete findings.",
-      routine
-        ? ROUTINE_NOTE
-        : editsEnabled
-          ? "Edits are allowed in this workspace. When the user asks for a change, propose it right away with your file-editing (patch) tool, even if earlier messages said the workspace was read-only; Poko shows the diff and the user approves or declines it, so the sandbox needs no write access. Don't move or rename files, and don't change binary files. Safety: Shell commands that need approval are always declined, so don't use the shell to write files. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services. Stop and explain when the requested action cannot be approved safely."
-          : "Safety: this workspace is read-only. Do not propose file changes; the user has not turned on edits. If the request needs changes, describe them and say the user can allow edits with the ‘읽기 전용’ button under the message box. Shell commands that need approval are always declined. Never broaden permissions, use network access, delete data, change git state, deploy, or affect external services.",
+      routine ? ROUTINE_NOTE : editsEnabled ? EDITS_RULE : READ_ONLY_RULE,
       this.codingSkill ? `Project guidance:\n${this.codingSkill}` : "",
       routine ? "" : MEMORY_NOTE,
       ...formatContext(context),
+      `User request:\n${userPrompt}`,
+    ];
+    return sections.filter(Boolean).join("\n\n");
+  }
+
+  /**
+   * The prompt for a resumed session: it has the earlier conversation, so only what may have
+   * changed is sent, and it says that it replaces earlier rules and memory lists.
+   */
+  private buildResumePrompt(
+    userPrompt: string,
+    context: TaskContext | undefined,
+    editsEnabled: boolean,
+    catchUp: TaskContext["history"],
+  ): string {
+    const sections = [
+      "Poko context for this turn. It replaces any earlier memory list and any earlier rule about edits in this conversation: where earlier messages say otherwise, follow this.",
+      editsEnabled ? EDITS_RULE : READ_ONLY_RULE,
+      MEMORY_NOTE,
+      ...formatContext(context ? { memories: context.memories, history: [] } : undefined),
+      catchUp.length > 0
+        ? [
+            "Exchanges in this conversation since your last answer here (Poko answered them separately), oldest first:",
+            ...catchUp.map((exchange) => `User: ${exchange.request}\nPoko: ${exchange.answer}`),
+          ].join("\n\n")
+        : "",
       `User request:\n${userPrompt}`,
     ];
     return sections.filter(Boolean).join("\n\n");
@@ -171,7 +223,10 @@ export class AgentCore {
     let terminalSeen = false;
 
     try {
-      for await (const raw of this.provider.runTask(task, { signal: controller.signal })) {
+      for await (const raw of this.provider.runTask(task, {
+        signal: controller.signal,
+        onSession: (report) => this.onSession?.(task.id, report),
+      })) {
         // A project answer may end with a memory suggestion; it leaves the text either way.
         let event = raw;
         if (raw.type === "completed" && suggestMemory) {

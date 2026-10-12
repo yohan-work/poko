@@ -213,6 +213,38 @@ export function getTaskContext(db: Db, taskId: string): TaskContext {
   );
 }
 
+/**
+ * Exchanges completed in a conversation after `afterTaskId` (answers its engine session never
+ * saw: screen tasks, routine runs, fresh fallbacks), oldest first, within the usual limits.
+ */
+export function exchangesAfter(
+  db: Db,
+  conversationId: string,
+  afterTaskId: string,
+  excludingTaskId: string,
+): { history: TaskContext["history"]; missed: number } | null {
+  const after = db
+    .select({ createdAt: tasks.createdAt })
+    .from(tasks)
+    .where(eq(tasks.id, afterTaskId))
+    .get();
+  if (!after) return null;
+  const rows = db
+    .select({ request: tasks.prompt, answer: tasks.result })
+    .from(tasks)
+    .where(
+      sql`${tasks.conversationId} = ${conversationId} AND ${tasks.status} = 'completed' AND ${tasks.result} IS NOT NULL AND ${tasks.id} <> ${excludingTaskId} AND ${tasks.id} <> ${afterTaskId} AND ${tasks.createdAt} >= ${after.createdAt}`,
+    )
+    .orderBy(desc(tasks.createdAt), desc(sql`${tasks}.rowid`))
+    .all();
+  const history = limitContext(
+    [],
+    rows.map((row) => ({ request: row.request, answer: row.answer ?? "" })),
+  ).history;
+  // Every missed answer must fit, or the session would hold a gap it can't see.
+  return { history, missed: rows.length - history.length };
+}
+
 /** The newest task in a conversation, or null. */
 export function latestTaskId(db: Db, conversationId: string): string | null {
   return (

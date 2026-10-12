@@ -155,6 +155,33 @@ export interface AgentTask {
   engine?: EngineId;
   /** The reasoning effort the user picked for this engine; absent means the CLI's default. */
   effort?: ReasoningEffort;
+  /**
+   * A conversation task that keeps an engine session (Phase 20). Absent: the engine keeps
+   * nothing (screen tasks, routine runs), so nothing it saw outlives the task there.
+   */
+  session?: TaskSession;
+}
+
+/**
+ * The engine session a conversation continues (Phase 20). Used only while it is the current
+ * engine, every memory it was sent still holds (`memoryHashes`), and no failed or cancelled
+ * task ran in it (`dirty`).
+ */
+export interface EngineSession {
+  engine: EngineId;
+  id: string;
+  /** The last task that ran in this session; later answers are sent to it as catch-up. */
+  lastTaskId: string;
+  /** Short hashes of every memory this session was sent (type and text). */
+  memoryHashes: string[];
+  dirty: boolean;
+}
+
+/** How a task uses an engine session: continue `resumeId`, or start one to keep. */
+export interface TaskSession {
+  resumeId?: string;
+  /** The prompt for a resumed session (no history); `prompt` is used when starting fresh. */
+  resumePrompt?: string;
 }
 
 export type AgentEvent =

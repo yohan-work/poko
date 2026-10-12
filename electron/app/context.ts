@@ -18,6 +18,7 @@ import type { EditManager } from "../edits/EditManager";
 import type { SetupService } from "../setup/SetupService";
 import type { QuickPanel } from "../quick/QuickPanel";
 import { resolveWorkspaceDirectory } from "../agent/workspace";
+import { forgetPlan, planSession } from "./sessions";
 import {
   attachedTextSection,
   attachmentLine,
@@ -177,8 +178,10 @@ async function startNow(
       context: ctx.database.getTaskContext(taskId),
       editsEnabled: ctx.database.isEditsEnabled(cwd),
       images: written?.images,
+      session: planSession(started.conversation.id, taskId),
     });
   } catch (error) {
+    forgetPlan(taskId);
     // Also a folder writeImages left half written before it failed.
     attachmentDirs.delete(taskId);
     if (ctx.attachmentsRoot) void removeAttachments(join(ctx.attachmentsRoot, taskId));

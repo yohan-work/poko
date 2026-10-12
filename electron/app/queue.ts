@@ -10,6 +10,7 @@ import {
 import { ConversationGoneError } from "../database/Database";
 import { IPC_CHANNELS, type QueuedQuestion, type TaskStartedNotice } from "../shared";
 import { attachmentDirs, CONVERSATION_GONE, ctx, folderGoneMessage, settleEdits } from "./context";
+import { planSession } from "./sessions";
 import { deliverTaskEvent } from "./events";
 
 /**
@@ -260,6 +261,7 @@ async function startWaiting(next: Waiting): Promise<boolean> {
       context: ctx.database.getTaskContext(next.taskId),
       editsEnabled: ctx.database.isEditsEnabled(cwd),
       ...(next.images.length ? { images: next.images } : {}),
+      session: planSession(conversation.id, next.taskId),
     });
     return true;
   } catch (error) {

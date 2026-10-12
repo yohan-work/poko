@@ -147,4 +147,39 @@ describe("AgentCore", () => {
     expect(seen[0].prompt).not.toContain("‘읽기 전용’ button");
     expect(publish.mock.calls[0][0].event).toEqual({ type: "completed", result: answer });
   });
+
+  it("sends a resumed session only the new question, current memories and rule, and catch-up", async () => {
+    const seen: AgentTask[] = [];
+    const provider: AgentProvider = {
+      async *runTask(task) {
+        seen.push(task);
+        yield { type: "completed", result: "ok" };
+      },
+    };
+    const core = new AgentCore(provider, vi.fn());
+    core.startTask({
+      prompt: "그 결정 기억나?",
+      cwd: "/w",
+      context: {
+        memories: [{ type: "preference", content: "답은 짧게" }],
+        history: [{ request: "옛 질문", answer: "옛 답" }],
+      },
+      session: {
+        engine: "codex",
+        resumeId: "t-old",
+        catchUp: [{ request: "화면 질문", answer: "화면 답" }],
+      },
+    });
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    const resume = seen[0].session?.resumePrompt ?? "";
+    expect(seen[0]).toMatchObject({ engine: "codex", session: { resumeId: "t-old" } });
+    expect(resume).toContain("replaces any earlier memory list");
+    expect(resume).toContain("read-only");
+    expect(resume).toContain("답은 짧게");
+    expect(resume).toContain("화면 질문");
+    expect(resume).not.toContain("옛 질문");
+    expect(resume).toContain("그 결정 기억나?");
+    // Starting fresh instead still has the usual full prompt, history included.
+    expect(seen[0].prompt).toContain("옛 질문");
+  });
 });

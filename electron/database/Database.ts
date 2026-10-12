@@ -14,6 +14,7 @@ import type {
   EngineId,
   RoutineResult,
   RoutineSchedule,
+  EngineSession,
 } from "../shared";
 import * as Approvals from "./approvals";
 import type { Db } from "./common";
@@ -263,6 +264,19 @@ export class PokoDatabase {
   latestTaskId(conversationId: string): string | null {
     return Tasks.latestTaskId(this.db, conversationId);
   }
+  exchangesAfter(conversationId: string, afterTaskId: string, excludingTaskId: string) {
+    return Tasks.exchangesAfter(this.db, conversationId, afterTaskId, excludingTaskId);
+  }
+  getEngineSession(conversationId: string): EngineSession | null {
+    return Conversations.getEngineSession(this.db, conversationId);
+  }
+  setEngineSession(conversationId: string, session: EngineSession | null): void {
+    Conversations.setEngineSession(this.db, conversationId, session);
+  }
+  listEngineSessions(): EngineSession[] {
+    return Conversations.listEngineSessions(this.db);
+  }
+
   hasTask(taskId: string): boolean {
     return Tasks.hasTask(this.db, taskId);
   }

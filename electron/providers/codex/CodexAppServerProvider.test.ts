@@ -28,6 +28,9 @@ class FakeAppServer extends EventEmitter {
   pid: number | undefined;
   received: Message[] = [];
   killed = false;
+  /** How `thread/resume` is answered; by default Codex doesn't know the thread. */
+  resume: (message: Message) => void = (message) =>
+    this.send({ id: message.id, error: { code: -32600, message: "thread not found" } });
   private waiters: Array<{ match: (message: Message) => boolean; resolve: (m: Message) => void }> =
     [];
 
@@ -75,6 +78,8 @@ class FakeAppServer extends EventEmitter {
     }
     if (message.method === "initialize") {
       this.send({ id: message.id, result: { userAgent: "codex/test" } });
+    } else if (message.method === "thread/resume") {
+      this.resume(message);
     } else if (message.method === "thread/start") {
       this.send({ id: message.id, result: { thread: { id: "thread-1" } } });
     } else if (message.method === "turn/start") {
@@ -837,5 +842,112 @@ describe("CodexAppServerProvider", () => {
       { id: "gpt-c", label: "gpt-c" },
     ]);
     expect(server.killed).toBe(true);
+  });
+
+  describe("conversation threads (Phase 20)", () => {
+    const resumed = (server: FakeAppServer, overrides: Record<string, unknown> = {}) => {
+      server.resume = (message) =>
+        server.send({
+          id: message.id,
+          result: {
+            thread: { id: "t-old" },
+            cwd: "/workspace",
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandbox: { type: "readOnly", networkAccess: false },
+            ...overrides,
+          },
+        });
+    };
+    const withSession: AgentTask = {
+      ...task,
+      prompt: "FRESH",
+      session: { resumeId: "t-old", resumePrompt: "RESUME" },
+    };
+    const inputText = async (server: FakeAppServer) => {
+      const turn = await server.waitFor((m) => m.method === "turn/start");
+      return (turn.params as { threadId: string; input: Array<{ text?: string }> }).input[0].text;
+    };
+
+    it("continues the stored thread with Poko's settings and only the new context", async () => {
+      const server = new FakeAppServer();
+      resumed(server);
+      const reports: unknown[] = [];
+      consume(providerFor(server).runTask(withSession, { onSession: (r) => reports.push(r) }));
+      expect(await inputText(server)).toBe("RESUME");
+      const resume = await server.waitFor((m) => m.method === "thread/resume");
+      expect(resume.params).toMatchObject({
+        threadId: "t-old",
+        excludeTurns: true,
+        sandbox: "read-only",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        config: { mcp_servers: {}, default_permissions: "poko-readonly" },
+      });
+      expect(server.received.some((m) => m.method === "thread/start")).toBe(false);
+      expect(reports).toEqual([{ id: "t-old", resumed: true, kept: true, forgetPrevious: false }]);
+    });
+
+    it("starts fresh and forgets a thread Codex refuses, or returns with other settings", async () => {
+      for (const setup of [
+        () => undefined,
+        (server: FakeAppServer) => resumed(server, { sandbox: { type: "workspaceWrite" } }),
+        (server: FakeAppServer) =>
+          resumed(server, { sandbox: { type: "readOnly", networkAccess: true } }),
+      ]) {
+        const server = new FakeAppServer();
+        setup(server);
+        const reports: unknown[] = [];
+        consume(providerFor(server).runTask(withSession, { onSession: (r) => reports.push(r) }));
+        expect(await inputText(server)).toBe("FRESH");
+        const start = await server.waitFor((m) => m.method === "thread/start");
+        expect(start.params).toMatchObject({ ephemeral: false });
+        expect(reports).toEqual([
+          { id: "thread-1", resumed: false, kept: true, forgetPrevious: true },
+        ]);
+      }
+    });
+
+    it("answers once, keeping nothing, for any other failure to resume", async () => {
+      const server = new FakeAppServer();
+      server.resume = (message) =>
+        server.send({ id: message.id, error: { code: -32603, message: "rollout is locked" } });
+      const reports: unknown[] = [];
+      consume(providerFor(server).runTask(withSession, { onSession: (r) => reports.push(r) }));
+      expect(await inputText(server)).toBe("FRESH");
+      expect((await server.waitFor((m) => m.method === "thread/start")).params).toMatchObject({
+        ephemeral: true,
+      });
+      expect(reports).toEqual([
+        { id: "thread-1", resumed: false, kept: false, forgetPrevious: false },
+      ]);
+    });
+
+    it("answers once, keeping nothing, when the stored thread can't be reached", async () => {
+      const server = new FakeAppServer();
+      server.resume = () => undefined;
+      const reports: unknown[] = [];
+      consume(
+        providerFor(server, { requestTimeoutMs: 30 }).runTask(withSession, {
+          onSession: (r) => reports.push(r),
+        }),
+      );
+      expect(await inputText(server)).toBe("FRESH");
+      const start = await server.waitFor((m) => m.method === "thread/start");
+      expect(start.params).toMatchObject({ ephemeral: true });
+      expect(reports).toEqual([
+        { id: "thread-1", resumed: false, kept: false, forgetPrevious: false },
+      ]);
+    });
+
+    it("keeps no thread for a task without a session (screen tasks, routine runs)", async () => {
+      const server = new FakeAppServer();
+      const reports: unknown[] = [];
+      consume(providerFor(server).runTask(task, { onSession: (r) => reports.push(r) }));
+      const start = await server.waitFor((m) => m.method === "thread/start");
+      expect(start.params).toMatchObject({ ephemeral: true });
+      await server.waitFor((m) => m.method === "turn/start");
+      expect(reports).toEqual([]);
+    });
   });
 });

@@ -16,7 +16,7 @@ import {
   isUnavailableModelError,
   type ModelOption,
 } from "../../shared";
-import type { AgentProvider } from "../../agent/AgentProvider";
+import type { AgentProvider, RunOptions } from "../../agent/AgentProvider";
 import { signalProcess } from "./CodexProvider";
 import {
   encodeRequestId,
@@ -38,6 +38,31 @@ const APPROVAL_METHODS = new Set([
 ]);
 
 class ProviderFailure extends Error {}
+
+/**
+ * Whether a resumed thread is the one asked for, with Poko's settings in effect (a thread
+ * that came back with other settings is never used).
+ */
+function isResumedAsAsked(result: unknown, threadId: string, cwd: string): boolean {
+  return (
+    isRecord(result) &&
+    isRecord(result.thread) &&
+    result.thread.id === threadId &&
+    result.cwd === cwd &&
+    result.approvalPolicy === "on-request" &&
+    result.approvalsReviewer === "user" &&
+    isRecord(result.sandbox) &&
+    result.sandbox.type === "readOnly" &&
+    result.sandbox.networkAccess !== true
+  );
+}
+
+/** Codex saying it has no such thread, as opposed to any other failure. */
+const isThreadMissing = (error: unknown): boolean =>
+  error instanceof ReplyError &&
+  /not found|no such|unknown thread|no rollout|does not exist/i.test(error.message);
+/** An error the App Server replied with (as opposed to no reply, or the process ending). */
+class ReplyError extends Error {}
 
 export type AppServerSpawn = (
   command: string,
@@ -187,7 +212,7 @@ class AppServerConnection {
           const response = this.responses.get(key);
           if (!response) continue;
           if (message.error)
-            response.reject(new Error(message.error.message ?? "Codex request failed."));
+            response.reject(new ReplyError(message.error.message ?? "Codex request failed."));
           else response.resolve(message.result);
         } else {
           this.messages.push(message);
@@ -356,10 +381,59 @@ export class CodexAppServerProvider implements AgentProvider {
     return features;
   }
 
-  async *runTask(
-    input: AgentTask,
-    options: { signal?: AbortSignal } = {},
-  ): AsyncIterable<AgentEvent> {
+  /**
+   * Deletes threads Poko kept for conversations (a deleted conversation, a replaced session,
+   * or all data). Best effort: a failure is logged and never blocks the delete in Poko.
+   */
+  async deleteThreads(threadIds: string[]): Promise<void> {
+    if (threadIds.length === 0) return;
+    const runtime = this.runtime();
+    let connection: AppServerConnection;
+    try {
+      connection = new AppServerConnection(
+        this.spawnProcess(
+          runtime.executable,
+          ["--strict-config", "--config", "mcp_servers={}", "app-server", "--listen", "stdio://"],
+          {
+            cwd: tmpdir(),
+            env: runtime.environment,
+            stdio: ["pipe", "pipe", "pipe"],
+            detached: process.platform !== "win32",
+            windowsHide: true,
+          },
+        ),
+      );
+    } catch (error) {
+      console.error("Could not start Codex to delete threads.", error);
+      return;
+    }
+    try {
+      await this.withRequestTimeout(
+        connection.request("initialize", {
+          clientInfo: { name: "poko", title: "Poko", version: "0.1.0" },
+          capabilities: {},
+        }),
+      );
+      connection.notify("initialized");
+      for (const threadId of threadIds) {
+        try {
+          await this.withRequestTimeout(connection.request("thread/delete", { threadId }));
+        } catch (error) {
+          console.error("Could not delete a Codex thread.", error);
+        }
+      }
+    } catch (error) {
+      console.error("Could not delete Codex threads.", error);
+    } finally {
+      try {
+        signalProcess(connection.child, "SIGTERM");
+      } catch {
+        /* already closed */
+      }
+    }
+  }
+
+  async *runTask(input: AgentTask, options: RunOptions = {}): AsyncIterable<AgentEvent> {
     if (input.mode !== "read") {
       yield { type: "error", error: "현재 포코는 승인된 읽기 전용 요청만 처리할 수 있어." };
       return;
@@ -470,26 +544,65 @@ export class CodexAppServerProvider implements AgentProvider {
         throw new Error("Unsupported Codex App Server initialize response.");
       }
       connection.notify("initialized");
-      const threadResult = await this.withRequestTimeout(
-        connection.request("thread/start", {
-          cwd: input.cwd,
-          ...(input.model ? { model: input.model } : {}),
-          approvalPolicy: "on-request",
-          approvalsReviewer: "user",
-          sandbox: "read-only",
-          config: {
-            ...(input.effort ? { model_reasoning_effort: input.effort } : {}),
-            default_permissions: "poko-readonly",
-            permissions: { "poko-readonly": permissionProfile(profile) },
-            mcp_servers: {},
-          },
-        }),
-      );
-      const threadId =
-        isRecord(threadResult) && isRecord(threadResult.thread)
-          ? readString(threadResult.thread.id)
-          : undefined;
+      // Every thread, new or resumed, gets exactly these settings from this task.
+      const settings = {
+        cwd: input.cwd,
+        ...(input.model ? { model: input.model } : {}),
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandbox: "read-only",
+        config: {
+          ...(input.effort ? { model_reasoning_effort: input.effort } : {}),
+          default_permissions: "poko-readonly",
+          permissions: { "poko-readonly": permissionProfile(profile) },
+          mcp_servers: {},
+        },
+      };
+      // Phase 20: continue the conversation's thread when there is one.
+      let threadId: string | undefined;
+      let resumed = false;
+      let forgetPrevious = false;
+      let transient = false;
+      const resumeId = input.session?.resumeId;
+      if (resumeId) {
+        try {
+          const result = await this.withRequestTimeout(
+            connection.request("thread/resume", {
+              threadId: resumeId,
+              // The history stays with Codex; a long one would not fit in one message here.
+              excludeTurns: true,
+              ...settings,
+            }),
+          );
+          if (isResumedAsAsked(result, resumeId, input.cwd)) {
+            threadId = resumeId;
+            resumed = true;
+          } else forgetPrevious = true;
+        } catch (error) {
+          // Only a thread Codex says it doesn't have is forgotten. Anything else (no reply, a
+          // passing error, a previous task's process still closing it) may pass: answer fresh
+          // this time without keeping anything, and try the stored thread again next time.
+          if (isThreadMissing(error)) forgetPrevious = true;
+          else transient = true;
+        }
+      }
+      if (!threadId) {
+        const threadResult = await this.withRequestTimeout(
+          connection.request("thread/start", {
+            ...settings,
+            // Kept only for a conversation that continues it: never for screen or routine
+            // tasks, nor a one-off answer while the stored thread couldn't be reached.
+            ephemeral: !input.session || transient,
+          }),
+        );
+        threadId =
+          isRecord(threadResult) && isRecord(threadResult.thread)
+            ? readString(threadResult.thread.id)
+            : undefined;
+      }
       if (!threadId) throw new Error("Codex App Server did not return a thread id.");
+      if (input.session)
+        options.onSession?.({ id: threadId, resumed, kept: !transient, forgetPrevious });
 
       yield { type: "started" };
       const turnResult = await this.withRequestTimeout(
@@ -497,7 +610,10 @@ export class CodexAppServerProvider implements AgentProvider {
           threadId,
           cwd: input.cwd,
           input: [
-            { type: "text", text: input.prompt },
+            {
+              type: "text",
+              text: resumed ? (input.session?.resumePrompt ?? input.prompt) : input.prompt,
+            },
             ...(input.images ?? []).map((path) => ({ type: "localImage", path })),
           ],
           approvalPolicy: "on-request",
