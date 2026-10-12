@@ -27,6 +27,7 @@ function world(
       missed: options.missed ?? 0,
     }),
     getTaskConversation: () => ({ id: "c1" }),
+    getTaskWorkspace: () => "/w/project",
   } as never;
   ctx.screenProvider = {
     deleteThreads: async (ids: string[]) => void deleted.push(ids),
@@ -61,8 +62,9 @@ describe("engine sessions", () => {
     expect(planSession("c1", "t2")).toEqual({ engine: "codex", catchUp: [] });
     world(session(), { missed: 2 });
     expect(planSession("c1", "t3")).toEqual({ engine: "codex", catchUp: [] });
+    // A session from the other engine is never continued.
     world(session(), { engine: "claude" });
-    expect(planSession("c1", "t4")).toBeUndefined();
+    expect(planSession("c1", "t4")).toEqual({ engine: "claude", catchUp: [] });
   });
 
   it("keeps a fresh session, marks it after a failure, and deletes the one it replaced", () => {
@@ -102,5 +104,40 @@ describe("engine sessions", () => {
     expect(() => finishSession("t2", "completed")).not.toThrow();
     ctx.database = null;
     ctx.screenProvider = null;
+  });
+
+  it("doesn't retry a Claude Code session that failed before it got going, but keeps it after a cancel", () => {
+    const failed = world(session({ engine: "claude", cwd: "/w/project" }), { engine: "claude" });
+    planSession("c1", "t1");
+    finishSession("t1", "error");
+    expect(failed.state.stored).toMatchObject({ dirty: true });
+
+    const cancelled = world(session({ engine: "claude", cwd: "/w/project" }), { engine: "claude" });
+    planSession("c1", "t2");
+    finishSession("t2", "cancelled");
+    expect(cancelled.state.stored).toMatchObject({ dirty: false });
+
+    // Codex out of reach before reporting leaves its thread alone too.
+    const codex = world(session());
+    planSession("c1", "t3");
+    finishSession("t3", "error");
+    expect(codex.state.stored).toEqual(session());
+    ctx.database = null;
+  });
+
+  it("finds a Claude Code transcript by id when its folder name was shortened", async () => {
+    const { mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { findClaudeTranscript } = await import("../providers/claude/claudeSessions");
+    const config = await mkdtemp(join(tmpdir(), "poko-claude-"));
+    const id = "11111111-2222-3333-4444-555555555555";
+    const folder = join(config, "projects", "-a-very-long-name-cut-short-1a2b3c");
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, `${id}.jsonl`), "turn\n");
+    expect(findClaudeTranscript({ CLAUDE_CONFIG_DIR: config }, "/a/very/long/name", id)).toBe(
+      join(folder, `${id}.jsonl`),
+    );
+    expect(findClaudeTranscript({ CLAUDE_CONFIG_DIR: config }, "/x", "../etc")).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { SessionReport } from "../agent/AgentProvider";
 import type { TaskContext } from "../agent/context";
 import type { EngineId, EngineSession } from "../shared";
+import { deleteClaudeSession } from "../providers/claude/claudeSessions";
 import { ctx } from "./context";
 
 /**
@@ -10,7 +11,7 @@ import { ctx } from "./context";
  */
 
 /** What was decided for a running task, so its end is recorded against the same facts. */
-const planned = new Map<string, { engine: EngineId; memoryHashes: string[] }>();
+const planned = new Map<string, { engine: EngineId; memoryHashes: string[]; resumeId?: string }>();
 /** The session each running task reported. */
 const reports = new Map<string, SessionReport>();
 
@@ -27,7 +28,6 @@ export function memoryHash(memory: { type: string; content: string }): string {
  * usable, otherwise start one to keep. Usable means the same engine, no failed or cancelled
  * task in it, every memory it was sent still sent now (a memory deleted, changed, or turned
  * off is never seen again through old turns), and every answer it missed fits the catch-up.
- * Claude Code keeps no session yet (milestone 2), so it gets none.
  */
 export function planSession(
   conversationId: string,
@@ -50,7 +50,6 @@ function plan(
   const database = ctx.database;
   if (!database) return undefined;
   const engine = database.getSettings().engine;
-  if (engine !== "codex") return undefined;
   const sent = database.getTaskContext(taskId).memories.map(memoryHash);
   const current = new Set(sent);
   const stored = database.getEngineSession(conversationId);
@@ -66,10 +65,13 @@ function plan(
   planned.set(taskId, {
     engine,
     memoryHashes: usable ? [...new Set([...stored.memoryHashes, ...sent])] : sent,
+    ...(usable ? { resumeId: stored.id } : {}),
   });
   if (!usable) return { engine, catchUp: [] };
   return { engine, resumeId: stored.id, catchUp: missed.history };
 }
+
+const claudeEnv = (): NodeJS.ProcessEnv => ctx.claudeSetup?.runtime().environment ?? process.env;
 
 /** A task that didn't start: nothing will be reported or finished for it. */
 export function forgetPlan(taskId: string): void {
@@ -102,29 +104,56 @@ function finish(taskId: string, type: string): void {
   planned.delete(taskId);
   reports.delete(taskId);
   const database = ctx.database;
-  if (!plan || !report || !database) return;
+  if (!plan || !database) return;
+  if (!report) {
+    // Claude Code failed before it got going in the stored session: don't try that session
+    // again as is, or every question in this conversation could fail the same way. (A cancel,
+    // or Codex out of reach, leaves it as it is: the failed turn never entered the session.)
+    if (plan.resumeId && plan.engine === "claude" && type === "error") {
+      const conversation = database.getTaskConversation(taskId);
+      const stored = conversation ? database.getEngineSession(conversation.id) : null;
+      if (conversation && stored?.id === plan.resumeId)
+        database.setEngineSession(conversation.id, { ...stored, dirty: true });
+    }
+    return;
+  }
   const conversation = database.getTaskConversation(taskId);
   if (!conversation) {
     if (report.kept && !report.resumed)
-      deleteEngineSessions([{ engine: plan.engine, id: report.id }]);
+      deleteEngineSessions([
+        { engine: plan.engine, id: report.id, cwd: database.getTaskWorkspace(taskId) ?? undefined },
+      ]);
     return;
   }
   // A one-off answer (the stored session out of reach) changes nothing.
   if (!report.kept) return;
   const stored = database.getEngineSession(conversation.id);
+  const cwd = database.getTaskWorkspace(taskId);
   const session: EngineSession = {
     engine: plan.engine,
     id: report.id,
     lastTaskId: taskId,
     memoryHashes: plan.memoryHashes,
     dirty: type !== "completed",
+    // Claude Code: the folder its transcript is kept under.
+    ...(plan.engine === "claude" && cwd ? { cwd } : {}),
   };
   database.setEngineSession(conversation.id, session);
   if (stored && stored.id !== report.id) deleteEngineSessions([stored]);
 }
 
 /** Deletes sessions in their engines; best effort, never awaited by a delete in Poko. */
-export function deleteEngineSessions(sessions: Array<Pick<EngineSession, "engine" | "id">>): void {
+export function deleteEngineSessions(
+  sessions: Array<Pick<EngineSession, "engine" | "id" | "cwd">>,
+): void {
+  for (const session of sessions) {
+    if (session.engine !== "claude" || !session.cwd) continue;
+    try {
+      deleteClaudeSession(claudeEnv(), session.cwd, session.id);
+    } catch (error) {
+      console.error("Could not delete a Claude Code session.", error);
+    }
+  }
   const codex = sessions
     .filter((session) => session.engine === "codex")
     .map((session) => session.id);

@@ -175,6 +175,8 @@ export interface EngineSession {
   /** Short hashes of every memory this session was sent (type and text). */
   memoryHashes: string[];
   dirty: boolean;
+  /** Claude Code: the resolved folder its transcript is kept under. */
+  cwd?: string;
 }
 
 /** How a task uses an engine session: continue `resumeId`, or start one to keep. */
