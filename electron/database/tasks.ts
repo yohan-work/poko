@@ -342,7 +342,8 @@ export function addTaskUsage(db: Db, taskId: string, usage: TaskUsage): TaskUsag
   const before = readUsage(row.usage);
   const total: TaskUsage = before
     ? {
-        engine: usage.engine,
+        // Its first engine: a later run never moves earlier numbers to another engine.
+        engine: before.engine,
         inputTokens: before.inputTokens + usage.inputTokens,
         cachedInputTokens: before.cachedInputTokens + usage.cachedInputTokens,
         cacheWriteTokens: before.cacheWriteTokens + usage.cacheWriteTokens,

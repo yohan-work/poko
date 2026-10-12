@@ -55,8 +55,14 @@ const count = (value: unknown): number =>
 function turnUsage() {
   let before: Record<string, unknown> | null = null;
   let latest: Record<string, unknown> | null = null;
+  let turnId: string | undefined;
   return {
-    note(raw: unknown): void {
+    /** The turn whose notices count; a notice naming another turn is left out. */
+    forTurn(id: string | undefined): void {
+      turnId = id;
+    },
+    note(raw: unknown, noticeTurn?: string): void {
+      if (turnId && noticeTurn && noticeTurn !== turnId) return;
       if (!isRecord(raw) || !isRecord(raw.total) || !isRecord(raw.last)) return;
       if (!before) {
         const { total, last } = raw;
@@ -614,16 +620,6 @@ export class CodexAppServerProvider implements AgentProvider {
         throw new Error("Unsupported Codex App Server initialize response.");
       }
       connection.notify("initialized");
-      // Plan limits, asked once alongside the work: a short wait, never holding the answer.
-      void Promise.race([
-        connection.request("account/rateLimits/read", {}),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("slow")), LIMITS_READ_MS)),
-      ])
-        .then((result) => {
-          const windows = isRecord(result) ? codexLimitWindows(result.rateLimits) : null;
-          if (windows) options.onLimits?.("codex", windows);
-        })
-        .catch(() => undefined);
       // Every thread, new or resumed, gets exactly these settings from this task.
       const settings = {
         cwd: input.cwd,
@@ -703,6 +699,23 @@ export class CodexAppServerProvider implements AgentProvider {
       );
       if (!isRecord(turnResult) || !isRecord(turnResult.turn))
         throw new Error("Codex App Server did not start a turn.");
+      // Only this turn's token notices count (a resumed thread may report its earlier state).
+      usage.forTurn(readString(turnResult.turn.id));
+      // Plan limits, asked once the turn is running: a short wait that never holds the answer.
+      let limitsTimer: NodeJS.Timeout | undefined;
+      void Promise.race([
+        connection.request("account/rateLimits/read", {}),
+        new Promise((_, reject) => {
+          limitsTimer = setTimeout(() => reject(new Error("slow")), LIMITS_READ_MS);
+          limitsTimer.unref?.();
+        }),
+      ])
+        .then((result) => {
+          const windows = isRecord(result) ? codexLimitWindows(result.rateLimits) : null;
+          if (windows) options.onLimits?.("codex", windows);
+        })
+        .catch(() => undefined)
+        .finally(() => clearTimeout(limitsTimer));
 
       for await (const message of connection.messages) {
         if (options.signal?.aborted || aborted) break;
@@ -752,7 +765,7 @@ export class CodexAppServerProvider implements AgentProvider {
           }
           break;
         } else if (message.method === "thread/tokenUsage/updated") {
-          usage.note(message.params.tokenUsage);
+          usage.note(message.params.tokenUsage, readString(message.params.turnId));
         } else if (message.method === "account/rateLimits/updated") {
           const windows = codexLimitWindows(message.params.rateLimits);
           if (windows) options.onLimits?.("codex", windows);

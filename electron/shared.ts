@@ -180,6 +180,8 @@ export interface EngineSession {
   dirty: boolean;
   /** Claude Code: the resolved folder its transcript is kept under. */
   cwd?: string;
+  /** Claude Code: the session's API-equivalent cost so far, to count each run's share (Phase 21). */
+  costUsd?: number;
 }
 
 /** How a task uses an engine session: continue `resumeId`, or start one to keep. */

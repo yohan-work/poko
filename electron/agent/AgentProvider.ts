@@ -22,8 +22,11 @@ export interface SessionReport {
 export interface RunOptions {
   signal?: AbortSignal;
   onSession?: (report: SessionReport) => void;
-  /** What the run used (Phase 21); reported once per run, cancelled or failed runs too. */
-  onUsage?: (usage: TaskUsage) => void;
+  /**
+   * What the run used (Phase 21), once per run. `sessionCostUsd` is Claude Code's cost for its
+   * whole session so far, which on `--resume` includes earlier runs; main keeps the difference.
+   */
+  onUsage?: (usage: TaskUsage, extra?: { sessionCostUsd?: number }) => void;
   /** Plan-limit windows the engine reported, by key. */
   onLimits?: (engine: EngineId, windows: Record<string, UsageLimitWindow>) => void;
 }

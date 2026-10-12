@@ -63,7 +63,7 @@ export class AgentCore {
     /** What runs report besides events: their session (Phase 20) and usage (Phase 21). */
     private readonly hooks: {
       onSession?: (taskId: string, report: SessionReport) => void;
-      onUsage?: (taskId: string, usage: TaskUsage) => void;
+      onUsage?: (taskId: string, usage: TaskUsage, extra?: { sessionCostUsd?: number }) => void;
       onLimits?: (engine: EngineId, windows: Record<string, UsageLimitWindow>) => void;
     } = {},
   ) {}
@@ -238,7 +238,7 @@ export class AgentCore {
       for await (const raw of this.provider.runTask(task, {
         signal: controller.signal,
         onSession: (report) => this.hooks.onSession?.(task.id, report),
-        onUsage: (usage) => this.hooks.onUsage?.(task.id, usage),
+        onUsage: (usage, extra) => this.hooks.onUsage?.(task.id, usage, extra),
         onLimits: (engine, windows) => this.hooks.onLimits?.(engine, windows),
       })) {
         // A project answer may end with a memory suggestion; it leaves the text either way.

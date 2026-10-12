@@ -732,7 +732,11 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (type === "result") {
           terminal = true;
           const used = claudeUsage(raw);
-          if (used) options.onUsage?.(used);
+          // A kept session's cost is its running total: main turns it into this run's share.
+          if (used && sessionId) {
+            const { costUsd, ...tokensOnly } = used;
+            options.onUsage?.(tokensOnly, costUsd !== undefined ? { sessionCostUsd: costUsd } : {});
+          } else if (used) options.onUsage?.(used);
           if (aborted) yield { type: "cancelled" };
           else if (session.approvalTimedOut)
             yield { type: "error", error: "확인을 오래 기다려서 작업을 멈췄어. 다시 요청해 줘." };

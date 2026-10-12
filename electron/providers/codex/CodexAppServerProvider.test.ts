@@ -966,6 +966,14 @@ describe("CodexAppServerProvider", () => {
       const used: unknown[] = [];
       const stream = consume(providerFor(server).runTask(task, { onUsage: (u) => used.push(u) }));
       await turnStarted(server);
+      // A notice about the thread's earlier turn (sent on resume) is left out.
+      server.send({
+        method: "thread/tokenUsage/updated",
+        params: {
+          turnId: "turn-0",
+          tokenUsage: { last: usageOf(900, 0, 90), total: usageOf(1000, 0, 100) },
+        },
+      });
       // The thread had 1000 input / 100 output before this turn; the turn makes two requests.
       server.send({
         method: "thread/tokenUsage/updated",
