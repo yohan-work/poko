@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { limitLine, usageLine } from "../../lib/usage";
 import {
   CHECKPOINT_DAY_CHOICES,
   type ClaudeSetup,
   type CodexSetup,
   DELETE_ALL_CONFIRMATION,
   type DataExportResult,
+  type UsageSummary,
 } from "../../../../../electron/shared";
 import { useAppStore } from "../../state/appStore";
 import { Page, PageHeader } from "../page/Page";
@@ -452,6 +454,84 @@ function DataSection() {
   );
 }
 
+const ENGINE_NAMES = { codex: "Codex", claude: "Claude Code" } as const;
+
+/** 설정 → 사용량: this month's totals and the latest plan limits the engines reported. */
+function UsageSection() {
+  const [summary, setSummary] = useState<UsageSummary | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const load = () =>
+      void window.poko.usage
+        .summary()
+        .then((next) => {
+          setSummary(next);
+          setFailed(false);
+        })
+        .catch(() => setFailed(true));
+    load();
+    // A task finishing while 설정 is open updates the totals and limits too.
+    let timer: number | undefined;
+    const stop = window.poko.usage.onTaskUsage(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(load, 500);
+    });
+    return () => {
+      window.clearTimeout(timer);
+      stop();
+    };
+  }, []);
+  const hasLimits = (engine: "codex" | "claude") =>
+    Object.keys(summary?.limits[engine]?.windows ?? {}).length > 0;
+  const engines = (["codex", "claude"] as const).filter(
+    (engine) => summary?.month[engine] || hasLimits(engine),
+  );
+  return (
+    <Section id="settings-usage" title="사용량">
+      {failed ? (
+        <Row label="사용량" detail="사용량을 불러오지 못했어." />
+      ) : !summary ? null : engines.length === 0 ? (
+        <Row
+          label="이번 달"
+          detail="아직 기록된 사용량이 없어. 작업이 끝나면 엔진이 알려 준 양이 여기에 쌓여."
+        />
+      ) : (
+        engines.map((engine) => {
+          const month = summary.month[engine];
+          const limits = hasLimits(engine) ? summary.limits[engine] : undefined;
+          return (
+            <Row
+              key={engine}
+              label={ENGINE_NAMES[engine]}
+              detail={
+                <>
+                  {month
+                    ? `이번 달 작업 ${month.tasks}개 · ${usageLine(month)}`
+                    : "이번 달 기록된 사용량이 없어."}
+                  {month?.costUsd !== undefined &&
+                    " (구독 요금제는 이 금액으로 청구되지 않아. API로 썼다면 드는 비용이야.)"}
+                  {limits &&
+                    Object.entries(limits.windows).map(([key, window]) => (
+                      <span key={key} className="settings-usage__limit">
+                        {limitLine(window)}
+                      </span>
+                    ))}
+                  {limits && (
+                    <span className="settings-usage__seen">
+                      한도는 {new Date(limits.seenAt).toLocaleString("ko-KR")}에 엔진이 알려 준
+                      값이야.
+                    </span>
+                  )}
+                </>
+              }
+            />
+          );
+        })
+      )}
+    </Section>
+  );
+}
+
 export function SettingsPanel() {
   const loadSettings = useAppStore((state) => state.loadSettings);
   const settingsError = useAppStore((state) => state.settingsError);
@@ -478,6 +558,7 @@ export function SettingsPanel() {
         </p>
       )}
       <EngineSection />
+      <UsageSection />
       <QuickSection />
       <StartSection />
       <NotificationSection />

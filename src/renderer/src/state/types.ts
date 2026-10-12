@@ -21,6 +21,7 @@ import type {
   ScreenStatus,
   ScreenWindow,
   WorkspaceInfo,
+  TaskUsage,
 } from "../../../../electron/shared";
 import type { StreamingAnswer } from "../lib/streaming";
 
@@ -55,6 +56,8 @@ export interface SessionTask {
   status: "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   createdAt: string;
   completedAt?: string;
+  /** What it used (Phase 21), once main recorded it. */
+  usage?: TaskUsage;
 }
 
 /** Codex and Claude Code setup, and each engine's models. */

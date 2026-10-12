@@ -96,6 +96,7 @@ export function fromBootstrap(data: AppBootstrap): Partial<AppState> {
               title: task.title,
               status: task.status,
               createdAt: task.createdAt,
+              ...(task.usage ? { usage: task.usage } : {}),
               completedAt: task.completedAt ?? undefined,
             },
           ],
