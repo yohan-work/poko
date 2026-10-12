@@ -177,8 +177,6 @@ export interface EngineSession {
   dirty: boolean;
   /** Claude Code: the resolved folder its transcript is kept under. */
   cwd?: string;
-  /** Claude Code: the transcript as Poko left it; anything else means it was continued elsewhere. */
-  transcript?: { size: number; mtimeMs: number };
 }
 
 /** How a task uses an engine session: continue `resumeId`, or start one to keep. */

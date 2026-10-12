@@ -1,5 +1,5 @@
 import { type ChildProcessWithoutNullStreams, spawn, type SpawnOptions } from "node:child_process";
-import { claudeTranscriptPath, transcriptExists } from "./claudeSessions";
+import { findClaudeTranscript } from "./claudeSessions";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -97,9 +97,6 @@ interface ProviderOptions {
  * user or project rule can allow a tool or change the permission mode; `--safe-mode` turns off
  * hooks, plugins, skills, MCP servers, and CLAUDE.md. Every permission prompt comes to Poko.
  */
-/** How long a kept session's Claude Code gets to exit on its own after its answer. */
-const SESSION_CLOSE_MS = 5000;
-
 export function claudeArgs(
   tools: readonly string[],
   model?: string,
@@ -426,7 +423,7 @@ export class ClaudeCodeProvider implements AgentProvider {
     // forgotten, and a new one starts.
     const storedId = input.session?.resumeId;
     const resumed = Boolean(
-      storedId && transcriptExists(claudeTranscriptPath(runtime.environment, input.cwd, storedId)),
+      storedId && findClaudeTranscript(runtime.environment, input.cwd, storedId),
     );
     const sessionId = input.session ? (resumed && storedId ? storedId : randomUUID()) : undefined;
     let child: ChildProcessWithoutNullStreams;
@@ -589,7 +586,6 @@ export class ClaudeCodeProvider implements AgentProvider {
 
     // A continued session has the conversation already; it gets only what may have changed.
     const prompt = resumed ? (input.session?.resumePrompt ?? input.prompt) : input.prompt;
-    let sessionReported = false;
     let terminal = false;
     let finalText = "";
     let messageId: string | undefined;
@@ -625,7 +621,6 @@ export class ClaudeCodeProvider implements AgentProvider {
           if (sessionId) {
             if (raw.session_id !== sessionId)
               throw new ClaudeFailure("Claude Code가 이 대화의 세션으로 시작하지 않아서 멈췄어.");
-            sessionReported = true;
             options.onSession?.({
               id: sessionId,
               resumed,
@@ -725,24 +720,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       } catch {
         /* closed */
       }
-      // A kept session's transcript is written to the end: Claude Code exits on its own once
-      // its input closes, so it gets a moment before being stopped.
-      if (sessionId && sessionReported && terminal && !aborted)
-        await Promise.race([
-          exited,
-          new Promise((resolve) => setTimeout(resolve, SESSION_CLOSE_MS)),
-        ]);
       terminate();
-      if (sessionId && sessionReported)
-        void exited.then(() =>
-          options.onSession?.({
-            id: sessionId,
-            resumed,
-            kept: true,
-            forgetPrevious: false,
-            closed: true,
-          }),
-        );
       if (session.commands && taskTemp) {
         // Only once the CLI is gone: a command still running at cancel time is no longer
         // a live descendant to spare, so everything under this task's sandbox is stopped.

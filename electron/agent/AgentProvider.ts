@@ -10,8 +10,6 @@ export interface SessionReport {
   resumed: boolean;
   kept: boolean;
   forgetPrevious: boolean;
-  /** Sent again once the engine process has exited and its files are final (Claude Code). */
-  closed?: boolean;
 }
 
 export interface RunOptions {

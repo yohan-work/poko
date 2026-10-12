@@ -2,11 +2,7 @@ import { createHash } from "node:crypto";
 import type { SessionReport } from "../agent/AgentProvider";
 import type { TaskContext } from "../agent/context";
 import type { EngineId, EngineSession } from "../shared";
-import {
-  claudeTranscriptPath,
-  deleteClaudeSession,
-  transcriptStamp,
-} from "../providers/claude/claudeSessions";
+import { deleteClaudeSession } from "../providers/claude/claudeSessions";
 import { ctx } from "./context";
 
 /**
@@ -32,7 +28,6 @@ export function memoryHash(memory: { type: string; content: string }): string {
  * usable, otherwise start one to keep. Usable means the same engine, no failed or cancelled
  * task in it, every memory it was sent still sent now (a memory deleted, changed, or turned
  * off is never seen again through old turns), and every answer it missed fits the catch-up.
- * For Claude Code, the transcript must also be exactly as Poko left it.
  */
 export function planSession(
   conversationId: string,
@@ -66,8 +61,7 @@ function plan(
     stored &&
     missed &&
     missed.missed === 0 &&
-    stored.memoryHashes.every((hash) => current.has(hash)) &&
-    (engine !== "claude" || untouched(stored));
+    stored.memoryHashes.every((hash) => current.has(hash));
   planned.set(taskId, {
     engine,
     memoryHashes: usable ? [...new Set([...stored.memoryHashes, ...sent])] : sent,
@@ -75,17 +69,6 @@ function plan(
   });
   if (!usable) return { engine, catchUp: [] };
   return { engine, resumeId: stored.id, catchUp: missed.history };
-}
-
-/** A Claude Code transcript exactly as Poko left it (not continued in a terminal since). */
-function untouched(session: EngineSession): boolean {
-  if (!session.cwd || !session.transcript) return false;
-  const now = transcriptStamp(claudeTranscriptPath(claudeEnv(), session.cwd, session.id));
-  return (
-    now !== null &&
-    now.size === session.transcript.size &&
-    now.mtimeMs === session.transcript.mtimeMs
-  );
 }
 
 const claudeEnv = (): NodeJS.ProcessEnv => ctx.claudeSetup?.runtime().environment ?? process.env;
@@ -97,29 +80,7 @@ export function forgetPlan(taskId: string): void {
 }
 
 export function recordSessionReport(taskId: string, report: SessionReport): void {
-  if (report.closed) {
-    refreshTranscript(taskId, report.id);
-    return;
-  }
   if (planned.has(taskId)) reports.set(taskId, report);
-}
-
-/**
- * Claude Code writes its transcript until it exits, after the answer was recorded: the stamp
- * is taken again then, so the next question doesn't mistake that for a turn from elsewhere.
- */
-function refreshTranscript(taskId: string, id: string): void {
-  try {
-    const database = ctx.database;
-    const conversation = database?.getTaskConversation(taskId);
-    const stored = conversation ? database?.getEngineSession(conversation.id) : null;
-    if (!database || !conversation || !stored || stored.engine !== "claude") return;
-    if (stored.id !== id || stored.lastTaskId !== taskId || !stored.cwd) return;
-    const transcript = transcriptStamp(claudeTranscriptPath(claudeEnv(), stored.cwd, id));
-    if (transcript) database.setEngineSession(conversation.id, { ...stored, transcript });
-  } catch (error) {
-    console.error("Could not note the Claude Code transcript.", error);
-  }
 }
 
 /**
@@ -145,9 +106,10 @@ function finish(taskId: string, type: string): void {
   const database = ctx.database;
   if (!plan || !database) return;
   if (!report) {
-    // It never got going in the stored session (Claude Code exited at once, say): don't try
-    // that session again as is, or every question in this conversation would fail the same way.
-    if (plan.resumeId && type !== "completed") {
+    // Claude Code failed before it got going in the stored session: don't try that session
+    // again as is, or every question in this conversation could fail the same way. (A cancel,
+    // or Codex out of reach, leaves it as it is: the failed turn never entered the session.)
+    if (plan.resumeId && plan.engine === "claude" && type === "error") {
       const conversation = database.getTaskConversation(taskId);
       const stored = conversation ? database.getEngineSession(conversation.id) : null;
       if (conversation && stored?.id === plan.resumeId)
@@ -158,7 +120,9 @@ function finish(taskId: string, type: string): void {
   const conversation = database.getTaskConversation(taskId);
   if (!conversation) {
     if (report.kept && !report.resumed)
-      deleteEngineSessions([{ engine: plan.engine, id: report.id }]);
+      deleteEngineSessions([
+        { engine: plan.engine, id: report.id, cwd: database.getTaskWorkspace(taskId) ?? undefined },
+      ]);
     return;
   }
   // A one-off answer (the stored session out of reach) changes nothing.
@@ -171,13 +135,8 @@ function finish(taskId: string, type: string): void {
     lastTaskId: taskId,
     memoryHashes: plan.memoryHashes,
     dirty: type !== "completed",
-    // Claude Code: where the transcript is, and how Poko left it.
-    ...(plan.engine === "claude" && cwd
-      ? (() => {
-          const transcript = transcriptStamp(claudeTranscriptPath(claudeEnv(), cwd, report.id));
-          return { cwd, ...(transcript ? { transcript } : {}) };
-        })()
-      : {}),
+    // Claude Code: the folder its transcript is kept under.
+    ...(plan.engine === "claude" && cwd ? { cwd } : {}),
   };
   database.setEngineSession(conversation.id, session);
   if (stored && stored.id !== report.id) deleteEngineSessions([stored]);
