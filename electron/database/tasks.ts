@@ -1,3 +1,4 @@
+import type { TaskUsage, UsageSummary } from "../shared";
 import { randomUUID } from "node:crypto";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { CONTEXT_LIMITS, limitContext, type TaskContext } from "../agent/context";
@@ -322,4 +323,69 @@ export function recoverInterruptedTasks(db: Db): void {
       .where(sql`${tasks.status} IN ('running', 'waiting_approval')`)
       .run();
   });
+}
+
+export function readUsage(raw: string | null | undefined): TaskUsage | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as TaskUsage;
+    return value && (value.engine === "codex" || value.engine === "claude") ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Adds a run's usage to its task (a screen task has one run per step); returns the total. */
+export function addTaskUsage(db: Db, taskId: string, usage: TaskUsage): TaskUsage | null {
+  const row = db.select({ usage: tasks.usage }).from(tasks).where(eq(tasks.id, taskId)).get();
+  if (!row) return null;
+  const before = readUsage(row.usage);
+  const total: TaskUsage = before
+    ? {
+        engine: usage.engine,
+        inputTokens: before.inputTokens + usage.inputTokens,
+        cachedInputTokens: before.cachedInputTokens + usage.cachedInputTokens,
+        cacheWriteTokens: before.cacheWriteTokens + usage.cacheWriteTokens,
+        outputTokens: before.outputTokens + usage.outputTokens,
+        ...(before.costUsd !== undefined || usage.costUsd !== undefined
+          ? { costUsd: (before.costUsd ?? 0) + (usage.costUsd ?? 0) }
+          : {}),
+      }
+    : usage;
+  db.update(tasks)
+    .set({ usage: JSON.stringify(total) })
+    .where(eq(tasks.id, taskId))
+    .run();
+  return total;
+}
+
+/** Usage of tasks completed (or ended) between two instants, per engine. */
+export function usageBetween(db: Db, fromIso: string, toIso: string): UsageSummary["month"] {
+  const rows = db
+    .select({ usage: tasks.usage })
+    .from(tasks)
+    .where(
+      sql`${tasks.usage} IS NOT NULL AND ${tasks.completedAt} >= ${fromIso} AND ${tasks.completedAt} < ${toIso}`,
+    )
+    .all();
+  const month: UsageSummary["month"] = {};
+  for (const row of rows) {
+    const usage = readUsage(row.usage);
+    if (!usage) continue;
+    const sum = month[usage.engine] ?? {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+      outputTokens: 0,
+      tasks: 0,
+    };
+    sum.inputTokens += usage.inputTokens;
+    sum.cachedInputTokens += usage.cachedInputTokens;
+    sum.cacheWriteTokens += usage.cacheWriteTokens;
+    sum.outputTokens += usage.outputTokens;
+    if (usage.costUsd !== undefined) sum.costUsd = (sum.costUsd ?? 0) + usage.costUsd;
+    sum.tasks += 1;
+    month[usage.engine] = sum;
+  }
+  return month;
 }

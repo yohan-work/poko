@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { AgentEvent, AgentTask, ApprovalChoice, EngineId, TaskEventPayload } from "../shared";
+import type {
+  AgentEvent,
+  AgentTask,
+  ApprovalChoice,
+  EngineId,
+  TaskEventPayload,
+  TaskUsage,
+  UsageLimitWindow,
+} from "../shared";
 import { takeMemorySuggestion } from "../shared";
 import type { AgentProvider, SessionReport } from "./AgentProvider";
 import { formatContext, type TaskContext } from "./context";
@@ -52,8 +60,12 @@ export class AgentCore {
     private readonly provider: AgentProvider,
     private readonly publish: (payload: TaskEventPayload) => void,
     private readonly codingSkill = "",
-    /** Told which engine session a task ran in, so main can keep it with the conversation. */
-    private readonly onSession?: (taskId: string, report: SessionReport) => void,
+    /** What runs report besides events: their session (Phase 20) and usage (Phase 21). */
+    private readonly hooks: {
+      onSession?: (taskId: string, report: SessionReport) => void;
+      onUsage?: (taskId: string, usage: TaskUsage) => void;
+      onLimits?: (engine: EngineId, windows: Record<string, UsageLimitWindow>) => void;
+    } = {},
   ) {}
 
   startTask(input: AgentTaskInput): string {
@@ -225,7 +237,9 @@ export class AgentCore {
     try {
       for await (const raw of this.provider.runTask(task, {
         signal: controller.signal,
-        onSession: (report) => this.onSession?.(task.id, report),
+        onSession: (report) => this.hooks.onSession?.(task.id, report),
+        onUsage: (usage) => this.hooks.onUsage?.(task.id, usage),
+        onLimits: (engine, windows) => this.hooks.onLimits?.(engine, windows),
       })) {
         // A project answer may end with a memory suggestion; it leaves the text either way.
         let event = raw;

@@ -15,9 +15,12 @@ import type {
   RoutineResult,
   RoutineSchedule,
   EngineSession,
+  TaskUsage,
+  UsageLimits,
+  UsageSummary,
 } from "../shared";
 import * as Approvals from "./approvals";
-import type { Db } from "./common";
+import { type Db, readSetting, writeSetting } from "./common";
 import type { ConversationRecord, MessageRecord } from "./conversations";
 import * as Conversations from "./conversations";
 import type { EditRecord } from "./edits";
@@ -58,6 +61,7 @@ export interface TaskRecord {
   status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   createdAt: string;
   completedAt: string | null;
+  usage?: TaskUsage | null;
 }
 export interface ActivityRecord {
   id: string;
@@ -138,11 +142,13 @@ export class PokoDatabase {
           status: tasks.status,
           createdAt: tasks.createdAt,
           completedAt: tasks.completedAt,
+          usage: tasks.usage,
         })
         .from(tasks)
         .orderBy(desc(tasks.createdAt))
         .limit(100)
-        .all(),
+        .all()
+        .map(({ usage, ...task }) => ({ ...task, usage: Tasks.readUsage(usage) })),
       // Join the task title so older activity stays labeled even when its task is not loaded.
       activities: this.db
         .select({
@@ -204,6 +210,8 @@ export class PokoDatabase {
       ])
         tx.delete(table).run();
       tx.delete(settings).where(eq(settings.key, "activeConversationId")).run();
+      // The plan limits go with the usage they explain.
+      tx.delete(settings).where(sql`${settings.key} LIKE 'usageLimits:%'`).run();
     });
   }
 
@@ -266,6 +274,29 @@ export class PokoDatabase {
   }
   exchangesAfter(conversationId: string, afterTaskId: string, excludingTaskId: string) {
     return Tasks.exchangesAfter(this.db, conversationId, afterTaskId, excludingTaskId);
+  }
+  addTaskUsage(taskId: string, usage: TaskUsage): TaskUsage | null {
+    return Tasks.addTaskUsage(this.db, taskId, usage);
+  }
+  usageBetween(fromIso: string, toIso: string): UsageSummary["month"] {
+    return Tasks.usageBetween(this.db, fromIso, toIso);
+  }
+  getUsageLimits(engine: EngineId): UsageLimits | null {
+    try {
+      const raw = readSetting(this.db, `usageLimits:${engine}`);
+      return raw ? (JSON.parse(raw) as UsageLimits) : null;
+    } catch {
+      return null;
+    }
+  }
+  /** Merges reported windows into what was seen before: one window never erases another. */
+  mergeUsageLimits(engine: EngineId, windows: UsageLimits["windows"]): void {
+    const before = this.getUsageLimits(engine);
+    const merged: UsageLimits = {
+      windows: { ...(before?.windows ?? {}), ...windows },
+      seenAt: new Date().toISOString(),
+    };
+    writeSetting(this.db, `usageLimits:${engine}`, JSON.stringify(merged));
   }
   getEngineSession(conversationId: string): EngineSession | null {
     return Conversations.getEngineSession(this.db, conversationId);

@@ -26,6 +26,7 @@ import {
   startRoutineScheduler,
 } from "./app/routines";
 import { recordSessionReport } from "./app/sessions";
+import { addTaskUsage, recordLimits, registerUsageHandlers } from "./app/usage";
 import { registerEditsHandlers } from "./app/edits";
 import { registerScreenHandlers } from "./app/screen";
 import { codexEffortsFor, registerSettingsHandlers } from "./app/settings";
@@ -74,6 +75,7 @@ function registerIpcHandlers(): void {
   registerDictationHandlers();
   registerRoutineHandlers();
   registerRoutineYield();
+  registerUsageHandlers();
 }
 
 async function createWindow(options: { hidden?: boolean } = {}): Promise<void> {
@@ -209,7 +211,7 @@ app
       ),
       deliverTaskEvent,
       codingSkill,
-      recordSessionReport,
+      { onSession: recordSessionReport, onUsage: addTaskUsage, onLimits: recordLimits },
     );
     // A question sent while Poko was busy starts once the running task has fully ended.
     ctx.agentCore.onIdle(kickQueue);

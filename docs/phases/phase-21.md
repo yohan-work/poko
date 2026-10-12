@@ -64,3 +64,11 @@ Show how much each answer used, and how close the user is to their plan's limits
 
 - Warnings or pausing routines near a limit (to decide after seeing real numbers).
 - Per-conversation totals and charts.
+
+## Status
+
+- **Milestone 1 (recording) is done.** Real check (test profile, one question on each engine):
+  - **Codex:** 60,685 input tokens (40,064 cached) and 109 output tokens. Limits: 5시간 한도 20% and 1주 한도 4%, with reset times;
+  - **Claude Code:** 21,840 input tokens (20,250 cached, 1,524 cache writes), 248 output tokens, and about $0.049 at API prices. Limits: 5시간 한도 "allowed", with its reset time;
+  - `task:usage` reached the window for both, and `usage:summary` returned the month and the limits.
+

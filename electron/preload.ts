@@ -25,6 +25,8 @@ import {
   type QueuedQuestion,
   type QuickState,
   type Routine,
+  type TaskUsage,
+  type UsageSummary,
   type RoutineInput,
   type ScreenLookResponse,
   type ScreenStatus,
@@ -117,6 +119,17 @@ const pokoApi = {
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.taskStarted, handler);
       };
+    },
+  },
+  usage: {
+    /** This local month's totals per engine, and the latest plan limits. */
+    summary: (): Promise<UsageSummary> => ipcRenderer.invoke(IPC_CHANNELS.usageSummary),
+    /** A task's usage once recorded (it adds up over a screen task's steps). */
+    onTaskUsage: (listener: (payload: { taskId: string; usage: TaskUsage }) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: { taskId: string; usage: TaskUsage }) =>
+        listener(payload);
+      ipcRenderer.on(IPC_CHANNELS.taskUsage, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.taskUsage, handler);
     },
   },
   routines: {

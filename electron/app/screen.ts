@@ -15,6 +15,7 @@ import {
   recordTaskStart,
   showMainWindow,
 } from "./context";
+import { addTaskUsage, recordLimits } from "./usage";
 import { deliverTaskEvent } from "./events";
 import { hasWaiting, kickQueue } from "./queue";
 
@@ -50,7 +51,8 @@ async function askEngine(
       profile: "screen",
       images: [capture.imagePath],
     },
-    { signal },
+    // Each step's usage adds up under the screen task (Phase 21).
+    { signal, onUsage: (usage) => addTaskUsage(taskId, usage), onLimits: recordLimits },
   )) {
     if (event.type === "completed") return event.result;
     if (event.type === "error") throw new Error(event.error);

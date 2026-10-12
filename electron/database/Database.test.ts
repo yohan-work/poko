@@ -354,6 +354,41 @@ describe("PokoDatabase", () => {
     database.close();
   });
 
+  it("adds up a task's usage and totals a month by completion time", async () => {
+    const database = await openDatabase();
+    const taskId = database.createTask("질문", "/w");
+    const step = {
+      engine: "claude" as const,
+      inputTokens: 100,
+      cachedInputTokens: 60,
+      cacheWriteTokens: 10,
+      outputTokens: 5,
+      costUsd: 0.01,
+    };
+    database.addTaskUsage(taskId, step);
+    expect(database.addTaskUsage(taskId, step)).toMatchObject({ inputTokens: 200, costUsd: 0.02 });
+    database.recordTaskEvent(taskId, "completed", "끝", "끝");
+    const month = database.usageBetween("2000-01-01T00:00:00.000Z", "2999-01-01T00:00:00.000Z");
+    expect(month.claude).toMatchObject({ inputTokens: 200, outputTokens: 10, tasks: 1 });
+    expect(database.usageBetween("2000-01-01T00:00:00.000Z", "2000-02-01T00:00:00.000Z")).toEqual(
+      {},
+    );
+    database.close();
+  });
+
+  it("merges plan-limit windows and clears them with all data", async () => {
+    const database = await openDatabase();
+    database.mergeUsageLimits("claude", { five_hour: { label: "5시간 한도", status: "allowed" } });
+    database.mergeUsageLimits("claude", { seven_day: { label: "7일 한도", status: "allowed" } });
+    expect(Object.keys(database.getUsageLimits("claude")?.windows ?? {}).sort()).toEqual([
+      "five_hour",
+      "seven_day",
+    ]);
+    database.deleteAllHistory();
+    expect(database.getUsageLimits("claude")).toBeNull();
+    database.close();
+  });
+
   it("keeps the same memory once", async () => {
     const database = await openDatabase();
     const first = database.saveMemory({ type: "fact", content: "답은 짧게", importance: 3 });

@@ -17,6 +17,8 @@ import { join } from "node:path";
 import {
   ClaudeCodeProvider,
   claudeArgs,
+  claudeLimitWindows,
+  claudeUsage,
   EDIT_TOOLS,
   READ_TOOLS,
   userContent,
@@ -798,5 +800,35 @@ describe("ClaudeCodeProvider", () => {
       { ...task, profile: "screen" },
     );
     expect((await collect()).at(-1)).toMatchObject({ type: "error" });
+  });
+
+  it("reads usage the same way as Codex: input includes cache reads and writes (Phase 21)", () => {
+    expect(
+      claudeUsage({
+        usage: {
+          input_tokens: 2,
+          cache_read_input_tokens: 535,
+          cache_creation_input_tokens: 4083,
+          output_tokens: 4,
+        },
+        total_cost_usd: 0.082,
+      }),
+    ).toEqual({
+      engine: "claude",
+      inputTokens: 4620,
+      cachedInputTokens: 535,
+      cacheWriteTokens: 4083,
+      outputTokens: 4,
+      costUsd: 0.082,
+    });
+    expect(
+      claudeLimitWindows({ status: "allowed", rateLimitType: "five_hour", resetsAt: 1791780000 }),
+    ).toEqual({
+      five_hour: {
+        label: "5시간 한도",
+        status: "allowed",
+        resetsAt: new Date(1791780000 * 1000).toISOString(),
+      },
+    });
   });
 });

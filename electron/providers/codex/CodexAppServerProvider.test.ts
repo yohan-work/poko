@@ -950,4 +950,72 @@ describe("CodexAppServerProvider", () => {
       expect(reports).toEqual([]);
     });
   });
+
+  describe("usage (Phase 21)", () => {
+    const usageOf = (input: number, cached: number, output: number) => ({
+      totalTokens: input + output,
+      inputTokens: input,
+      cachedInputTokens: cached,
+      cacheWriteInputTokens: 0,
+      outputTokens: output,
+      reasoningOutputTokens: 0,
+    });
+
+    it("counts only this turn's requests, not the thread's earlier turns", async () => {
+      const server = new FakeAppServer();
+      const used: unknown[] = [];
+      const stream = consume(providerFor(server).runTask(task, { onUsage: (u) => used.push(u) }));
+      await turnStarted(server);
+      // The thread had 1000 input / 100 output before this turn; the turn makes two requests.
+      server.send({
+        method: "thread/tokenUsage/updated",
+        params: { tokenUsage: { last: usageOf(300, 200, 20), total: usageOf(1300, 200, 120) } },
+      });
+      server.send({
+        method: "thread/tokenUsage/updated",
+        params: { tokenUsage: { last: usageOf(400, 350, 30), total: usageOf(1700, 550, 150) } },
+      });
+      server.send({ method: "turn/completed", params: { turn: { status: "completed" } } });
+      await stream.done;
+      expect(used).toEqual([
+        {
+          engine: "codex",
+          inputTokens: 700,
+          cachedInputTokens: 550,
+          cacheWriteTokens: 0,
+          outputTokens: 50,
+        },
+      ]);
+    });
+
+    it("merges the plan's windows it is told about, with resets as ISO time", async () => {
+      const server = new FakeAppServer();
+      const limits: unknown[] = [];
+      const stream = consume(
+        providerFor(server).runTask(task, { onLimits: (engine, w) => limits.push([engine, w]) }),
+      );
+      await turnStarted(server);
+      server.send({
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1791780000 },
+            secondary: null,
+          },
+        },
+      });
+      server.send({ method: "turn/completed", params: { turn: { status: "completed" } } });
+      await stream.done;
+      expect(limits).toContainEqual([
+        "codex",
+        {
+          primary: {
+            label: "5시간 한도",
+            usedPercent: 37,
+            resetsAt: new Date(1791780000 * 1000).toISOString(),
+          },
+        },
+      ]);
+    });
+  });
 });

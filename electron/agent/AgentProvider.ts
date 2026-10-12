@@ -1,4 +1,11 @@
-import type { AgentTask, AgentEvent, ApprovalChoice } from "../shared";
+import type {
+  AgentEvent,
+  AgentTask,
+  ApprovalChoice,
+  EngineId,
+  TaskUsage,
+  UsageLimitWindow,
+} from "../shared";
 
 /**
  * Which engine session a task ran in (Phase 20): `kept` when it may be continued later (not an
@@ -15,6 +22,10 @@ export interface SessionReport {
 export interface RunOptions {
   signal?: AbortSignal;
   onSession?: (report: SessionReport) => void;
+  /** What the run used (Phase 21); reported once per run, cancelled or failed runs too. */
+  onUsage?: (usage: TaskUsage) => void;
+  /** Plan-limit windows the engine reported, by key. */
+  onLimits?: (engine: EngineId, windows: Record<string, UsageLimitWindow>) => void;
 }
 
 export interface AgentProvider {
