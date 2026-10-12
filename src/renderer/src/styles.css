@@ -3100,3 +3100,21 @@ html.is-quick body {
 .memory-card__edit {
   margin-left: auto;
 }
+
+.row-list__usage {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-faint);
+  font-size: 0.78rem;
+}
+
+.settings-usage__limit,
+.settings-usage__seen {
+  display: block;
+  margin-top: 4px;
+}
+
+.settings-usage__seen {
+  color: var(--color-text-faint);
+  font-size: 0.78rem;
+}

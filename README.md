@@ -56,6 +56,7 @@ Screenshots use sample data.
 - [x] Follow up in the quick panel without opening the app
 - [x] Edit a saved memory in place
 - [x] Long conversations remember their start: each continues its own Codex thread or Claude Code session (Phase 20)
+- [x] See what each task used and how close you are to your plan's limits (Phase 21)
 
 ## What Poko is aiming for
 

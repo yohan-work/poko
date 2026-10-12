@@ -586,6 +586,12 @@ export function connectTaskFlow(created: StoreApi<AppState>): void {
     ?.queued?.()
     .then(setWaiting)
     .catch(() => undefined);
+  // A task's usage arrives once main recorded it (and grows over a screen task's steps).
+  poko?.usage?.onTaskUsage?.(({ taskId, usage }) =>
+    store.setState((state) => ({
+      tasks: state.tasks.map((task) => (task.id === taskId ? { ...task, usage } : task)),
+    })),
+  );
   poko?.tasks?.onStarted?.((notice) => {
     // A question this window left waiting on the new-conversation screen becomes that
     // conversation when it starts there.

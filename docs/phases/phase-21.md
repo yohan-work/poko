@@ -76,4 +76,8 @@ Show how much each answer used, and how close the user is to their plan's limits
   - **Known limits:**
     - a Claude Code run that ends without its `result` (killed after a cancel, a crash) reports no usage, since the engine never said;
     - a task that crash recovery closes gets that restart's time as `completedAt`, so its usage can land in the next month.
+- **Milestone 2 (showing) is done.**
+  - Each finished task on the 작업 page shows "입력 25k · 출력 7", plus "API 기준 약 $0.02" on Claude Code. It updates live from `task:usage`.
+  - **설정 → 사용량** shows each engine's tasks and tokens this month, the Claude Code estimate (noting that a subscription isn't billed by it), each limit window with its reset time, and when the limits were seen.
+  - Checked in the app with the real run's data (screenshots).
 

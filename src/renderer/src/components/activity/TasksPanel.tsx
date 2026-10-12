@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { usageLine } from "../../lib/usage";
 import { useAppStore, type SessionTask } from "../../state/appStore";
 import { relativeTime } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
@@ -77,6 +78,7 @@ export function TasksPanel() {
             <li className="row-list__item" key={task.id}>
               <span className="row-list__title" title={task.title}>
                 {task.title}
+                {task.usage && <span className="row-list__usage">{usageLine(task.usage)}</span>}
               </span>
               <span className="row-list__meta">
                 <span className={`status-badge status-badge--${task.status}`}>
