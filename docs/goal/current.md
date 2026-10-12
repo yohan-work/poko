@@ -11,12 +11,13 @@
 
 ## 확정된 결정
 
-- **배포는 보류**(2026-10-06): 개인용으로 계속 개발한다. 서명·공증·자동 업데이트는 나중에 다시 꺼낸다.
+- **배포는 보류**(2026-10-06): 개인용으로 계속 개발한다. 다시 꺼낼 때는 서명·공증 여부와 업데이트 채널을 먼저 정하고, GitHub Releases 기반 자동 업데이트(electron-updater 등)를 계획한다.
 - **작업 흐름**(2026-10-01, 이후 반복 확인): 작업이 끝나면 push → PR → 리뷰 → 지적 반영 → CI 통과 후 squash merge까지 사용자 확인 없이 진행한다. main에 직접 push, 배포, 파괴적 작업은 따로 승인을 받는다.
 - **구조**: pnpm 단일 애플리케이션, Electron main/preload/renderer(Electron Vite). renderer에는 좁은 IPC만 노출하고, 권한이 필요한 일은 main과 Agent Core가 한다.
+- **README**: 현재 동작과 계획 기능을 구분해서 적는다.
 - **엔진**: Codex는 stdio JSON-RPC `codex app-server`(experimental이라 capability를 좁게 유지), Claude Code는 stream-json. 엔진 출력은 정규화된 `AgentEvent`로만 다룬다.
 - **명령 실행**: 승인된 명령은 Claude Code(macOS 샌드박스)에서만 실행한다. Codex의 명령 승인은 거절한다(Codex가 샌드박스 안 실행을 지원할 때까지).
-- **제외**: 승인 없는 기억 저장, Playwright 같은 브라우저 자동화, 동시에 두 작업 실행(질문은 대기열로 순서대로 처리).
+- **제외**: 승인 없는 기억 저장, Playwright 같은 브라우저 자동화, 동시에 두 작업 실행(질문은 대기열로 순서대로 처리), 포코가 꺼져 있을 때의 실행(루틴은 포코가 실행 중일 때만 돈다. Phase 18은 로그인할 때 포코를 여는 것뿐이다).
 
 ## 완료된 단계
 
@@ -52,20 +53,23 @@
 - 라이트 메뉴바에서 메뉴바 아이콘 색;
 - 루틴 대화에서 다른 폴더가 선택됐을 때 이어서 묻기 거절;
 - 루틴이 Mac 잠자기에서 깨어난 뒤 당일 놓친 실행을 한 번 실행하는지;
-- 빠른 입력창 질문 대기열(Phase 17)의 실제 사용 흐름.
+- 빠른 입력창 질문 대기열(Phase 17)의 실제 사용 흐름;
+- 설치판에서 데이터베이스 migration이 실행되는지(앱 재시작 포함);
+- Codex 제한 권한 profile과 샌드박스가 OS에서 실제로 적용되는지.
 
 ## 다음 계획 (2026-10-12 합의)
 
 1. **Phase 19 개인 설치판**: 이 Mac 전용 고정 서명(로컬 인증서)으로 빌드해 `/Applications`에 설치·업데이트하는 명령. 지금의 ad-hoc 서명은 빌드마다 서명이 바뀌어 macOS 권한이 초기화될 수 있다. 배포가 아니다. 설치 후 위 미검증 목록을 확인한다.
-2. **Phase 20 긴 대화 맥락**: 대화마다 엔진 세션을 이어 쓰기(Codex `thread/resume`, Claude `--resume`, 지원 여부 먼저 확인), 안 되면 지금의 최근 5개 주고받기 방식으로 대체.
+2. **Phase 20 긴 대화 맥락**: 대화마다 엔진 세션을 이어 쓰기(Codex `thread/resume`, Claude `--resume`, 지원 여부 먼저 확인), 안 되면 지금 방식으로 대체. 지금 방식([phase-05](../phases/phase-05.md)): 최근 완료된 주고받기 5개, 전체 약 8,000자·한쪽 2,000자 제한, 실패·취소된 작업은 제외.
 3. **사용량 보기**: 작업별 토큰·비용, 월 합계.
 4. 소소한 개선(실사용 후 판단): 대화 하나 Markdown 내보내기, 루틴 결과가 변화 없으면 알림 생략.
 
 ## 재개 지점
 
-1. 원격 `main`에서 시작한다. 공유 작업 폴더의 브랜치는 바꾸지 말고 git worktree(scratchpad)에서 작업한다. worktree의 `node_modules` 링크는 `$(git rev-parse --git-common-dir)/info/exclude`에 `/node_modules`로 제외한다.
+1. 원격 `main`에서 시작한다. 같은 작업 폴더를 다른 세션도 쓰므로 그 폴더의 브랜치는 바꾸지 말고 git worktree(scratchpad)에서 작업한다. worktree의 `node_modules` 링크는 `$(git rev-parse --git-common-dir)/info/exclude`에 `/node_modules`로 제외한다.
 2. 모든 PR은 리뷰 → 지적 반영 → CI 통과 확인 후 squash merge한다.
    - 검사는 파이프 없이 종료 코드로 확인한다.
    - PR 전에 `git diff --stat origin/main`에 의도한 파일만 있는지 본다.
+   - 커밋 전에 새 파일이 git에 포함됐는지 확인한다(`.gitignore`가 `data/`를 무시해서 `git diff --stat`에도 안 보인다).
    - 리뷰 에이전트에게 worktree를 만들거나 지우지 말라고 명시한다.
 3. 실제 앱 확인은 별도 `--user-data-dir` 테스트 프로필과 직접 띄운 창으로만 한다. 사용자의 창이나 클립보드는 건드리지 않는다.
