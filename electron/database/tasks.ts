@@ -222,13 +222,13 @@ export function exchangesAfter(
   conversationId: string,
   afterTaskId: string,
   excludingTaskId: string,
-): TaskContext["history"] {
+): { history: TaskContext["history"]; missed: number } | null {
   const after = db
     .select({ createdAt: tasks.createdAt })
     .from(tasks)
     .where(eq(tasks.id, afterTaskId))
     .get();
-  if (!after) return [];
+  if (!after) return null;
   const rows = db
     .select({ request: tasks.prompt, answer: tasks.result })
     .from(tasks)
@@ -236,12 +236,13 @@ export function exchangesAfter(
       sql`${tasks.conversationId} = ${conversationId} AND ${tasks.status} = 'completed' AND ${tasks.result} IS NOT NULL AND ${tasks.id} <> ${excludingTaskId} AND ${tasks.id} <> ${afterTaskId} AND ${tasks.createdAt} >= ${after.createdAt}`,
     )
     .orderBy(desc(tasks.createdAt), desc(sql`${tasks}.rowid`))
-    .limit(CONTEXT_LIMITS.exchangeCount)
     .all();
-  return limitContext(
+  const history = limitContext(
     [],
     rows.map((row) => ({ request: row.request, answer: row.answer ?? "" })),
   ).history;
+  // Every missed answer must fit, or the session would hold a gap it can't see.
+  return { history, missed: rows.length - history.length };
 }
 
 /** The newest task in a conversation, or null. */

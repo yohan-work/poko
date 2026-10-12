@@ -17,7 +17,7 @@ import type {
   EngineSession,
 } from "../shared";
 import * as Approvals from "./approvals";
-import { type Db, memoryVersion } from "./common";
+import type { Db } from "./common";
 import type { ConversationRecord, MessageRecord } from "./conversations";
 import * as Conversations from "./conversations";
 import type { EditRecord } from "./edits";
@@ -276,9 +276,7 @@ export class PokoDatabase {
   listEngineSessions(): EngineSession[] {
     return Conversations.listEngineSessions(this.db);
   }
-  memoryVersion(): number {
-    return memoryVersion(this.db);
-  }
+
   hasTask(taskId: string): boolean {
     return Tasks.hasTask(this.db, taskId);
   }

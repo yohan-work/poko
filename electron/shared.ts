@@ -164,15 +164,16 @@ export interface AgentTask {
 
 /**
  * The engine session a conversation continues (Phase 20). Used only while it is the current
- * engine, the memories haven't changed (`memoryVersion`), and no failed or cancelled task ran
- * in it (`dirty`).
+ * engine, every memory it was sent still holds (`memoryHashes`), and no failed or cancelled
+ * task ran in it (`dirty`).
  */
 export interface EngineSession {
   engine: EngineId;
   id: string;
   /** The last task that ran in this session; later answers are sent to it as catch-up. */
   lastTaskId: string;
-  memoryVersion: number;
+  /** Short hashes of every memory this session was sent (type and text). */
+  memoryHashes: string[];
   dirty: boolean;
 }
 

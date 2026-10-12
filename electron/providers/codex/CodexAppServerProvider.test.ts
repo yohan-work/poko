@@ -892,6 +892,8 @@ describe("CodexAppServerProvider", () => {
       for (const setup of [
         () => undefined,
         (server: FakeAppServer) => resumed(server, { sandbox: { type: "workspaceWrite" } }),
+        (server: FakeAppServer) =>
+          resumed(server, { sandbox: { type: "readOnly", networkAccess: true } }),
       ]) {
         const server = new FakeAppServer();
         setup(server);
@@ -904,6 +906,21 @@ describe("CodexAppServerProvider", () => {
           { id: "thread-1", resumed: false, kept: true, forgetPrevious: true },
         ]);
       }
+    });
+
+    it("answers once, keeping nothing, for any other failure to resume", async () => {
+      const server = new FakeAppServer();
+      server.resume = (message) =>
+        server.send({ id: message.id, error: { code: -32603, message: "rollout is locked" } });
+      const reports: unknown[] = [];
+      consume(providerFor(server).runTask(withSession, { onSession: (r) => reports.push(r) }));
+      expect(await inputText(server)).toBe("FRESH");
+      expect((await server.waitFor((m) => m.method === "thread/start")).params).toMatchObject({
+        ephemeral: true,
+      });
+      expect(reports).toEqual([
+        { id: "thread-1", resumed: false, kept: false, forgetPrevious: false },
+      ]);
     });
 
     it("answers once, keeping nothing, when the stored thread can't be reached", async () => {

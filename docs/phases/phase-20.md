@@ -33,11 +33,12 @@ A long conversation keeps everything said earlier in it, not only the last few e
 ## Design
 
 - **Storage:**
-  - `conversations.engine_session` (nullable JSON) holds the conversation's current engine session: `{ engine, id, lastTaskId, memoryVersion }`, plus for Claude Code the resolved `cwd` and the transcript's size and modification time after Poko's last run;
+  - `conversations.engine_session` (nullable JSON) holds the conversation's current engine session: `{ engine, id, lastTaskId, memoryHashes, dirty }`, plus for Claude Code the resolved `cwd` and the transcript's size and modification time after Poko's last run;
   - it is written only after the engine confirms the session.
 - **When a stored session is used:** all of these must hold, otherwise the task starts fresh (below):
   - the conversation's engine is the current engine;
-  - the memories haven't changed since (`memoryVersion`): deleting or editing a memory, or turning memories off, bumps a counter, so a memory the user removed never reaches the engine again through old turns;
+  - every memory the session was sent is still sent now (`memoryHashes`, short hashes of type and text). A memory deleted, changed, or turned off ends only the sessions that saw it, so it never reaches the engine again through old turns;
+  - every answer it missed fits the catch-up (the usual history limits); otherwise there would be a gap it can't see;
   - the session's last task (`lastTaskId`) is the conversation's last *completed* task. A failed or cancelled task, as today, never becomes context: the session that saw it isn't used again;
   - for Claude Code, the transcript's size and modification time are what Poko left. If the user continued it in a terminal (`claude --resume`) under other settings, Poko doesn't take in that outside history.
 - **Resuming:**
@@ -53,7 +54,7 @@ A long conversation keeps everything said earlier in it, not only the last few e
 - **Starting fresh** (no usable session, or the resume failed):
   - as today, with recent exchanges, on a new engine process and connection;
   - the new session replaces the stored one, and the replaced session is deleted (below);
-  - **only "not found"** (the engine doesn't know the session) also forgets it. A timeout, sign-in problem, or crash answers fresh for this task but keeps the stored session for the next one; the next resume catches up through the "after the session's last task" exchanges.
+  - **only "not found"** (the engine says it doesn't have the session) also forgets it. Any other failure (no reply, a passing error, a previous task's process still closing it) gets a one-off ephemeral answer and keeps the stored session for the next one; the next resume catches up through the "after the session's last task" exchanges.
 - **Never stored or resumed:**
   - **screen tasks and routine runs** start `ephemeral` on Codex and keep `--no-session-persistence` on Claude Code, so their screenshots, screen text, and reports aren't kept by the engine;
   - they appear to the next resume through the catch-up exchanges above.
@@ -101,4 +102,7 @@ A long conversation keeps everything said earlier in it, not only the last few e
     - `electron/app/sessions.ts` decides and records;
     - `CodexAppServerProvider` resumes, checks the settings, falls back, and deletes threads;
     - Agent Core builds the resume prompt.
+- **Known limits:**
+  - **a thread started just as it is cancelled, or as Poko is force-quit,** may stay in `~/.codex/sessions`. Codex writes it before Poko learns its id, so Poko can't delete it;
+  - **session bookkeeping never blocks an answer:** planning and recording failures are logged, and the question is answered fresh.
 

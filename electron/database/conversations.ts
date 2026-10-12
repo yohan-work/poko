@@ -160,7 +160,8 @@ function readSession(raw: string | null | undefined): EngineSession | null {
     return typeof value?.id === "string" &&
       (value.engine === "codex" || value.engine === "claude") &&
       typeof value.lastTaskId === "string" &&
-      typeof value.memoryVersion === "number"
+      Array.isArray(value.memoryHashes) &&
+      value.memoryHashes.every((hash) => typeof hash === "string")
       ? { ...value, dirty: value.dirty === true }
       : null;
   } catch {

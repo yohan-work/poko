@@ -52,9 +52,15 @@ function isResumedAsAsked(result: unknown, threadId: string, cwd: string): boole
     result.approvalPolicy === "on-request" &&
     result.approvalsReviewer === "user" &&
     isRecord(result.sandbox) &&
-    result.sandbox.type === "readOnly"
+    result.sandbox.type === "readOnly" &&
+    result.sandbox.networkAccess !== true
   );
 }
+
+/** Codex saying it has no such thread, as opposed to any other failure. */
+const isThreadMissing = (error: unknown): boolean =>
+  error instanceof ReplyError &&
+  /not found|no such|unknown thread|no rollout|does not exist/i.test(error.message);
 /** An error the App Server replied with (as opposed to no reply, or the process ending). */
 class ReplyError extends Error {}
 
@@ -573,9 +579,10 @@ export class CodexAppServerProvider implements AgentProvider {
             resumed = true;
           } else forgetPrevious = true;
         } catch (error) {
-          // Codex refused it (gone, or not resumable): forget it. No reply (a timeout, the
-          // process ending) may pass: answer fresh this time, and try it again next time.
-          if (error instanceof ReplyError) forgetPrevious = true;
+          // Only a thread Codex says it doesn't have is forgotten. Anything else (no reply, a
+          // passing error, a previous task's process still closing it) may pass: answer fresh
+          // this time without keeping anything, and try the stored thread again next time.
+          if (isThreadMissing(error)) forgetPrevious = true;
           else transient = true;
         }
       }
