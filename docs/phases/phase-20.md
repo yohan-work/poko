@@ -33,42 +33,53 @@ A long conversation keeps everything said earlier in it, not only the last few e
 ## Design
 
 - **Storage:**
-  - `conversations.engine_session` (nullable JSON) holds `{ engine, id }`, the engine's session for that conversation;
-  - it is written after the engine confirms the session (Codex's thread id, or the `--session-id` Poko chose once Claude Code reports the session), and cleared when the session can't be resumed.
-- **Starting a task in a conversation:**
-  - **with a stored session for the current engine:**
-    - resume it, sending only the new question plus a short "Poko context" block: the current memories (they may have changed) and the current edit/read-only rule;
-    - not the past exchanges, since the session has them;
-  - **without one** (the first question, another engine, or a cleared session): start a new session as today, with recent exchanges, and store its id;
-  - **if the resume fails** (session not found, protocol error before the turn starts): clear it, then start fresh as above, inside the same task. The user sees one answer.
-- **Per-task settings are reapplied on every resume:**
-  - folder, read-only or edits, the permission profile, model, and effort;
-  - Codex through `thread/resume` and `turn/start` overrides;
-  - Claude Code through its usual flags, which apply to each invocation.
-
-  Nothing a session allowed before carries over to a later task that doesn't allow it.
-- **Not resumed:**
-  - **screen tasks**, which stay one-shot and carry images;
-  - **routine runs**: each run starts fresh in the routine's conversation, so a run never depends on an earlier one. A routine is meant to report the state now.
+  - `conversations.engine_session` (nullable JSON) holds the conversation's current engine session: `{ engine, id, lastTaskId, memoryVersion }`, plus for Claude Code the resolved `cwd` and the transcript's size and modification time after Poko's last run;
+  - it is written only after the engine confirms the session.
+- **When a stored session is used:** all of these must hold, otherwise the task starts fresh (below):
+  - the conversation's engine is the current engine;
+  - the memories haven't changed since (`memoryVersion`): deleting or editing a memory, or turning memories off, bumps a counter, so a memory the user removed never reaches the engine again through old turns;
+  - the session's last task (`lastTaskId`) is the conversation's last *completed* task. A failed or cancelled task, as today, never becomes context: the session that saw it isn't used again;
+  - for Claude Code, the transcript's size and modification time are what Poko left. If the user continued it in a terminal (`claude --resume`) under other settings, Poko doesn't take in that outside history.
+- **Resuming:**
+  - **Codex:**
+    - `thread/resume` with `excludeTurns: true`, so a long thread's history is never sent back (Poko reads lines up to 1 MB);
+    - it passes every override `thread/start` passes today: cwd, `sandbox: "read-only"`, `approvalPolicy: "on-request"`, `approvalsReviewer: "user"`, the read-only permission profile, `mcp_servers: {}`, model, and effort;
+    - the reply's effective `sandbox`, `approvalPolicy`, `approvalsReviewer`, and `cwd` are checked. Anything else means Poko doesn't use the thread (as Claude Code's `system/init` check does today);
+  - **Claude Code:** `--resume <id>` with the same flags as a new task;
+  - **what is sent:**
+    - the new question;
+    - a "Poko context" block that **replaces** anything earlier in the session: the current memories and the current edit or read-only rule. It says so explicitly ("earlier memory lists and edit rules no longer apply");
+    - the exchanges completed in this conversation **after** the session's last task, such as a screen answer, a routine report, or a fallback answer, so the session never misses what Poko showed in between.
+- **Starting fresh** (no usable session, or the resume failed):
+  - as today, with recent exchanges, on a new engine process and connection;
+  - the new session replaces the stored one, and the replaced session is deleted (below);
+  - **only "not found"** (the engine doesn't know the session) also forgets it. A timeout, sign-in problem, or crash answers fresh for this task but keeps the stored session for the next one; the next resume catches up through the "after the session's last task" exchanges.
+- **Never stored or resumed:**
+  - **screen tasks and routine runs** start `ephemeral` on Codex and keep `--no-session-persistence` on Claude Code, so their screenshots, screen text, and reports aren't kept by the engine;
+  - they appear to the next resume through the catch-up exchanges above.
 - **Claude Code persistence:**
-  - Poko drops `--no-session-persistence` only for resumable conversation tasks;
-  - those sessions are then stored by Claude Code under `~/.claude/projects/…` and can appear in the user's own `claude --resume` list. This is noted in 설정 → 엔진.
-- **Deleting:**
-  - deleting a conversation, or 모든 데이터 삭제, also deletes its engine sessions where the engine allows it (Codex `thread/delete`). For Claude Code, Poko removes only the session files whose ids it created;
-  - a failure here never blocks the delete.
+  - only resumable conversation tasks drop `--no-session-persistence`;
+  - those sessions are stored by Claude Code under `~/.claude/projects/…` and appear in the user's own `claude --resume`. This is noted in 설정 → 엔진.
+- **Deleting** (deleting a conversation, replacing a session, 모든 데이터 삭제):
+  - **Codex:** `thread/delete`;
+  - **Claude Code:** Poko removes the session's transcript (found from the stored resolved `cwd`, and `CLAUDE_CONFIG_DIR` when the runtime sets it) and its `file-history/<id>` backups, and only for ids Poko created;
+  - a failure is logged and never blocks the delete.
 - **Context size:** the engines compact on their own. Poko adds no summarizing of its own in this phase.
 
 ## Milestones (one PR each)
 
 1. **Codex:**
-   - the column and migration;
-   - resume, with fallback to a fresh start;
-   - storing and clearing the thread id;
-   - deleting threads with their conversation.
+   - the column, the migration, and the memory counter;
+   - resume with `excludeTurns`, the effective-settings check, and the catch-up exchanges;
+   - fresh starts, and forgetting a session only on "not found";
+   - ephemeral screen and routine tasks;
+   - deleting threads.
 
    Real check: a long conversation where the 8th question needs a fact from the 1st.
 2. **Claude Code:**
-   - session ids, resume, fallback, and session-file cleanup;
+   - session ids, resume, and the transcript check;
+   - fallback;
+   - transcript and file-history cleanup;
    - the note in 설정.
 
    Same real check.
